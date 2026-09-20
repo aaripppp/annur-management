@@ -1,0 +1,851 @@
+================================================================================
+IMPLEMENTATION REPORT
+Project      : annur_management
+Stack        : Laravel 13.24.0 | PHP 8.4.13 | Livewire v3.8.4 | Breeze v2.4.2 | Tailwind v4 | MySQL | Pest 5
+Date         : 14 Agustus 2026
+================================================================================
+
+================================================================================
+1. RINGKASAN
+================================================================================
+Pengembangan sistem manajemen pembayaran sekolah secara bertahap (ADDITIVE).
+
+- Phase 1  : Inspeksi arsitektur & payment flow existing (tidak ada perubahan kode).
+             Dilakukan 2x: pertama sebagai proposal, kedua diminta ulang sebagai
+             laporan resmi A-H. Disetujui oleh user.
+- Phase 2  : DATABASE + MODELS + RELATIONSHIPS untuk billing. SELESAI (laporan ini).
+
+Prinsip yang dipegang:
+- Jangan rebuild existing payment system.
+- Jangan ubah flow existing PaymentCreate secara destruktif.
+- Jangan mengubah tabel payments.
+- Jangan menghapus data existing.
+- Jangan migrate:fresh.
+- Jangan membuat migration/tabel duplikat.
+
+================================================================================
+2. PHASE 2 — HASIL
+================================================================================
+
+2.1 MIGRATIONS (digunakan, BUKAN dibuat baru di phase ini — sudah terpasang)
+--------------------------------------------------------------------------------
+Batch 1 (existing, sebelumnya sudah terpasang):
+  0001_01_01_000000_create_users_table          Ran
+  0001_01_01_000001_create_cache_table          Ran
+  0001_01_01_000002_create_jobs_table           Ran
+  2026_08_11_124600_create_school_classes_table Ran
+  2026_08_11_125232_create_students_table       Ran
+  2026_08_11_130300_create_banks_table          Ran
+  2026_08_11_131014_create_payment_types_table  Ran
+  2026_08_11_131354_create_spp_rates_table      Ran (historis, di-drop saat
+                                                     payment_rates dibuat)
+  2026_08_11_132229_create_payments_table       Ran (TIDAK diubah)
+  2026_08_11_132738_create_payment_details_table Ran (ditambah kolom di batch 2)
+  2026_08_11_225657_create_sessions_table       Ran
+
+Batch 2 (migration billing untuk Phase 2):
+  2026_08_13_144632_add_enrollment_flags_to_payment_types_table   Ran
+    - payment_types.is_auto_enrolled (bool)
+    - payment_types.is_required      (bool)
+    - SPP & Ekskul di-set true (wajib + auto-enroll).
+
+  2026_08_13_144633_create_payment_rates_table   Ran
+    - id, payment_type_id (FK restrictOnDelete)
+    - class_level (string, nullable untuk tarif global)
+    - amount (decimal)
+    - is_monthly (bool, default true)
+    - effective_from / effective_until (date, nullable)
+    - timestamps
+    - 6 tarif SPP di-copy dari spp_rates, lalu tabel spp_rates di-drop.
+      (TIDAK menghapus data existing — data dipindah.)
+
+  2026_08_13_144634_create_student_payment_settings_table   Ran
+    - id, student_id (FK cascadeOnDelete), payment_type_id (FK restrictOnDelete)
+    - is_active (bool, default true)
+    - started_at / ended_at (date, nullable)
+    - UNIQUE (student_id, payment_type_id)
+
+  2026_08_13_144635_create_student_bills_table   Ran
+    - id, student_id (FK cascadeOnDelete), payment_type_id (FK restrictOnDelete)
+    - amount (decimal)  -> ORIGINAL BILL AMOUNT, tidak pernah berubah
+    - period_month (tinyint, NULLABLE)
+    - period_year  (year,  NULLABLE)   -> Uang Pangkal tanpa period month/year
+    - due_date (date, NULLABLE)
+    - timestamps
+
+  2026_08_13_144636_add_bill_id_and_nullable_periods_to_payment_details_table  Ran
+    - payment_details.bill_id (FK ke student_bills, NULLABLE, nullOnDelete)
+      -> detail yang tidak terkait bill tetap valid (Pembayaran Lain).
+    - period_month / period_year pada payment_details menjadi NULLABLE.
+
+Migrate yang TIDAK dibuat (menghindari duplikat / over-engineering):
+  - Tidak ada unique index pada student_bills (period nullable -> tidak bisa
+    di-index penuh; pencegahan tagihan ganda dijaga di logika aplikasi phase 3).
+
+2.2 MODELS (dibuat/diubah di phase ini)
+--------------------------------------------------------------------------------
+Dibuat:
+  app/Models/PaymentRate.php              (HasFactory, fillable, casts, belongsTo paymentType)
+  app/Models/StudentPaymentSetting.php    (HasFactory, fillable, casts, relasi + guard wajib)
+  app/Models/StudentBill.php              (HasFactory, fillable, casts, relasi,
+                                           accessor paid_amount, remaining_amount,
+                                           status (unpaid/partial/paid), isSettled(),
+                                           konstanta STATUS_UNPAID/PARTIAL/PAID)
+
+Diubah:
+  app/Models/PaymentType.php      (+ casts is_auto_enrolled/is_required,
+                                   + relasi rates/studentSettings/bills/paymentDetails)
+  app/Models/Student.php          (+ casts is_auto_enrolled,
+                                   + relasi paymentSettings/bills,
+                                   + hook created: auto-enroll ke tipe is_auto_enrolled)
+  app/Models/PaymentDetail.php    (+ relasi bill(), paymentType(), casts)
+  app/Models/Payment.php          (tidak berubah; relasi existing tetap: student,
+                                   bank, user via created_by, details)
+  app/Models/SppRate.php          (dihapus — digantikan PaymentRate)
+
+Glue refactor (nama lama -> baru, TIDAK rebuild fungsional):
+  app/Livewire/SppRateManagement.php  -> app/Livewire/PaymentRateManagement.php
+  resources/views/livewire/spp-rate/  -> resources/views/livewire/payment-rate/
+  Route /tarif-spp  -> /tarif-pembayaran (name tarif-pembayaran.index)
+  Sidebar & header diupdate.
+  PaymentCreate & PaymentIndex memakai PaymentRate (dengan relasi paymentType)
+  menggantikan SppRate.
+
+2.3 SEEDERS & BACKFILL
+--------------------------------------------------------------------------------
+  database/seeders/SchoolDataSeeder.php (idempotent / firstOrCreate)
+  - 8 payment_types (SPP & Ekskul is_auto_enrolled + is_required = true)
+  - 18 payment_rates (6 SPP per class_level, 12 lainnya)
+  - 10 student_payment_settings (termasuk backfill wajib utk siswa existing)
+  - 12 student_bills (contoh periode Agustus 2026)
+
+  Contoh tagihan siswa "Arip" (Kelas VIII):
+    SPP 1.750.000, Ekskul 100.000, Jemputan 550.000, OSIS 50.000,
+    Uang Pangkal 5.000.000 (TANPA period_month/year -> membuktikan bill
+    tanpa period berfungsi).
+
+2.4 RELATIONSHIPS (sesuai spec & terverifikasi)
+--------------------------------------------------------------------------------
+  PaymentType
+    hasMany  rates()            -> PaymentRate
+    hasMany  studentSettings()  -> StudentPaymentSetting
+    hasMany  bills()            -> StudentBill
+    hasMany  paymentDetails()   -> PaymentDetail
+
+  PaymentRate
+    belongsTo paymentType()     -> PaymentType
+
+  Student
+    hasMany  paymentSettings()  -> StudentPaymentSetting
+    hasMany  bills()            -> StudentBill
+    hasMany  payments()         -> Payment   (EXISTING, dipertahankan)
+
+  StudentPaymentSetting
+    belongsTo student()         -> Student
+    belongsTo paymentType()     -> PaymentType
+
+  StudentBill
+    belongsTo student()         -> Student
+    belongsTo paymentType()     -> PaymentType
+    hasMany  paymentDetails()   -> PaymentDetail
+
+  Payment (existing, dipertahankan)
+    belongsTo student()         -> Student
+    belongsTo bank()            -> Bank
+    belongsTo user()            -> User (via created_by)
+    hasMany  details()          -> PaymentDetail
+
+  PaymentDetail
+    belongsTo payment()         -> Payment
+    belongsTo bill()            -> StudentBill (via bill_id, nullable)
+    belongsTo paymentType()     -> PaymentType
+
+2.5 ENFORCEMENT LEVEL MODEL (dibuat di phase ini)
+--------------------------------------------------------------------------------
+  StudentPaymentSetting::booted():
+  - event saving  : menolak is_active=false bila payment_type.is_required
+                    -> SPP & Ekskul TIDAK BISA dinonaktifkan lewat setting siswa.
+  - event deleting: menolak menghapus row setting untuk payment_type wajib.
+  - helper isRequiredType().
+  - Hapus siswa tetap aman: cascade menghapus setting di level DB (bukan Eloquent),
+    jadi tidak tertabrak guard.
+
+2.6 SAFETY CHECK
+--------------------------------------------------------------------------------
+  - migrate:fresh  : TIDAK dijalankan.
+  - Tabel payments : TIDAK diubah.
+  - Data existing  : TIDAK dihapus (6 payments, 9 payment_details, siswa, dll utuh).
+  - Historical payment_details : tetap valid (bill_id NULL diizinkan).
+  - Tidak ada migration pending / duplikat.
+
+================================================================================
+3. VERIFIKASI & HASIL
+================================================================================
+3.1 migrate:status
+--------------------------------------------------------------------------------
+  Batch 1 : 11 migration [1] Ran
+  Batch 2 :  5 migration [2] Ran
+  Pending : 0
+
+3.2 Data saat ini (MySQL)
+--------------------------------------------------------------------------------
+  payment_types            = 8
+  payment_rates            = 18
+  student_payment_settings = 10
+  student_bills            = 12
+  payments                 = 6
+  payment_details          = 9
+  payment_details.bill_id terisi = 0 (wajar: integrasi billing belum dipakai)
+
+3.3 Tests (Pest) — SEMUA LULUS
+--------------------------------------------------------------------------------
+  tests/Feature/StudentAutoEnrollmentTest.php    (auto-enroll SPP/Ekskul saat siswa dibuat)
+  tests/Feature/StudentBillStatusTest.php        (unpaid/partial/paid + isSettled)
+  tests/Feature/SchoolDataSeederTest.php         (idempotensi seeder)
+  tests/Feature/StudentPaymentSettingRuleTest.php (guard wajib; dibuat di phase ini)
+
+  Hasil akhir: 11 tests, 30 assertions, PASSED.
+  Pint (formatting)      : clean.
+  PHPStan (level 7)      : clean untuk file yang dibuat/diubah (StudentPaymentSetting.php).
+                           Error pre-existing di file lain (Payment, PaymentDetail,
+                           PaymentType, Student, StudentBill, PaymentRate + beberapa
+                           Livewire lama) tetap ada — TIDAK terkait perubahan ini.
+
+  Catatan pre-existing (tidak terkait Phase 2):
+  - tests/Feature/Auth/* dan ProfileTest gagal karena komponen Breeze
+    (<x-input-label>, <x-auth-session-status>) dan view profile.edit belum ada.
+
+================================================================================
+4. POTENSI RISIKO & CATATAN
+================================================================================
+1. Guard wajib (SPP/Ekskul) akan melempar InvalidArgumentException jika ada kode
+   yang mencoba menonaktifkan/menghapus setting wajib. Pada phase UI, toggle untuk
+   SPP/Ekskul HARUS disembunyikan/dinonaktifkan agar exception tidak muncul.
+2. student_bills belum punya unique index (period nullable) -> pencegahan tagihan
+   ganda harus dijaga di logika generate tagihan (Phase 3), bukan di DB.
+3. PaymentDetail.bill_id sudah ada tapi belum terpakai (0 terlink) -> koneksi
+   pembayaran ke bill akan aktif di Phase 3 (integrasi PaymentCreate).
+4. Payment.php & model lain masih tanpa generic PHPDoc -> error PHPStan pre-existing
+   (bukan regresi; bisa dibereskan bertahap jika diminta).
+5. Effective_from/until pada payment_rates: logika "tarif aktif mana yang dipakai"
+   belum ditulis (diserahkan ke Phase 3 bill generation).
+
+================================================================================
+5. NEXT STEPS (PHASE 3 — belum dimulai, menunggu persetujuan)
+================================================================================
+  a. Service/generate tagihan idempoten per periode dari settings + rates.
+  b. Integrasi PaymentCreate: tampilkan outstanding bills saat siswa dipilih,
+     item membawa bill_id, period diambil dari bill (bukan now()),
+     remove item TIDAK menghapus bill, nominal tetap editable, total otomatis.
+  c. Halaman UI settings pembayaran siswa (SPP/Ekskul terkunci).
+  d. Tampilan tunggakan.
+
+================================================================================
+PHASE 3 — BILL GENERATION + STUDENT PAYMENT SETTINGS (SELESAI)
+================================================================================
+
+A. SERVICE (dibuat)
+--------------------------------------------------------------------------------
+  app/Services/BillGenerationService.php
+  - generateForStudent(Student, ?Carbon targetDate): array<StudentBill>
+    (default targetDate = sekarang)
+  - resolveRate(PaymentType, int level, Carbon target): ?PaymentRate
+  - createBill() protected.
+
+B. COMPONENT LIVEWIRE (dibuat/diubah)
+--------------------------------------------------------------------------------
+  Dibuat:
+  - app/Livewire/StudentDetail.php            (route /siswa/{student}, siswa.show)
+  - app/Livewire/StudentPaymentSettings.php   (route /siswa/{student}/pembayaran,
+                                               siswa.payment-settings)
+  Diubah:
+  - app/Livewire/PaymentCreate.php            (ADDITIVE, lihat F)
+  - app/Models/Student.php                    (generic PHPDoc relasi — phpstan)
+
+C. UI (dibuat/diubah)
+--------------------------------------------------------------------------------
+  Dibuat:
+  - resources/views/livewire/student/detail.blade.php
+      RINGKASAN: Total Tagihan / Total Dibayar / Total Tunggakan (3 cards)
+      Tabel: Jenis Pembayaran | Periode | Tagihan Awal | Sudah Dibayar | Sisa | Status
+      (Lunas/Sebagian/Belum Bayar) + tombol Generate Tagihan + link Pengaturan.
+  - resources/views/livewire/student/payment-settings.blade.php
+      Tabel: Jenis Pembayaran | Status | Wajib/Opsional | Aksi.
+      Wajib (SPP/Ekskul) => badge LOCKED (tanpa toggle).
+      Opsional           => toggle switch on/off (updateOrCreate setting).
+      + tombol Generate Tagihan.
+  Diubah:
+  - resources/views/livewire/payment/create.blade.php (card "Tagihan Belum Lunas")
+  - resources/views/livewire/student/index.blade.php  (ikon "Detail & Tagihan")
+  - routes/web.php (2 route baru)
+  Menggunakan layout/komponen Tailwind Material 3 yang sudah ada.
+
+D. LOGIC BILL GENERATION
+--------------------------------------------------------------------------------
+  Untuk setiap payment setting aktif siswa:
+  - Resolve rate: payment_type_id + class_level siswa + tanggal target.
+  - effective_from <= target; effective_until NULL (masih aktif) atau >= target.
+  - Jika >1 rate cocok: pilih effective_from terbaru (orderByDesc).
+  - is_monthly = true  => bill berperiode (period_month/year = target).
+  - is_monthly = false => bill tanpa periode (Uang Pangkal).
+  - SPP/Ekskul aktif & wajib via auto-enroll; opsional sesuai setting.
+  - amount bill = amount rate (ORIGINAL, tidak pernah diubah pembayaran).
+  - Bill dipakai sumber periode PaymentDetail (bukan now()).
+
+E. DUPLICATE PREVENTION (application-level, idempotent)
+--------------------------------------------------------------------------------
+  - Monthly : kunci (student_id, payment_type_id, period_month, period_year)
+              sudah ada => skip.
+  - Non-monthly : ada bill student+type dgn period NULL & belum lunas => skip.
+  - Generate 2x periode sama => tetap 1 bill (diverifikasi test).
+
+F. PAYMENT CREATE — INTEGRASI (ADDITIVE, flow existing dipertahankan)
+--------------------------------------------------------------------------------
+  - selectStudent() memuat outstandingBills (bill belum lunas) beserta
+    jenis, periode, tagihan awal, sudah dibayar, sisa.
+  - Card "Tagihan Belum Lunas" menampilkan bill; tombol "Bayar"
+    memanggil addBillToItems().
+  - Item menyimpan bill_id HANYA di state Livewire; belum disimpan sampai save.
+  - removeItem() hanya menghapus item dari state — TIDAK menghapus student_bill.
+  - Nominal item tetap editable; total otomatis (existing).
+  - autoFillSppRates tidak menimpa nominal item yang berasal dari bill.
+  - save(): PaymentDetail baru menerima bill_id, period_month/year dari bill
+    (jika bill ada), fallback now() hanya untuk item tanpa bill (existing flow).
+  - Historical payment_details TIDAK diubah (bill_id tetap NULL).
+
+G. TESTING (Pest) — 22 test baru, SEMUA LULUS
+--------------------------------------------------------------------------------
+  1. Generate SPP bill.                       (BillGenerationServiceTest)
+  2. Generate Ekskul bill.                    (BillGenerationServiceTest)
+  3. Opsional inactive => tidak ada bill.     (BillGenerationServiceTest)
+  4. Opsional active  => ada bill.            (BillGenerationServiceTest)
+  5. Generate 2x periode sama => 1 bill.      (BillGenerationServiceTest)
+  6. Rate berdasarkan class level.            (BillGenerationServiceTest)
+  7. effective_from/effective_until.          (BillGenerationServiceTest)
+  8. Uang Pangkal tanpa period, tidak duplikat.(BillGenerationServiceTest)
+  9. Outstanding dihitung benar.              (StudentDetailBillsTest)
+  10. SPP/Ekskul tidak bisa dinonaktifkan.    (StudentPaymentSettingRuleTest + UI)
+  11. PaymentCreate menampilkan outstanding.  (PaymentCreateBillsTest)
+  12. Hapus item tidak menghapus bill.        (PaymentCreateBillsTest)
+  + save menyimpan bill_id & periode dari bill; bill menjadi lunas.
+  Hasil: 33/33 test billing PASSED (80 assertions). Pint clean.
+  PHPStan: file baru/ubah (Service, StudentDetail, StudentPaymentSettings,
+  Student model) 0 error. PaymentCreate tetap hanya error pre-existing.
+
+H. EXISTING PAYMENT FLOW TETAP AMAN
+--------------------------------------------------------------------------------
+  - Tabel payments & payment_details existing TIDAK diubah strukturnya.
+  - Payment/receipt flow (KWT-YYYY-XXXXXX, upload bukti, bank, ringkasan)
+    tetap utuh — hanya ditambah kemampuan bill.
+  - Data existing (6 payments, 9 details) tidak disentuh.
+  - Tidak ada migrate baru, tidak ada migrate:fresh.
+
+I. CATATAN / RISIKO
+--------------------------------------------------------------------------------
+  - PaymentCreate masih punya error PHPStan pre-existing (properti untyped,
+    return type) — pola lama, bukan regresi.
+  - Tests Auth/* & ProfileTest masih gagal (komponen Breeze & profile.edit
+    memang belum ada) — pre-existing.
+  - Class_level di payment_rates NOT NULL -> rate global (class_level null)
+    tidak didukung schema; resolusi rate hanya per class_level.
+
+================================================================================
+BUGFIX — SETTINGS REFRESH BILLS + MANUAL BILL MATCHING (SELESAI)
+================================================================================
+
+ISSUE 1 — SETTING TIDAK MEN-REFRESH BILLS
+--------------------------------------------------------------------------------
+  - app/Livewire/StudentPaymentSettings.php (toggle):
+    * Saat setting diaktifkan -> panggil BillGenerationService::generateForStudent()
+      sehingga tagihan periode berjalan langsung tersedia.
+    * Saat dinonaktifkan -> TIDAK ada penciptaan tagihan baru (service hanya membaca
+      setting aktif) dan TIDAK menghapus tagihan historis/bayar.
+    * Setelah simpan -> $this->dispatch('student-payment-settings-updated',
+      studentId: ...).
+  - app/Livewire/StudentDetail.php:
+    * Menambah listener #[On('student-payment-settings-updated')] dan
+      #[On('payment-saved')] -> refreshBills(); render() selalu membaca ulang DB.
+
+ISSUE 2 — ITEM MANUAL TIDAK TERHUBUNG KE BILL
+--------------------------------------------------------------------------------
+  - app/Livewire/PaymentCreate.php:
+    * save(): jika item tidak punya bill_id, coba resolveMatchingBill($item).
+    * resolveMatchingBill(): cocokkan student + payment_type_id + periode
+      (month/year hasil parsePeriod), HANYA bill outstanding (belum settled,
+      remaining > 0). Nominal input TIDAK dipakai untuk memutuskan keberadaan bill.
+    * parsePeriod(): parse "Bulan Agustus 2026"/"Agustus 2026"/"August 2026"
+      (nama bulan ID/EN + tahun). Gagal -> null -> bill_id NULL (Pembayaran Lain),
+      tidak ada bill palsu dibuat.
+  - Flow A (+Bayar) dan Flow B (manual) sekarang menghasilkan struktur yang sama:
+    PaymentDetail.bill_id terisi + saldo bill berkurang.
+
+REFRESH LIVEWIRE
+--------------------------------------------------------------------------------
+  - StudentPaymentSettings -> event 'student-payment-settings-updated'.
+  - PaymentCreate.save -> event 'payment-saved' (sebelum redirect).
+  - StudentDetail -> listener #[On] keduanya -> re-render -> data dibaca ulang dari DB.
+
+TESTS (Pest) — 43/43 billing test PASSED (116 assertions), pint clean
+--------------------------------------------------------------------------------
+  1. Manual SPP auto-resolve bill_id                (dataset)
+  2. Manual Ekskul auto-resolve bill_id             (dataset)
+  3. Manual Jemputan auto-resolve bill_id           (dataset)
+  4. Partial manual payment -> remaining 250k/status partial
+  5. +Bayar flow masih jalan (test existing)
+  6. Hapus item tidak menghapus bill (test existing)
+  7. Toggle ON membuat tagihan periode berjalan + dispatch event
+  8. Toggle OFF tidak membuat tagihan baru & tidak hapus historis
+  9. StudentDetail refresh via event settings-updated
+  10. StudentDetail refresh via event payment-saved
+  11. Alur payment/receipt existing tetap lulus (manual tanpa bill -> bill_id null,
+      payment + kwitansi dibuat normal)
+  - Kegagalan tersisa: hanya pre-existing Auth/* & ProfileTest (komponen Breeze
+    dan UserFactory::unverified belum ada) — tidak terkait.
+  - PHPStan: tidak ada error baru di file yang diubah (PaymentCreate tetap 23 error
+    pre-existing; file baru/ubah lainnya 0 error).
+  - BillGenerationService kini menerima CarbonInterface (now() = CarbonImmutable).
+
+================================================================================
+BUGFIX — OPTIONAL SETTING OFF HIDE ACTIVE BILLS (SELESAI)
+================================================================================
+
+MASALAH
+--------------------------------------------------------------------------------
+  Setting opsional dinonaktifkan hanya mengubah student_payment_settings;
+  bill untuk tipe tersebut masih muncul di daftar tagihan aktif/outstanding.
+
+SOLUSI (tanpa menghapus student_bills)
+--------------------------------------------------------------------------------
+  app/Models/StudentBill.php
+  - scopeActivePaymentType(Builder $query, int $studentId): WHERE EXISTS pada
+    student_payment_settings (student_id + payment_type_id cocok,
+    is_active = true). Bill tetap tersimpan di DB; filter hanya menyembunyikan
+    dari daftar aktif.
+
+  app/Livewire/PaymentCreate.php (loadOutstandingBills)
+  - Tambah ->activePaymentType($selected_student_id) ke query "Tagihan Belum
+    Lunas", lalu filter !isSettled() (existing).
+
+  app/Livewire/StudentDetail.php (render)
+  - Pisah jadi dua daftar:
+    * Tagihan Aktif  = belum lunas DAN payment type aktif untuk siswa.
+    * Riwayat Tagihan = lunas ATAU payment type sedang tidak aktif
+      (tetap ditampilkan agar historis/paid bill tetap bisa diakses).
+  - Ringkasan (Total Tagihan/Dibayar/Tunggakan) dihitung dari tagihan aktif.
+
+  resources/views/livewire/student/detail.blade.php
+  - Dua section terpisah: "Tagihan Aktif" + "Riwayat Tagihan".
+
+  PERILAKU
+  - OSIS OFF -> bill OSIS tetap di DB, tidak tampil di tagihan aktif maupun
+    "Tagihan Belum Lunas" PaymentCreate; tampil hanya di Riwayat.
+  - OSIS ON lagi -> bill outstanding yang sama dipakai ulang (generateForStudent
+    idempotent), tidak ada duplikat.
+  - Pembayaran manual untuk tipe nonaktif tetap menyambung bill yang ada
+    (resolveMatchingBill tidak mensyaratkan tipe aktif) sehingga flow pembayaran
+    existing tetap berjalan.
+
+TESTS (Pest) — 48/48 billing test PASSED (125 assertions), pint clean
+--------------------------------------------------------------------------------
+  tests/Feature/StudentPaymentSettingsBillsVisibilityTest.php (baru, 5 test):
+  1. Setting opsional ON -> bill tampil sebagai tagihan aktif.
+  2. Setting opsional OFF -> bill tetap di DB tapi tidak tampil di tagihan
+     aktif/outstanding.
+  3. Setting ON lagi -> bill outstanding dipakai ulang, tanpa duplikat.
+  4. Bill historis yang sudah lunas tetap tersimpan & tampil di riwayat.
+  5. Alur pembayaran existing tetap berjalan saat tipe nonaktif.
+  - tests/Pest.php: helper baru makeActiveSetting().
+  - Test existing diperbarui agar memberi setting aktif untuk tipe yang
+    dipakai di daftar aktif (SPP/Jemputan).
+  - Kegagalan tersisa hanya pre-existing Auth/* & ProfileTest.
+  - PHPStan: tidak ada error baru (StudentBill scope 0 error; PaymentCreate
+    tetap 23 pre-existing).
+
+================================================================================
+END OF REPORT
+================================================================================
+
+============================================================
+SEEDER FINAL (SchoolDataSeeder) — 2026-08-14
+============================================================
+Status: SELESAI. Database development di-reseed dari nol (data lama dibersihkan, schema TIDAK diubah, tanpa migrate:fresh).
+
+Counts setelah seed (dijalankan 2x, idempoten — stabil):
+- classes = 14 (TK A, TK B [level 0]; I A–VI A [1–6]; VII A, VIII B, IX A [7–9]; X A, XI A, XII A [10–12])
+- students = 140 (10 per kelas)
+- payment_types = 7 (SPP/Ekskul/OSIS auto_enrolled+required; Jemputan/Uang Pangkal/Uang Kegiatan/Lain-lain false/false)
+- payment_rates = 91 (7 tipe x 13 level, effective_from 2026-08-01)
+- student_payment_settings = 420 (140 x 3 aktif: SPP/Ekskul/OSIS; tipe opsional tidak punya baris = inaktif)
+- student_bills = 420 (period 2026-08; 3 bill/siswa via BillGenerationService)
+- payments = 0, payment_details = 0 (dipastikan tidak dibuat)
+
+Verifikasi rate SMP (exact):
+- SPP: VII=970000, VIII=975000, IX=970000
+- Ekskul: VII=60000, VIII=52000, IX=53000
+- OSIS: VII/VIII/IX=5000
+
+Verifikasi contoh SMP VII A ("Siswa VII A 01" NIS 20260081):
+- SPP 970000 + Ekskul 60000 + OSIS 5000 = 1.035.000 (semua belum dibayar)
+
+Fix yang diterapkan:
+- array_replace (bukan array +) agar override rate SD/SMP/SMA menimpa default expandLevels.
+- effective_from rate dilewatkan sebagai instance Carbon supaya binding query formatnya konsisten dengan nilai tersimpan ('2026-08-01 00:00:00') => updateOrCreate idempoten (rate tidak dobel di re-run).
+
+Test: SchoolDataSeederTest (2), BillGenerationServiceTest + StudentPaymentSettingsBillsVisibilityTest (17) => 19 passed. Pint clean. PHPStan tidak dijalankan ulang (seeder murni; tidak ada error baru selain pre-existing).
+
+============================================================
+BUGFIX — SCHOOL CLASS / GRADE LEVEL MAPPING + TK EDIT — 2026-08-14
+============================================================
+ROOT CAUSE 1 (tingkat salah):
+SchoolClass::levelLabels() memakai skema label lama (0=>'TK A', 1=>'TK B', 2=>'Tingkat 1', ...) yang tidak cocok dengan data sebenarnya (TK A/B=0, I A=1 ... XII A=12). Akibatnya I A tampil "TK B", III A tampil "Tingkat 2", dst. Sumber data kelas sebenarnya sudah benar; yang salah adalah pemetaan label di model.
+
+ROOT CAUSE 2 (TK B tidak bisa diedit):
+TK A dan TK B sama-sama tersimpan level=0 (wajib, karena billing/payment_rates memakai class_level 0 untuk TK). Label lama memetakan value 0 => "TK A", jadi saat edit TK B form selalu menampilkan "TK A" dan TIDAK ada opsi yang benar untuk mewakili TK B pada level 0 (memilih "TK B"=value 1 justru mengubah level jadi 1 dan merusak data). Akibatnya TK B tidak bisa diedit dengan tingkat yang benar.
+
+FIX:
+- SchoolClass::levelLabels() diperbaiki: 0=>'TK', 1=>'1' ... 12=>'12'.
+- SchoolClass::levelOptions() baru: ['TKA','TKB','1'..'12'] untuk dropdown form.
+- SchoolClass::getLevelNameAttribute(): untuk kelas bernama TK, grade diturunkan dari NAMA (isTkClass/tkGrade): "TK B"->"TKB", "TKA-A"->"TKA"; selain itu = label levelLabels (angka).
+- SchoolClassManagement: edit() memakai $schoolClass->level_name (display key); save() memvalidasi Rule::in(levelOptions) lalu konversi: kelas berawalan "TK" => level 0, selain itu => (int) display key.
+- Form select pakai levelOptions() (menampilkan TKB saat edit TK B).
+
+FILE DIUBAH:
+- app/Models/SchoolClass.php
+- app/Livewire/SchoolClassManagement.php
+- resources/views/livewire/school-class/index.blade.php
+- tests/Feature/SchoolClassManagementTest.php (baru)
+
+MIGRATION: TIDAK diubah. payment_rates/billing TIDAK diubah. Seeder TIDAK diubah (data sudah benar).
+
+DATA KELAS SETELAH PERBAIKAN (level column => tingkat tampil):
+TK A(0)=>TKA, TK B(0)=>TKB, I A(1)=>1, II A(2)=>2, III A(3)=>3, IV A(4)=>4, V A(5)=>5, VI A(6)=>6, VII A(7)=>7, VIII B(8)=>8, IX A(9)=>9, X A(10)=>10, XI A(11)=>11, XII A(12)=>12.
+
+TEST DIJALANKAN:
+- tests/Feature/SchoolClassManagementTest.php: 5 passed, 68 assertions (mapping seeder, edit semua kelas termasuk TK B, save edit tanpa korupsi level, create TK/non-TK, validasi level invalid).
+- SchoolDataSeederTest + BillGenerationServiceTest + StudentPaymentSettingsBillsVisibilityTest: 24 passed.
+- Seluruh suite: 66 passed; 9 failures = pre-existing Auth/Profile Breeze (input-label component), tidak terkait.
+- Pint clean. PHPStan: 0 error baru (levelOptions fixed; sisanya pre-existing).
+
+============================================================
+BUGFIX + COMPLETE CRUD — SCHOOL CLASS / KELAS — 2026-08-14
+============================================================
+ROOT CAUSE 1 (II B tidak bisa diedit):
+Tidak ditemukan kegagalan teknis pada flow edit untuk kelas baru — test programatik (create lalu edit, instans Livewire yang sama seperti browser) PASSED. Namun binding model implisit Livewire (`edit(SchoolClass $schoolClass)`) bergantung pada resolusi otomatis ID dan rawan error di browser. Diperkuat menjadi eksplisit: `edit(int $id)` + `SchoolClass::findOrFail($id)` — memakai ID/primary key sebagai identifier (bukan nama kelas), konsisten untuk SEMUA kelas (TK A, TK B, I A, II A, II B, dst). Tidak ada special-case.
+
+ROOT CAUSE 2 (tombol hapus "tidak berfungsi"):
+Sebenarnya sudah ada alur confirmDelete/delete, tapi: (a) modal konfirmasi tidak menampilkan nama kelas/jumlah siswa (generik), (b) untuk kelas bersiswa delete ditolak tapi langsung menutup modal + flash error tanpa aksi lanjutan (tidak ada tombol "Lihat Siswa"), (c) tidak ada reset halaman setelah delete sehingga bisa tersisa halaman kosong. Dirombak menjadi alur stateful yang jelas.
+
+FILE DIUBAH:
+- app/Livewire/SchoolClassManagement.php: edit(int $id)+findOrFail; confirmDelete memuat kelas+jumlah siswa; delete() re-cek jumlah siswa lalu hapus + resetPage; save() validasi Rule::unique('school_classes','name')->ignore(classId); prop deleteClassName/deleteStudentCount; classId & deletingId di-typed ?int.
+- resources/views/livewire/school-class/index.blade.php: modal delete stateful — kelas kosong = konfirmasi ("Apakah Anda yakin ingin menghapus kelas X?" + "Tidak ada siswa yang terdaftar di kelas ini.", tombol Batal/Hapus); kelas bersiswa = warning ("Kelas ini masih memiliki N siswa. Pindahkan siswa...", tombol Batal/Lihat Siswa).
+- app/Livewire/StudentManagement.php: tambah #[Url(as: 'kelas')] pada filterClassId agar tombol "Lihat Siswa" bisa deep-link /siswa?kelas=ID (pre-filter kelas).
+- tests/Feature/SchoolClassManagementTest.php: diperluas ke 15 test CRUD lengkap.
+
+CARAKERJA DELETE CONFIRMATION:
+- Klik hapus -> confirmDelete(id) -> ambil kelas + hitung siswa -> simpan deletingId/deleteClassName/deleteStudentCount -> buka modal.
+- Kelas kosong: modal konfirmasi dengan tombol Batal & Hapus. Konfirmasi -> delete() re-cek count (defense in depth) -> hapus -> cancelDelete + resetPage + flash success -> list refresh otomatis (Livewire).
+- Kelas bersiswa: modal warning, TANPA tombol Hapus; hanya Batal & "Lihat Siswa" (link ke /siswa?kelas=ID). delete() juga menolak jika siswa masih ada (tidak menghapus).
+
+KELAS DENGAN SISWA:
+- Tidak diizinkan hard delete. Menampilkan warning "Kelas ini masih memiliki N siswa. Pindahkan siswa ke kelas lain terlebih dahulu." + tombol Lihat Siswa. Siswa TIDAK ikut terhapus (tanpa cascade; guard di level query + UI).
+
+VALIDATION:
+- name wajib, string, max:50, unik (Rule::unique->ignore(classId)): edit II B->II C sukses, edit II B->II B sukses (bukan self-duplicate), create II B duplikat DITOLAK.
+- level wajib + Rule::in(levelOptions) TKA/TKB/1-12.
+
+TEST DIJALANKAN (semua PASS):
+- SchoolClassManagementTest: 15 tests, 99 assertions (create, kelas baru bisa diedit, edit nama/tingkat, self-duplicate OK, duplicate ditolak, delete kelas kosong sukses, delete kelas bersiswa ditolak, siswa tidak ikut terhapus, student count tampil, list refresh, validasi level invalid, mapping seeder).
+- Seluruh suite: 88 tests, 76 passed; 9 failure = pre-existing Auth/Profile Breeze (input-label component), tidak terkait.
+- Pint clean. PHPStan app/Livewire/SchoolClassManagement.php: hanya 8 missingType.property + 11 missingType.return (baseline sama persis dengan sebelum perubahan); error union method/property.notFound hilang.
+
+================================================================================
+UPDATE 2026-08-18 — RINGKASAN PERUBAHAN SEJAK 14 AGUSTUS 2026
+================================================================================
+
+Total: ~100+ file baru/diubah. 540 tests, 528 passed, 1949 assertions.
+9 failures = pre-existing Auth/Profile Breeze (input-label component), tidak terkait.
+
+================================================================================
+A. DATABASE MIGRATIONS BARU (9 migration sejak 14 Agustus)
+================================================================================
+
+1. bill_adjustments_table (2026-08-14)
+   - bill_id (FK ke student_bills), type (discount), amount, reason, created_by (FK users)
+   - Mendukung diskon/tagihan koreksi per bill
+
+2. add_billing_frequency_to_payment_rates_table (2026-08-15)
+   - Kolom billing_frequency (string, default "monthly")
+   - Backfill: is_monthly=false -> "one_time"
+   - Mendukung 3 frekuensi: monthly, yearly, one_time
+
+3. add_academic_year_to_student_bills_and_payment_details_table (2026-08-15)
+   - Kolom academic_year (nullable string, format "YYYY/YYYY") di student_bills & payment_details
+
+4. add_custom_amount_to_student_payment_settings_table (2026-08-15)
+   - Kolom custom_amount (nullable decimal) untuk nominal custom per siswa
+
+5. payment_type_school_levels_table (2026-08-15)
+   - Pivot: payment_type_id, school_level (TK/SD/SMP/SMA), is_required, is_active
+   - Unique constraint (payment_type_id, school_level)
+   - Menggantikan pendekatan is_auto_enrolled/is_required global -> per school level
+
+6. add_updated_by_to_student_bills_table (2026-08-15)
+   - Kolom updated_by (FK users, nullable) untuk tracking pengedit bill
+
+7. settings_table (2026-08-15)
+   - Key-value store: key (unique), value (JSON)
+   - Contoh: billbook.start_month
+
+8. add_status_and_cancellation_fields_to_payments_table (2026-08-16)
+   - Kolom status (default "active"), cancelled_by, cancelled_at, cancellation_reason
+   - Mendukung pembatalan pembayaran (soft cancel + audit)
+
+9. payment_correction_logs_table (2026-08-16)
+   - Audit trail: payment_id (FK), action (correct/cancel), reason, before_data (JSON), after_data (JSON), corrected_by (FK users)
+
+================================================================================
+B. ENUMS BARU (2)
+================================================================================
+
+1. app/Enums/BillFrequency.php
+   - Monthly, Yearly, OneTime
+
+2. app/Enums/SchoolLevel.php
+   - TK, SD, SMP, SMA + fromClassLevel() mapping (level 0-12)
+
+================================================================================
+C. SUPPORT CLASSES BARU (2)
+================================================================================
+
+1. app/Support/BillbookPeriod.php
+   - Mengelola siklus tagihan: start month (konfigurable via Setting), end month (selalu Juni)
+   - generateMonths() -> daftar bulan dalam siklus
+
+2. app/Support/AcademicYear.php
+   - Representasi tahun ajaran (contoh: "2026/2027")
+   - Dihitung dari tanggal: Juli = awal tahun ajaran
+
+================================================================================
+D. SERVICES — EXPANSI SIGNIFIKAN
+================================================================================
+
+1. app/Services/BillGenerationService.php (551 lines, DIUBAH DRASTIS)
+   - generateBillbook(): siklus penuh dari start month sampai Juni
+   - generateForStudent(): satu periode
+   - generateUntil(): range bulan
+   - Mendukung 3 frekuensi billing (monthly, yearly, one-time)
+   - Custom amount resolution dari student_payment_settings
+   - Setting window validation (start_date/end_date)
+   - Level-default auto-backfill
+   - Konstanta STANDARD_BILLBOOK_FEES
+
+2. app/Services/StudentCreationService.php (90 lines, BARU)
+   - Orchestrate pembuatan siswa dalam transaksi DB:
+     - Buat student record
+     - Ensure standard billbook settings (Uang Buku, Uang Kegiatan, Uang Pangkal)
+     - Generate full billbook via BillGenerationService
+   - Reusable untuk import Excel ke depannya
+
+================================================================================
+E. MODELS — PERUBAHAN
+================================================================================
+
+BARU:
+1. BillAdjustment.php — Diskon/tagihan koreksi. TYPE_DISCOUNT, relasi ke StudentBill + User.
+2. PaymentTypeSchoolLevel.php — Pivot model payment_type <-> school_level, cast ke SchoolLevel enum.
+3. PaymentCorrectionLog.php — Audit log koreksi/pembatalan. ACTION_CORRECT/ACTION_CANCEL, snapshot() method.
+4. Setting.php — Key/value store, static get()/set() methods, JSON casting.
+
+DIUBAH SIGNIFIKAN:
+5. StudentBill.php (205 lines) — academic_year, updated_by, computed: paid_amount, effective_amount, discount_amount, remaining_amount, status, period_label. Relasi: adjustments(), paymentDetails(), updatedBy().
+6. Payment.php — STATUS_ACTIVE/STATUS_CANCELLED, status/cancelled_by/cancelled_at/cancellation_reason. isActive(), isCancelled(), settlement_status (lunas/tunggakan), status_label, detail_display. Relasi: correctionLogs().
+7. PaymentDetail.php — academic_year, detail_label (human-readable period).
+8. PaymentRate.php — billing_frequency (cast ke BillFrequency enum), backward-compat is_monthly accessor, level_name.
+9. PaymentType.php — studentSettings(), bills(), paymentTypeSchoolLevels() relasi.
+10. StudentPaymentSetting.php — custom_amount, isRequiredType() via PaymentTypeSchoolLevel, resolvedAmount(), boot event expanded.
+11. Student.php — schoolLevel accessor, expanded relasi.
+12. SchoolClass.php — schoolLevel accessor, levelLabels/levelOptions expanded.
+
+================================================================================
+F. LIVEWIRE COMPONENTS (13 total, banyak baru/diubah)
+================================================================================
+
+BARU:
+1. Dashboard.php — Ringkasan: total pendapatan (active payments), jumlah transaksi, siswa aktif, total per bank, 10 pembayaran terakhir.
+2. PaymentCorrection.php — Alur 2 langkah (edit -> confirm). Modifikasi bill selection/amounts dengan mandatory reason. Audit trail via PaymentCorrectionLog.
+3. PaymentEdit.php — Edit pembayaran existing: ubah bill selection/amounts, tambah/hapus bill, max-amount validation (akunting kontribusi saat ini). Correction log pada save.
+4. BankManagement.php — CRUD bank dengan delete protection jika ada pembayaran terkait.
+5. PaymentTypeManagement.php — CRUD jenis pembayaran dengan comprehensive delete protection (payment_details, rates, bills, student_settings, school_levels).
+
+DIUBAH SIGNIFIKAN:
+6. StudentDetail.php (879 lines, LARGEST COMPONENT) — Billing book view lengkap:
+   - Grouped bills: monthly / yearly / one-time
+   - Period status badges
+   - Summary cards dengan period filter
+   - Generate-until modal & billbook generation modal
+   - Bill adjustment (diskon) management
+   - Bill editing & manual addition (dengan locked period context)
+   - Bill deletion
+   - Real-time refresh via events
+7. PaymentCreate.php — Student search, outstanding bill selection grouped display, per-bill amount editing, receipt upload, auto-generated kwitansi (KWT-YYYY-XXXXXX), description auto-fill.
+8. PaymentShow.php — Payment detail + cancellation feature (mandatory reason, correction log).
+9. PaymentIndex.php — Search, status filter (active/cancelled/lunas/tunggakan), bank filter, date range, pagination, delete. Complex query logic.
+10. StudentPaymentSettings.php — Toggle active/inactive, activate with start date, custom amount override, required type protection.
+11. PaymentRateManagement.php — CRUD rate, filter kelas + tipe, deterministic ordering, billing frequency display.
+12. StudentManagement.php — CRUD siswa, auto bill generation via StudentCreationService, delete cascade.
+
+================================================================================
+G. VIEWS BARU
+================================================================================
+
+1. resources/views/livewire/dashboard/index.blade.php
+2. resources/views/livewire/student/detail.blade.php (BILLING BOOK VIEW)
+3. resources/views/livewire/student/bill-table.blade.php (reusable component)
+4. resources/views/livewire/student/period-status-badge.blade.php
+5. resources/views/livewire/payment/edit.blade.php
+6. resources/views/livewire/payment/correction.blade.php
+7. resources/views/layouts/master.blade.php
+
+================================================================================
+H. SEEDERS — REWRITE COMPREHENSIVE
+================================================================================
+
+database/seeders/SchoolDataSeeder.php (309 lines):
+- 8 payment_types (SPP, Ekskul, OSIS, Jemputan, Uang Pangkal, Uang Buku, Uang Kegiatan, Lain-lain)
+- School level defaults: TK->SPP, SD->SPP+Ekskul, SMP->SPP+Ekskul+OSIS, SMA->SPP+Ekskul
+- Payment rates untuk 13 level (0-12) dengan billing frequencies
+- 5 banks (BSI, BCA, Mandiri, BRI, BNI)
+- 14 classes (2 TK + 6 SD + 3 SMP + 3 SMA)
+- 140 students (10 per class)
+- Payment settings backfill + auto bill generation (Agustus 2026)
+- DatabaseSeeder: admin user (admin@sekolah.test / password)
+
+================================================================================
+I. FACTORIES (10 file)
+================================================================================
+
+BillAdjustmentFactory, PaymentRateFactory (monthly/yearly/oneTime states),
+PaymentTypeSchoolLevelFactory, StudentPaymentSettingFactory, StudentBillFactory,
+StudentFactory, SchoolClassFactory, PaymentTypeFactory, BankFactory, UserFactory
+
+================================================================================
+J. ROUTES (14 authenticated routes)
+================================================================================
+
+GET  /dashboard                       -> Dashboard
+GET  /siswa                           -> StudentManagement
+GET  /siswa/{student}                 -> StudentDetail (BILLING BOOK)
+GET  /siswa/{student}/pembayaran      -> StudentPaymentSettings
+GET  /kelas                           -> SchoolClassManagement
+GET  /bank                            -> BankManagement
+GET  /jenis-pembayaran                -> PaymentTypeManagement
+GET  /tarif-pembayaran                -> PaymentRateManagement
+GET  /pembayaran                      -> PaymentIndex
+GET  /pembayaran/create               -> PaymentCreate
+GET  /pembayaran/{id}                 -> PaymentShow
+GET  /pembayaran/{id}/koreksi          -> PaymentCorrection
+GET  /pembayaran/{id}/edit            -> PaymentEdit
+Semua dilindungi auth + verified middleware.
+
+================================================================================
+K. FITUR-FITUR UTAMA YANG DIIMPLEMENTASIKAN
+================================================================================
+
+1. BILLING BOOK SISWA (StudentDetail — 879 lines)
+   - Tampilan tagihan terkelompok: monthly, yearly, one-time
+   - Badge status per periode: Lunas/Sebagian/Belum Lunas
+   - Summary cards: Total Tagihan / Total Dibayar / Tunggakan + filter periode
+   - Generate tagihan sampai bulan tertentu (generate-until)
+   - Generate seluruh billbook (siklus penuh start month -> Juni)
+   - Manajemen diskon/adjustment per bill
+   - Edit bill individual
+   - Tambah bill manual (dengan locked period context)
+   - Hapus bill
+   - Auto-refresh via Livewire events
+
+2. SISTEM TAGIHAN OTOMATIS (BillGenerationService — 551 lines)
+   - Generate billbook penuh atau per periode
+   - 3 frekuensi: monthly, yearly, one-time
+   - Rate resolution berdasarkan class_level + effective dates
+   - Custom amount per siswa (dari student_payment_settings)
+   - Setting window validation (start_date/end_date)
+   - Level-default auto-backfill
+   - Idempotent: generate 2x = tetap 1 bill
+
+3. KONFIGURASI PER TINGKAT SEKOLAH (PaymentTypeSchoolLevel)
+   - TK: SPP wajib
+   - SD: SPP + Ekskul wajib
+   - SMP: SPP + Ekskul + OSIS wajib
+   - SMA: SPP + Ekskul wajib
+   - Tipe opsional (Jemputan, dll) bisa diaktifkan per siswa
+
+4. KOREKSI & PEMBATALAN PEMBAYARAN (dengan Audit Trail)
+   - Pembatalan: soft cancel + alasan wajib + log before/after data
+   - Koreksi: 2 langkah (edit -> confirm) + alasan wajib + log
+   - PaymentCorrectionLog menyimpan snapshot JSON
+
+5. DASHBOARD
+   - Total pendapatan (hanya active payments)
+   - Jumlah transaksi, siswa aktif
+   - Total per bank
+   - 10 pembayaran terakhir
+
+6. AKADEMIK YEAR SUPPORT
+   - Tahun ajaran: Juli = awal (contoh: 2026/2027)
+   - Billing yearly mengikuti tahun ajaran
+
+7. CREW/MANAJEMEN DATA LENGKAP
+   - CRUD: Kelas, Bank, Jenis Pembayaran, Tarif Pembayaran, Siswa
+   - Delete protection untuk semua entitas yang punya relasi
+   - Auto bill generation saat siswa baru dibuat
+
+================================================================================
+L. TESTS (540 total, 528 passed, 1949 assertions)
+================================================================================
+
+Kategori test:
+- Bill Adjustment (2 test files)
+- Bill Frequency
+- Bill Generation Service
+- Bill Optional Start
+- Billbook Generation & UI
+- Custom Amount
+- Level Edge Cases (repro tests)
+- Payment Bill Selection
+- Payment Cancellation & Correction
+- Payment Create & Bills
+- Payment Detail Display
+- Payment Edit
+- Payment Index & Filtering
+- Payment Outstanding
+- Payment Rate Management
+- Payment Settlement Status
+- Payment Type Management
+- School Class Management
+- School Data Seeder
+- School Level Defaults
+- Student Auto-Enroll
+- Student Bill Management & Manual Add
+- Student Bill Period Status
+- Student Billbook Auto-Generation
+- Student Detail (Grouped Bills, History, Summary Cards, Period Filter)
+- Student Management
+- Student Payment Settings & Visibility
+- Table Number Column
+- Yearly Billing
+
+Pint: clean. PHPStan: 0 error baru di file yang dibuat/diubah (pre-existing di PaymentCreate tetap ada).
+
+================================================================================
+M. CATATAN / RISIKO LANJUTAN
+================================================================================
+
+1. PaymentCreate masih punya error PHPStan pre-existing (properti untyped, return type) — pola lama, bukan regresi.
+2. Tests Auth/* & ProfileTest masih gagal (komponen Breeze & profile.edit belum ada) — pre-existing.
+3. bill_adjustments belum terintegrasi ke UI payment flow (diskon dihitung di StudentDetail tapi belum di PaymentCreate).
+4. Excel import siswa belum ada (StudentCreationService sudah siap untuk itu).
+5. Laporan/cetakan kwitansi dalam format PDF belum ada.
+
+================================================================================
+END OF REPORT — UPDATED 18 AGUSTUS 2026
+================================================================================

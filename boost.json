@@ -1,0 +1,10 @@
+{
+    "agents": [
+        "kiro",
+        "antigravity"
+    ],
+    "guidelines": true,
+    "packages": [
+        "livewire/blaze"
+    ]
+}

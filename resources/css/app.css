@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+[x-cloak] {
+    display: none !important;
+}
+
+/*
+ * Responsive sidebar: a static drawer on desktop (>=lg) that slides in as an
+ * off-canvas drawer below lg. The mobile open/closed state is toggled by
+ * Alpine via the `sidebar-drawer-open` class; the lg media query guarantees
+ * the sidebar always stays visible (and never translated) on desktop.
+ */
+.sidebar-drawer {
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.2s ease-in-out, visibility 0.2s ease-in-out;
+}
+
+.sidebar-drawer.sidebar-drawer-open {
+    transform: translateX(0);
+    visibility: visible;
+}
+
+@media (min-width: 1024px) {
+    .sidebar-drawer {
+        transform: translateX(0) !important;
+        visibility: visible !important;
+    }
+}
+
+.material-symbols-outlined {
+    font-variation-settings: 'FILL' 1;
+}
+
+.chart-bar {
+    transition: height 0.3s ease, background-color 0.2s ease;
+}
+.chart-bar:hover {
+    background-color: #2170e4;
+}
+
+.annur-report-page .font-numeric-data {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.annur-report-page th.text-right {
+    white-space: nowrap;
+}
+
