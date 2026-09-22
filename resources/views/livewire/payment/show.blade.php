@@ -127,6 +127,7 @@
 
         <!-- Rincian Pembayaran Table -->
         <div class="receipt-details p-6">
+            @php($receiptRows = \App\Support\PaymentReceiptDisplay::rows($payment))
             <div class="receipt-details-heading text-label-md font-bold uppercase tracking-wider text-on-surface-variant mb-4">Rincian Pembayaran</div>
             
             <table class="w-full text-left border-collapse">
@@ -138,17 +139,17 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-outline-variant/60">
-                    @forelse($payment->details as $detail)
+                    @forelse($receiptRows as $row)
                         <tr>
                             <td class="py-3.5 px-2 text-center text-body-md text-on-surface-variant font-numeric-data">{{ $loop->iteration }}</td>
                             <td class="py-3.5 px-2 text-body-md text-on-surface font-medium">
-                                {{ $payment->isManualPayment() ? $detail->description : ($detail->paymentType->name ?? 'Item Pembayaran') }}
-                                @if($payment->isBillPayment() && $detail->description)
-                                    <span class="text-on-surface-variant font-normal">({{ $detail->description }})</span>
+                                {{ $row['name'] }}
+                                @if($row['description'])
+                                    <span class="text-on-surface-variant font-normal">({{ $row['description'] }})</span>
                                 @endif
                             </td>
                             <td class="py-3.5 px-2 text-right text-body-md font-bold text-on-surface font-numeric-data">
-                                {{ number_format($detail->amount, 0, ',', '.') }}
+                                {{ number_format($row['amount'], 0, ',', '.') }}
                             </td>
                         </tr>
                     @empty

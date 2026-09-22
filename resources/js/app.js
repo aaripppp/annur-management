@@ -181,3 +181,93 @@ window.addEventListener('livewire:init', () => {
         writeExamFilters(filters);
     });
 });
+
+// Keeps the sticky clone of the Rekap Per Kelas header aligned with the real
+// table: the clone only mirrors the horizontal scroll position and copies the
+// real column widths so both stay pixel-identical while the page scrolls.
+window.classRecapStickyHeader = () => ({
+    measureFrame: null,
+    cleanupHandlers: null,
+    init() {
+        this.syncWidths();
+        this.cleanupHandlers = this.trackLayout();
+    },
+    trackLayout() {
+        const scroller = this.$refs.recapScroller;
+        const stopScrollSync = this.syncHorizontalScroll(scroller);
+        const onResize = () => this.scheduleMeasure();
+        const onPageLoad = () => this.syncWidths();
+        window.addEventListener('resize', onResize);
+        window.addEventListener('load', onPageLoad);
+        const observer = new MutationObserver(() => this.scheduleMeasure());
+        observer.observe(this.$el, { childList: true, subtree: true });
+
+        return () => {
+            stopScrollSync();
+            window.removeEventListener('resize', onResize);
+            window.removeEventListener('load', onPageLoad);
+            observer.disconnect();
+        };
+    },
+    syncHorizontalScroll(scroller) {
+        if (!scroller) {
+            return () => {};
+        }
+
+        const onScroll = () => {
+            const cloneScroller = this.$refs.cloneScroller;
+
+            if (cloneScroller && scroller.scrollLeft !== cloneScroller.scrollLeft) {
+                cloneScroller.scrollLeft = scroller.scrollLeft;
+            }
+        };
+        scroller.addEventListener('scroll', onScroll, { passive: true });
+
+        return () => scroller.removeEventListener('scroll', onScroll);
+    },
+    scheduleMeasure() {
+        if (this.measureFrame !== null) {
+            return;
+        }
+
+        this.measureFrame = requestAnimationFrame(() => {
+            this.measureFrame = null;
+            this.syncWidths();
+        });
+    },
+    syncWidths() {
+        const realTable = this.$refs.recapTable;
+        const cloneTable = this.$el.querySelector('.recap-clone-table');
+
+        if (!realTable || !cloneTable) {
+            return;
+        }
+
+        const realWidth = realTable.offsetWidth;
+        cloneTable.style.width = `${realWidth}px`;
+        cloneTable.style.minWidth = `${realWidth}px`;
+
+        const realCells = realTable.querySelectorAll('thead tr:last-child th');
+        const cloneCells = cloneTable.querySelectorAll('thead tr:last-child th');
+        realCells.forEach((cell, index) => {
+            const cloneCell = cloneCells[index];
+
+            if (!cloneCell) {
+                return;
+            }
+
+            const width = cell.getBoundingClientRect().width;
+            cloneCell.style.width = `${width}px`;
+            cloneCell.style.minWidth = `${width}px`;
+        });
+    },
+    destroy() {
+        if (this.cleanupHandlers) {
+            this.cleanupHandlers();
+        }
+
+        if (this.measureFrame !== null) {
+            cancelAnimationFrame(this.measureFrame);
+        }
+    },
+});

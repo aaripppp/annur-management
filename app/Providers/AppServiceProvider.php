@@ -27,7 +27,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
-        Gate::define('manage-accounts', static fn (User $user): bool => $user->isSuperAdmin());
+        Gate::define('manage-accounts', static fn(User $user): bool => $user->isSuperAdmin());
     }
 
     /**
@@ -41,14 +41,6 @@ class AppServiceProvider extends ServiceProvider
             app()->isProduction(),
         );
 
-        Password::defaults(fn (): ?Password => app()->isProduction()
-            ? Password::min(12)
-                ->mixedCase()
-                ->letters()
-                ->numbers()
-                ->symbols()
-                ->uncompromised()
-            : null,
-        );
+        Password::defaults(fn(): ?Password => null);
     }
 }

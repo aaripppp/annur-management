@@ -50,3 +50,23 @@
     white-space: nowrap;
 }
 
+/*
+ * The real Rekap-Per-Kelas thead exists only to keep the auto table column
+ * geometry that classRecapStickyHeader measures. It stays in the table flow
+ * (so column widths, min-w cells and the 6200px layout remain intact) but
+ * collapses to zero height so no blank gap appears between the sticky clone
+ * header and the first body row.
+ */
+.recap-measure-head,
+.recap-measure-head tr,
+.recap-measure-head th {
+    height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: 0;
+    line-height: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    overflow: hidden;
+}
+

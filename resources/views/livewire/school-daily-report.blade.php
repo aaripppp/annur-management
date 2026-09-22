@@ -292,7 +292,7 @@
                 <p class="mt-1 text-body-md text-on-surface-variant">Daftar siswa mengikuti enrollment {{ $classRecapReport['academic_year'] }} di kelas {{ $classRecapReport['school_class'] }}.</p>
             </section>
         @else
-            <section class="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
+            <section class="rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
                 <header class="flex flex-col gap-2 border-b border-outline-variant px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                     <div>
                         <h2 class="text-title-md font-title-md text-on-surface">Rekap {{ $classRecapReport['school_class'] }}</h2>
@@ -300,125 +300,107 @@
                     </div>
                     <p class="text-body-sm text-on-surface-variant">{{ $classRecapReport['student_count'] }} siswa</p>
                 </header>
-                <div class="overflow-x-auto overscroll-x-contain">
-                    @php
-                        $recapMonthlyTypes = $classRecapReport['payment_types']['monthly'];
-                        $recapYearlyTypes = $classRecapReport['payment_types']['yearly'];
-                        $recapOneTimeTypes = $classRecapReport['payment_types']['one_time'];
-                        $recapMonthlyCount = count($recapMonthlyTypes);
-                        $recapYearlyCount = count($recapYearlyTypes);
-                        $recapOneTimeCount = count($recapOneTimeTypes);
-                        $recapLastMonthlyId = $recapMonthlyCount > 0 ? $recapMonthlyTypes[$recapMonthlyCount - 1]['id'] : null;
-                    @endphp
-                    <table class="min-w-[6200px] border-collapse text-left text-body-sm">
-                        <thead class="uppercase tracking-wider text-on-surface-variant">
-                            <tr class="border-b border-outline-variant bg-surface-container-low">
-                                <th rowspan="3" class="sticky left-0 z-30 w-14 min-w-14 border-r border-outline-variant bg-surface-container-low px-3 py-3 text-center">No.</th>
-                                <th rowspan="3" class="sticky left-14 z-30 w-56 min-w-56 border-r-2 border-outline bg-surface-container-low px-4 py-3">Nama Siswa</th>
-                                @if($recapMonthlyCount > 0)
-                                    <th colspan="{{ 13 * $recapMonthlyCount + 1 }}" class="border-r-2 border-outline px-4 py-3 text-center text-primary">Bulanan</th>
-                                @endif
-                                @if($recapYearlyCount > 0)
-                                    <th colspan="{{ 3 * $recapYearlyCount }}" class="border-r-2 border-outline px-4 py-3 text-center text-primary">Tahunan</th>
-                                @endif
-                                @if($recapOneTimeCount > 0)
-                                    <th colspan="{{ 3 * $recapOneTimeCount }}" class="px-4 py-3 text-center text-primary">Sekali Bayar</th>
-                                @endif
-                            </tr>
-                            <tr class="border-b border-outline-variant bg-surface-container-low">
-                                @if($recapMonthlyCount > 0)
-                                    <th colspan="{{ $recapMonthlyCount + 1 }}" class="border-r-2 border-outline px-3 py-3 text-center">Ringkasan Tagihan</th>
-                                    @foreach($classRecapReport['months'] as $month)
-                                        <th colspan="{{ $recapMonthlyCount }}" class="border-r border-outline-variant px-3 py-3 text-center">{{ $month['label'] }} {{ $month['year'] }}</th>
-                                    @endforeach
-                                @endif
-                                @foreach($recapYearlyTypes as $yearlyType)
-                                    <th colspan="3" class="border-r {{ $loop->last ? 'border-r-2 border-outline' : 'border-outline-variant' }} px-3 py-3 text-center">{{ $yearlyType['name'] }}</th>
-                                @endforeach
-                                @foreach($recapOneTimeTypes as $oneTimeType)
-                                    <th colspan="3" class="px-3 py-3 text-center">{{ $oneTimeType['name'] }}</th>
-                                @endforeach
-                            </tr>
-                            <tr class="border-b border-outline-variant bg-surface-container-low text-label-sm">
-                                @if($recapMonthlyCount > 0)
-                                    @foreach($recapMonthlyTypes as $type)
-                                        <th class="min-w-28 px-3 py-3 text-right">{{ $type['name'] }}</th>
-                                    @endforeach
-                                    <th class="min-w-28 border-r-2 border-outline px-3 py-3 text-right">Total</th>
-                                    @foreach($classRecapReport['months'] as $month)
-                                        @foreach($recapMonthlyTypes as $type)
-                                            <th class="min-w-28 px-3 py-3 text-right {{ $type['id'] === $recapLastMonthlyId ? 'border-r border-outline-variant' : '' }}">{{ $type['name'] }}</th>
-                                        @endforeach
-                                    @endforeach
-                                @endif
-                                @foreach($recapYearlyTypes as $yearlyType)
-                                    <th class="min-w-32 px-3 py-3 text-right">Tagihan</th>
-                                    <th class="min-w-32 px-3 py-3 text-right">Terbayar</th>
-                                    <th class="min-w-32 border-r {{ $loop->last ? 'border-r-2 border-outline' : 'border-outline-variant' }} px-3 py-3 text-right">Sisa</th>
-                                @endforeach
-                                @foreach($recapOneTimeTypes as $oneTimeType)
-                                    <th class="min-w-32 px-3 py-3 text-right">Tagihan</th>
-                                    <th class="min-w-32 px-3 py-3 text-right">Terbayar</th>
-                                    <th class="min-w-32 px-3 py-3 text-right">Sisa</th>
-                                @endforeach
-                            </tr>
-                        </thead>
+                @php
+                    $recapMonthlyTypes = $classRecapReport['payment_types']['monthly'];
+                    $recapYearlyTypes = $classRecapReport['payment_types']['yearly'];
+                    $recapOneTimeTypes = $classRecapReport['payment_types']['one_time'];
+                    $recapMonthlyCount = count($recapMonthlyTypes);
+                    $recapYearlyCount = count($recapYearlyTypes);
+                    $recapOneTimeCount = count($recapOneTimeTypes);
+                    $recapLastMonthlyId = $recapMonthlyCount > 0 ? $recapMonthlyTypes[$recapMonthlyCount - 1]['id'] : null;
+                @endphp
+                <div class="rounded-b-xl" x-data="classRecapStickyHeader()">
+                    <div class="sticky top-16 z-30 bg-surface-container-low">
+                        <div class="overflow-x-hidden" x-ref="cloneScroller">
+                            <table class="recap-clone-table min-w-[6200px] border-collapse text-left text-body-sm">
+                                <thead class="uppercase tracking-wider text-on-surface-variant">
+                                    @include('livewire.partials.class-recap-thead', [
+                                        'recapMonthlyTypes' => $recapMonthlyTypes,
+                                        'recapYearlyTypes' => $recapYearlyTypes,
+                                        'recapOneTimeTypes' => $recapOneTimeTypes,
+                                        'recapMonthlyCount' => $recapMonthlyCount,
+                                        'recapYearlyCount' => $recapYearlyCount,
+                                        'recapOneTimeCount' => $recapOneTimeCount,
+                                        'recapLastMonthlyId' => $recapLastMonthlyId,
+                                        'classRecapReport' => $classRecapReport,
+                                    ])
+                                </thead>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="overflow-hidden rounded-b-xl">
+                        <div class="overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-b-xl" x-ref="recapScroller">
+                            <table class="recap-real-table min-w-[6200px] border-collapse text-left text-body-sm" x-ref="recapTable">
+                                <thead class="recap-measure-head invisible uppercase tracking-wider text-on-surface-variant" aria-hidden="true">
+                                    @include('livewire.partials.class-recap-thead', [
+                                        'recapMonthlyTypes' => $recapMonthlyTypes,
+                                        'recapYearlyTypes' => $recapYearlyTypes,
+                                        'recapOneTimeTypes' => $recapOneTimeTypes,
+                                        'recapMonthlyCount' => $recapMonthlyCount,
+                                        'recapYearlyCount' => $recapYearlyCount,
+                                        'recapOneTimeCount' => $recapOneTimeCount,
+                                        'recapLastMonthlyId' => $recapLastMonthlyId,
+                                        'classRecapReport' => $classRecapReport,
+                                    ])
+                                </thead>
                         <tbody class="divide-y divide-outline-variant text-on-surface">
-                            @foreach($classRecapReport['rows'] as $index => $row)
-                                <tr class="hover:bg-surface-container-low/50">
-                                    <td class="sticky left-0 z-10 border-r border-outline-variant bg-surface-container-lowest px-3 py-3 text-center font-numeric-data">{{ $index + 1 }}</td>
-                                    <td class="sticky left-14 z-10 border-r-2 border-outline bg-surface-container-lowest px-4 py-3 font-medium">{{ $row['student_name'] }}</td>
-                                    @if($recapMonthlyCount > 0)
-                                        @foreach($recapMonthlyTypes as $type)
-                                            <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data">{{ $formatClassRecapAmount($row['monthly_summary'][$type['id']]) }}</td>
-                                        @endforeach
-                                        <td class="whitespace-nowrap border-r-2 border-outline px-3 py-3 text-right font-numeric-data font-bold">{{ $formatClassRecapAmount($row['monthly_summary']['total']) }}</td>
-                                        @foreach($classRecapReport['months'] as $month)
+                                    @foreach($classRecapReport['rows'] as $index => $row)
+                                        <tr class="hover:bg-surface-container-low/50">
+                                            <td class="sticky left-0 z-10 border-r border-outline-variant bg-surface-container-lowest px-3 py-3 text-center font-numeric-data">{{ $index + 1 }}</td>
+                                            <td class="sticky left-14 z-10 border-r-2 border-outline bg-surface-container-lowest px-4 py-3 font-medium">{{ $row['student_name'] }}</td>
+                                            @if($recapMonthlyCount > 0)
+                                                @foreach($recapMonthlyTypes as $type)
+                                                    <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data">{{ $formatClassRecapAmount($row['monthly_summary'][$type['id']]) }}</td>
+                                                @endforeach
+                                                <td class="whitespace-nowrap border-r-2 border-outline px-3 py-3 text-right font-numeric-data font-bold">{{ $formatClassRecapAmount($row['monthly_summary']['total']) }}</td>
+                                                @foreach($classRecapReport['months'] as $month)
+                                                    @foreach($recapMonthlyTypes as $type)
+                                                        <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data {{ $type['id'] === $recapLastMonthlyId ? 'border-r border-outline-variant' : '' }}">{{ $formatClassRecapAmount($row['monthly_paid'][$month['key']][$type['id']]) }}</td>
+                                                    @endforeach
+                                                @endforeach
+                                            @endif
+                                            @foreach($recapYearlyTypes as $yearlyType)
+                                                @foreach(['target', 'paid', 'remaining'] as $balanceKey)
+                                                    <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data {{ $balanceKey === 'remaining' && $row['yearly'][$yearlyType['id']][$balanceKey] > 0 ? 'font-bold text-error' : '' }} {{ $balanceKey === 'remaining' ? ($loop->parent->last ? 'border-r-2 border-outline' : 'border-r border-outline-variant') : '' }}">{{ $formatClassRecapAmount($row['yearly'][$yearlyType['id']][$balanceKey]) }}</td>
+                                                @endforeach
+                                            @endforeach
+                                            @foreach($recapOneTimeTypes as $oneTimeType)
+                                                @foreach(['target', 'paid', 'remaining'] as $balanceKey)
+                                                    <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data {{ $balanceKey === 'remaining' && $row['one_time'][$oneTimeType['id']][$balanceKey] > 0 ? 'font-bold text-error' : '' }}">{{ $formatClassRecapAmount($row['one_time'][$oneTimeType['id']][$balanceKey]) }}</td>
+                                                @endforeach
+                                            @endforeach
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                                <tfoot>
+                                    <tr class="border-t-2 border-primary bg-primary-fixed text-label-md font-label-md text-on-primary-fixed">
+                                        <td colspan="2" class="sticky left-0 z-20 border-r-2 border-outline bg-primary-fixed px-4 py-3">JUMLAH</td>
+                                        @if($recapMonthlyCount > 0)
                                             @foreach($recapMonthlyTypes as $type)
-                                                <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data {{ $type['id'] === $recapLastMonthlyId ? 'border-r border-outline-variant' : '' }}">{{ $formatClassRecapAmount($row['monthly_paid'][$month['key']][$type['id']]) }}</td>
+                                                <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data">{{ $formatClassRecapAmount($classRecapReport['totals']['monthly_summary'][$type['id']]) }}</td>
+                                            @endforeach
+                                            <td class="whitespace-nowrap border-r-2 border-outline px-3 py-3 text-right font-numeric-data font-bold">{{ $formatClassRecapAmount($classRecapReport['totals']['monthly_summary']['total']) }}</td>
+                                            @foreach($classRecapReport['months'] as $month)
+                                                @foreach($recapMonthlyTypes as $type)
+                                                    <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data {{ $type['id'] === $recapLastMonthlyId ? 'border-r border-outline-variant' : '' }}">{{ $formatClassRecapAmount($classRecapReport['totals']['monthly_paid'][$month['key']][$type['id']]) }}</td>
+                                                @endforeach
+                                            @endforeach
+                                        @endif
+                                        @foreach($recapYearlyTypes as $yearlyType)
+                                            @foreach(['target', 'paid', 'remaining'] as $balanceKey)
+                                                <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data {{ $balanceKey === 'remaining' ? ($loop->parent->last ? 'border-r-2 border-outline' : 'border-r border-outline-variant') : '' }}">{{ $formatClassRecapAmount($classRecapReport['totals']['yearly'][$yearlyType['id']][$balanceKey]) }}</td>
                                             @endforeach
                                         @endforeach
-                                    @endif
-                                    @foreach($recapYearlyTypes as $yearlyType)
-                                        @foreach(['target', 'paid', 'remaining'] as $balanceKey)
-                                            <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data {{ $balanceKey === 'remaining' && $row['yearly'][$yearlyType['id']][$balanceKey] > 0 ? 'font-bold text-error' : '' }} {{ $balanceKey === 'remaining' ? ($loop->parent->last ? 'border-r-2 border-outline' : 'border-r border-outline-variant') : '' }}">{{ $formatClassRecapAmount($row['yearly'][$yearlyType['id']][$balanceKey]) }}</td>
+                                        @foreach($recapOneTimeTypes as $oneTimeType)
+                                            @foreach(['target', 'paid', 'remaining'] as $balanceKey)
+                                                <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data">{{ $formatClassRecapAmount($classRecapReport['totals']['one_time'][$oneTimeType['id']][$balanceKey]) }}</td>
+                                            @endforeach
                                         @endforeach
-                                    @endforeach
-                                    @foreach($recapOneTimeTypes as $oneTimeType)
-                                        @foreach(['target', 'paid', 'remaining'] as $balanceKey)
-                                            <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data {{ $balanceKey === 'remaining' && $row['one_time'][$oneTimeType['id']][$balanceKey] > 0 ? 'font-bold text-error' : '' }}">{{ $formatClassRecapAmount($row['one_time'][$oneTimeType['id']][$balanceKey]) }}</td>
-                                        @endforeach
-                                    @endforeach
-                                </tr>
-                            @endforeach
-                        </tbody>
-                        <tfoot>
-                            <tr class="border-t-2 border-primary bg-primary-fixed text-label-md font-label-md text-on-primary-fixed">
-                                <td colspan="2" class="sticky left-0 z-20 border-r-2 border-outline bg-primary-fixed px-4 py-3">JUMLAH</td>
-                                @if($recapMonthlyCount > 0)
-                                    @foreach($recapMonthlyTypes as $type)
-                                        <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data">{{ $formatClassRecapAmount($classRecapReport['totals']['monthly_summary'][$type['id']]) }}</td>
-                                    @endforeach
-                                    <td class="whitespace-nowrap border-r-2 border-outline px-3 py-3 text-right font-numeric-data font-bold">{{ $formatClassRecapAmount($classRecapReport['totals']['monthly_summary']['total']) }}</td>
-                                    @foreach($classRecapReport['months'] as $month)
-                                        @foreach($recapMonthlyTypes as $type)
-                                            <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data {{ $type['id'] === $recapLastMonthlyId ? 'border-r border-outline-variant' : '' }}">{{ $formatClassRecapAmount($classRecapReport['totals']['monthly_paid'][$month['key']][$type['id']]) }}</td>
-                                        @endforeach
-                                    @endforeach
-                                @endif
-                                @foreach($recapYearlyTypes as $yearlyType)
-                                    @foreach(['target', 'paid', 'remaining'] as $balanceKey)
-                                        <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data {{ $balanceKey === 'remaining' ? ($loop->parent->last ? 'border-r-2 border-outline' : 'border-r border-outline-variant') : '' }}">{{ $formatClassRecapAmount($classRecapReport['totals']['yearly'][$yearlyType['id']][$balanceKey]) }}</td>
-                                    @endforeach
-                                @endforeach
-                                @foreach($recapOneTimeTypes as $oneTimeType)
-                                    @foreach(['target', 'paid', 'remaining'] as $balanceKey)
-                                        <td class="whitespace-nowrap px-3 py-3 text-right font-numeric-data">{{ $formatClassRecapAmount($classRecapReport['totals']['one_time'][$oneTimeType['id']][$balanceKey]) }}</td>
-                                    @endforeach
-                                @endforeach
-                            </tr>
-                        </tfoot>
-                    </table>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </section>
         @endif

@@ -5,10 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\DaycarePayment;
 use App\Models\DaycarePaymentDetail;
 use App\Models\Payment;
-use App\Models\PaymentDetail;
-use App\Models\PaymentType;
 use App\Models\ProspectiveStudentPayment;
 use App\Models\ProspectiveStudentPaymentDetail;
+use App\Support\PaymentReceiptDisplay;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
@@ -102,17 +101,7 @@ class ReceiptPrintController extends Controller
     {
         $payment->load(['student.schoolClass', 'bank', 'user', 'details.paymentType']);
 
-        $details = $payment->details->map(function (PaymentDetail $detail) use ($payment): array {
-            $paymentType = $detail->getRelation('paymentType');
-
-            return [
-                'name' => $payment->isManualPayment()
-                    ? ($detail->description ?: 'Pembayaran Manual')
-                    : ($paymentType instanceof PaymentType ? $paymentType->name : 'Item Pembayaran'),
-                'description' => $payment->isManualPayment() ? null : $detail->description,
-                'amount' => (float) $detail->amount,
-            ];
-        })->all();
+        $details = PaymentReceiptDisplay::rows($payment)->all();
 
         if ($details === []) {
             $details[] = [

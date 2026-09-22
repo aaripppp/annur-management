@@ -320,6 +320,46 @@ it('renders one integrated table with dynamic monthly yearly and one-time header
         ->assertDontSee('TARGET');
 });
 
+it('renders a sticky clone header aligned with the real recap table', function () {
+    [$academicYear, $schoolClass, $student] = makeClassRecapStudent();
+    $spp = makeBillType('SPP');
+    configureClassRecapType($spp, SchoolLevel::SMP, BillFrequency::Monthly);
+    makeMonthlyBill($student, $spp, 970_000, 7, 2026);
+
+    $component = Livewire::test(SchoolDailyReport::class)
+        ->call('setActiveTab', 'class')
+        ->set('classRecapSchoolLevel', SchoolLevel::SMP->value)
+        ->set('classRecapSchoolClassId', (string) $schoolClass->id)
+        ->set('classRecapAcademicYearId', (string) $academicYear->id);
+
+    $html = $component->html();
+
+    $component
+        ->assertSeeHtml('x-data="classRecapStickyHeader()"')
+        ->assertSeeHtml('class="sticky top-16 z-30 bg-surface-container-low"')
+        ->assertSeeHtml('x-ref="cloneScroller"')
+        ->assertSeeHtml('x-ref="recapScroller"')
+        ->assertSeeHtml('x-ref="recapTable"')
+        ->assertSeeHtml('class="recap-clone-table')
+        ->assertSeeHtml('class="recap-real-table')
+        ->assertSeeHtml('<thead class="uppercase tracking-wider text-on-surface-variant">')
+        ->assertSeeHtml('<thead class="recap-measure-head invisible uppercase tracking-wider text-on-surface-variant" aria-hidden="true">')
+        ->assertSeeHtml('sticky left-0 z-30 w-14 min-w-14 border-r border-outline-variant bg-surface-container-low')
+        ->assertSeeHtml('sticky left-14 z-30 w-56 min-w-56 border-r-2 border-outline bg-surface-container-low')
+        ->assertSeeHtml('sticky left-0 z-10 border-r border-outline-variant bg-surface-container-lowest')
+        ->assertSeeHtml('sticky left-14 z-10 border-r-2 border-outline bg-surface-container-lowest')
+        ->assertSeeHtml('sticky left-0 z-20 border-r-2 border-outline bg-primary-fixed')
+        ->assertSeeHtml('overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-b-xl')
+        ->assertSee('Bulanan')
+        ->assertSee('JUMLAH');
+
+    expect($html)->toBeString()
+        ->and(substr_count($html, 'class="recap-clone-table'))->toBe(1)
+        ->and(substr_count($html, 'class="recap-real-table'))->toBe(1)
+        ->and(substr_count($html, 'class="border-b border-outline-variant bg-surface-container-low"'))->toBe(4)
+        ->and(substr_count($html, 'class="border-b border-outline-variant bg-surface-container-low text-label-sm"'))->toBe(2);
+});
+
 it('scopes yearly bills to the selected academic year and caps paid amounts', function () {
     [$academicYear, $schoolClass, $student] = makeClassRecapStudent();
     $book = makeBillType('Uang Buku');
