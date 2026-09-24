@@ -166,6 +166,10 @@ class StudentBill extends Model
 
     public function getStatusAttribute(): string
     {
+        if ($this->remaining_amount <= 0) {
+            return self::STATUS_PAID;
+        }
+
         $paid = $this->paid_amount;
 
         if ($paid <= 0) {

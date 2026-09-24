@@ -255,15 +255,105 @@ it('blocks conversion when target class is missing', function () {
         ->and($prospect->fresh()->converted_student_id)->toBeNull();
 });
 
-it('blocks conversion when target academic year is not in the future', function () {
+it('converts a prospect when targeting the currently active academic year', function () {
+    $this->travelTo('2026-09-15');
+
     $catalog = prepareConversionSetup();
     $prospect = createRegisteredProspect($catalog, [
         'academic_year_id' => $catalog['activeYear']->id,
     ]);
 
+    $student = app(ProspectiveStudentConversionService::class)->convert($prospect, '2026-0001');
+
+    expect($student->fresh())->not->toBeNull()
+        ->and($student->nis)->toBe('2026-0001')
+        ->and($student->class_id)->toBe($catalog['schoolClass']->id)
+        ->and($student->status)->toBe(StudentStatus::Active);
+
+    $prospect->refresh();
+
+    expect($prospect->status)->toBe(ProspectiveStudentStatus::Converted)
+        ->and($prospect->converted_student_id)->toBe($student->id)
+        ->and($prospect->converted_at)->not->toBeNull();
+});
+
+it('creates an active enrollment and reports aktif status for an active-year target', function () {
+    $this->travelTo('2026-09-15');
+
+    $catalog = prepareConversionSetup();
+    $prospect = createRegisteredProspect($catalog, [
+        'academic_year_id' => $catalog['activeYear']->id,
+    ]);
+
+    $student = app(ProspectiveStudentConversionService::class)->convert($prospect);
+
+    $enrollment = StudentAcademicEnrollment::where('student_id', $student->id)
+        ->where('academic_year_id', $catalog['activeYear']->id)
+        ->first();
+
+    expect($enrollment)->not->toBeNull()
+        ->and($enrollment->school_class_id)->toBe($catalog['schoolClass']->id)
+        ->and($enrollment->status)->toBe('active')
+        ->and($student->academicStatus())->toBe('aktif')
+        ->and($student->academic_status_label)->toBe('Aktif');
+});
+
+it('generates the same bills as a normally created active student', function () {
+    $this->travelTo('2026-09-15');
+
+    $catalog = prepareConversionSetup();
+    $prospect = createRegisteredProspect($catalog, [
+        'academic_year_id' => $catalog['activeYear']->id,
+    ]);
+
+    $converted = app(ProspectiveStudentConversionService::class)->convert($prospect, '2026-0001');
+
+    $normal = app(StudentCreationService::class)->create([
+        'nis' => '2026-0002',
+        'nama_lengkap' => 'Siswa Normal Aktif',
+        'nama_panggilan' => 'Normal',
+        'class_id' => $catalog['schoolClass']->id,
+        'entry_academic_year_id' => $catalog['activeYear']->id,
+    ]);
+
+    $billKey = fn (StudentBill $bill): array => [
+        'payment_type_id' => $bill->payment_type_id,
+        'billing_frequency' => $bill->billing_frequency,
+        'amount' => (float) $bill->amount,
+        'period_month' => $bill->period_month,
+        'period_year' => $bill->period_year,
+        'academic_year' => $bill->academic_year,
+    ];
+
+    expect($converted->bills()->get()->sortBy(fn (StudentBill $bill): string => implode('-', [
+        (string) $bill->payment_type_id,
+        (string) $bill->period_year,
+        (string) $bill->period_month,
+        (string) $bill->billing_frequency,
+    ]))->map($billKey)->all())
+        ->toEqual($normal->bills()->get()->sortBy(fn (StudentBill $bill): string => implode('-', [
+            (string) $bill->payment_type_id,
+            (string) $bill->period_year,
+            (string) $bill->period_month,
+            (string) $bill->billing_frequency,
+        ]))->map($billKey)->all());
+});
+
+it('blocks conversion when the target academic year is in the past', function () {
+    $this->travelTo('2026-09-15');
+
+    $catalog = prepareConversionSetup();
+    $prospect = createRegisteredProspect($catalog, [
+        'academic_year_id' => AcademicYear::create([
+            'year' => '2025/2026',
+            'is_active' => false,
+            'start_date' => '2025-07-01',
+            'end_date' => '2026-06-30',
+        ])->id,
+    ]);
+
     expect(fn () => app(ProspectiveStudentConversionService::class)->convert($prospect))
-        ->toThrow(ValidationException::class)
-        ->and($prospect->fresh()->converted_student_id)->toBeNull();
+        ->toThrow(ValidationException::class);
 });
 
 it('allows conversion regardless of unpaid prospective bills', function () {

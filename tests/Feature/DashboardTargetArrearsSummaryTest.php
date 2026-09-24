@@ -148,3 +148,97 @@ it('resolves the dashboard billing month using the configured WIB timezone', fun
     expect($component->viewData('targetArrearsSummary')['month'])->toBe(9)
         ->and($component->viewData('targetArrearsSummary')['year'])->toBe(2026);
 });
+
+it('defaults the target filter to the current WIB month, year, and all jenjang', function () {
+    $this->travelTo('2026-09-04 00:30:00');
+
+    Livewire::test(Dashboard::class)
+        ->assertSet('targetMonth', 9)
+        ->assertSet('targetYear', 2026)
+        ->assertSet('targetJenjang', 'all')
+        ->assertSee('Capaian Tagihan Bulan Ini')
+        ->assertSeeHtml('wire:model.live="targetMonth"')
+        ->assertSeeHtml('wire:model.live="targetJenjang"');
+});
+
+it('normalizes invalid target filter values on mount', function () {
+    $this->travelTo('2026-09-04 00:30:00');
+
+    Livewire::withQueryParams(['target_bulan' => 99, 'target_tahun' => 9999, 'target_jenjang' => 'TK'])
+        ->test(Dashboard::class)
+        ->assertSet('targetMonth', 9)
+        ->assertSet('targetYear', 2026)
+        ->assertSet('targetJenjang', 'TK');
+});
+
+it('filters the target summary card by selected month and updates the card title', function () {
+    $this->travelTo('2026-09-04 00:30:00');
+    [$student] = makeEnrolledStudent(SchoolLevel::SMP);
+    $type = makeBillType('SPP Filter Bulan');
+    makeMonthlyBill($student, $type, 500_000, 9, 2026);
+    makeMonthlyBill($student, $type, 700_000, 10, 2026);
+
+    $component = Livewire::test(Dashboard::class)
+        ->assertSee('Capaian Tagihan Bulan Ini')
+        ->assertSee('September 2026')
+        ->assertSee('Rp 500.000')
+        ->set('targetMonth', 10)
+        ->assertSee('Capaian Tagihan Oktober 2026')
+        ->assertSee('Oktober 2026')
+        ->assertSee('Rp 700.000')
+        ->assertViewHas('targetArrearsSummary', fn (array $summary): bool => $summary['totals']['target'] === 700_000.0)
+        ->assertViewHas('targetArrearsUrl', fn (string $url): bool => str_contains($url, 'target_month=10'));
+
+    expect($component->get('targetMonth'))->toBe(10)
+        ->and($component->viewData('targetArrearsSummary')['year'])->toBe(2026);
+});
+
+it('scopes the target summary card by jenjang without affecting operational totals', function () {
+    $this->travelTo('2026-09-15 12:00:00');
+    [$smpStudent] = makeEnrolledStudent(SchoolLevel::SMP);
+    [$sdStudent] = makeEnrolledStudent(SchoolLevel::SD);
+    $bank = Bank::factory()->create(['is_active' => true]);
+    $user = User::factory()->create();
+    $smpType = makeBillType('SPP SMP Target');
+    $sdType = makeBillType('SPP SD Target');
+    $smpBill = makeMonthlyBill($smpStudent, $smpType, 400_000, 9, 2026);
+    $sdBill = makeMonthlyBill($sdStudent, $sdType, 250_000, 9, 2026);
+    createDashboardTargetAllocation($smpBill, $user, $bank, 100_000, '2026-09-15', '2026-09-15 08:00:00');
+    createDashboardTargetAllocation($sdBill, $user, $bank, 50_000, '2026-09-15', '2026-09-15 09:00:00');
+
+    $component = Livewire::test(Dashboard::class)
+        ->assertViewHas('totalTransaksi', 2)
+        ->assertViewHas('targetArrearsSummary', fn (array $summary): bool => $summary['totals']['target'] === 650_000.0);
+
+    $smpOnly = $component->set('targetJenjang', SchoolLevel::SMP->value)
+        ->assertViewHas('targetArrearsSummary', fn (array $summary): bool => $summary['totals']['target'] === 400_000.0)
+        ->assertViewHas('totalTransaksi', 2)
+        ->assertViewHas('totalPemasukan', 150_000.0)
+        ->assertSeeHtml('value="SMP"');
+
+    expect(collect($smpOnly->viewData('targetArrearsSummary')['rows'])->pluck('payment_type_name')->all())
+        ->toBe(['SPP SMP Target']);
+
+    $all = $smpOnly->set('targetJenjang', 'all')
+        ->assertViewHas('targetArrearsSummary', fn (array $summary): bool => $summary['totals']['target'] === 650_000.0);
+
+    expect(collect($all->viewData('targetArrearsSummary')['rows'])->pluck('payment_type_name')->all())
+        ->toBe(['SPP SD Target', 'SPP SMP Target']);
+});
+
+it('links the target report with the selected month, year, and jenjang', function () {
+    $this->travelTo('2026-09-04 00:30:00');
+
+    $component = Livewire::test(Dashboard::class)
+        ->set('targetMonth', 10)
+        ->set('targetYear', 2026)
+        ->set('targetJenjang', SchoolLevel::SD->value);
+
+    expect($component->viewData('targetArrearsUrl'))->toBe(route('laporan.index', [
+        'tab' => 'target',
+        'target_mode' => 'monthly',
+        'target_month' => 10,
+        'target_year' => 2026,
+        'jenjang' => 'SD',
+    ]));
+});

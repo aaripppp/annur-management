@@ -356,12 +356,15 @@ it('rejects a summary range whose end date precedes the start date', function ()
         ->assertSee('0 Transaksi');
 });
 
-it('keeps the summary section visible on the riwayat tab', function () {
+it('hides the summary section on the riwayat tab and shows the history directly', function () {
     daycareSummaryPayment('2026-09-18', 300000);
 
     Livewire::test(DaycarePaymentEntry::class)
         ->call('setActiveTab', 'history')
-        ->assertSee('Total Pemasukan Daycare')
-        ->assertSee('Rp 300.000')
-        ->assertSee('1 Transaksi');
+        ->assertDontSee('Ringkasan Pemasukan Daycare')
+        ->assertDontSee('Total Pemasukan Daycare')
+        ->assertDontSeeHtml('data-testid="daycare-summary-total-amount"')
+        ->assertDontSeeHtml('data-testid="daycare-summary-total-count"')
+        ->assertSee('Cari Transaksi')
+        ->assertSeeHtml('id="daycare-history-search"');
 });

@@ -13,9 +13,11 @@ use Illuminate\Validation\ValidationException;
  * Mengonversi calon siswa menjadi siswa resmi (alur "Jadikan Siswa").
  *
  * Calon siswa berstatus Terdaftar dibuatkan profil Student untuk tahun ajaran
- * tujuan dengan buku tagihan awal mengikuti inisialisasi siswa masa depan:
- * tagihan tahunan + sekali bayar + komponen bulanan bulan Juli pada tahun
- * ajaran tujuan. Tagihan pendaftaran, pembayaran, dan kwitansi calon siswa
+ * tujuan. Pemilihan alur billing diserahkan ke StudentCreationService:
+ * tahun ajaran aktif memakai alur siswa aktif (generateBillbook), sedangkan
+ * tahun ajaran mendatang memakai inisialisasi siswa masa depan (tagihan
+ * tahunan + sekali bayar + komponen bulanan bulan Juli). Tahun ajaran lampau
+ * tetap ditolak. Tagihan pendaftaran, pembayaran, dan kwitansi calon siswa
  * TIDAK dihapus ataupun disalin — riwayatnya dipertahankan dan hanya
  * ditautkan kembali melalui converted_student_id / converted_at.
  *
@@ -96,9 +98,9 @@ class ProspectiveStudentConversionService
             ]);
         }
 
-        if ($prospect->academicYear->start_date->lessThanOrEqualTo($activeYear->start_date)) {
+        if ($prospect->academicYear->start_date->lessThan($activeYear->start_date)) {
             throw ValidationException::withMessages([
-                'academic_year_id' => 'Calon siswa hanya dapat dijadikan siswa untuk tahun ajaran mendatang. Gunakan alur Data Siswa untuk siswa pada tahun ajaran aktif.',
+                'academic_year_id' => 'Calon siswa hanya dapat dijadikan siswa pada tahun ajaran yang sedang atau akan berjalan.',
             ]);
         }
     }

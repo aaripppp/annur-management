@@ -1,26 +1,15 @@
 <div>
+    <div class="mb-stack-lg">
+        <h1 class="text-display-sm font-display-sm text-on-surface">Pembayaran Daycare</h1>
+        <p class="text-body-md text-on-surface-variant mt-1">Kelola tagihan dan pembayaran Daycare.</p>
+    </div>
+
     @if(session()->has('success'))
         <div x-data="{ show: true }" x-init="setTimeout(() => show = false, 3000)" x-show="show" class="fixed top-24 right-8 z-50 bg-secondary-container border border-secondary text-on-secondary-container px-5 py-4 rounded-xl shadow-lg flex items-center gap-3 min-w-[300px]">
             <span class="material-symbols-outlined text-secondary">check_circle</span>
             <p class="font-body-md">{{ session('success') }}</p>
         </div>
     @endif
-
-    <div class="flex items-center gap-2 text-body-md text-on-surface-variant mb-3">
-        <a href="{{ route('daycare.index') }}" wire:navigate class="hover:text-primary">Daycare</a>
-        <span>&rsaquo;</span>
-        <span class="text-on-surface font-medium">Pembayaran</span>
-    </div>
-
-    <div class="flex items-center gap-4 mb-stack-lg">
-        <div class="w-11 h-11 rounded-xl bg-primary-container flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-primary text-[26px]">payments</span>
-        </div>
-        <div>
-            <h1 class="text-display-sm font-display-sm text-on-surface leading-tight">Pembayaran Daycare</h1>
-            <p class="text-body-md text-on-surface-variant mt-0.5">Pilih anak Daycare untuk mencatat pembayaran.</p>
-        </div>
-    </div>
 
     <div class="border-b border-outline-variant mb-stack-lg">
         <nav class="flex items-center gap-1 overflow-x-auto" aria-label="Bagian pembayaran">
@@ -49,6 +38,7 @@
         </nav>
     </div>
 
+    @if($activeTab === 'pembayaran')
     {{-- Daycare payment summary + date filter --}}
     <section class="mb-stack-lg">
         <div class="bg-surface-container-lowest border border-outline-variant rounded-xl px-5 py-5 shadow-sm">
@@ -105,8 +95,7 @@
         </div>
     </section>
 
-    @if($activeTab === 'pembayaran')
-        @if($selectedChild)
+    @if($selectedChild)
             <section class="bg-surface-container-lowest border border-outline-variant rounded-2xl px-5 py-5 sm:px-6 shadow-sm mb-stack-lg">
                 <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 lg:gap-6">
                     <div class="flex items-center gap-4 min-w-0">

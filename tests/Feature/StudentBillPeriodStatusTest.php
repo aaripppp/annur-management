@@ -73,6 +73,48 @@ it('menampilkan status Sebagian pada kartu bulan yang dibayar sebagian', functio
         ->assertSee('Sebagian');
 });
 
+it('menampilkan status Lunas pada kartu bulan yang hanya berisi tagihan nol', function () {
+    $student = makeBillStudent(8);
+
+    $spp = makeBillType('SPP', auto: true, required: true);
+    makeBillRate($spp, 8, 1500000);
+    makeActiveSetting($student, $spp);
+
+    makeMonthlyBill($student, $spp, 0, month: 8, year: 2026);
+
+    Livewire::test(StudentDetail::class, ['student' => $student])
+        ->assertSee('Tagihan Agustus 2026')
+        ->assertSee('1 tagihan · Total sisa Rp 0')
+        ->assertSee('Lunas')
+        ->assertDontSee('Belum Lunas');
+});
+
+it('menampilkan tagihan nol sebagai Lunas dalam bulan campuran yang masih Belum Lunas', function () {
+    $student = makeBillStudent(8);
+
+    $spp = makeBillType('SPP', auto: true, required: true);
+    makeBillRate($spp, 8, 1500000);
+    $ekskul = makeBillType('Ekskul');
+    makeBillRate($ekskul, 8, 60000);
+    $osis = makeBillType('OSIS');
+    makeBillRate($osis, 8, 5000);
+
+    makeActiveSetting($student, $spp);
+    makeActiveSetting($student, $ekskul);
+    makeActiveSetting($student, $osis);
+
+    makeMonthlyBill($student, $spp, 0, month: 8, year: 2026);
+    makeMonthlyBill($student, $ekskul, 60000, month: 8, year: 2026);
+    makeMonthlyBill($student, $osis, 5000, month: 8, year: 2026);
+
+    Livewire::test(StudentDetail::class, ['student' => $student])
+        ->assertSee('Tagihan Agustus 2026')
+        ->assertSee('3 tagihan · Total sisa Rp 65.000')
+        ->assertSeeInOrder(['Belum Lunas', 'Total sisa'])
+        ->assertSee('Lunas')
+        ->assertSee('Belum Bayar');
+});
+
 it('menampilkan status Lunas pada kartu bulan yang sudah lunas', function () {
     $student = makeBillStudent(8);
 

@@ -87,11 +87,23 @@ it('membuat PDF Student satu halaman dengan tinggi dinamis untuk setiap jumlah d
         ->and($payment->details()->orderBy('id')->get(['description', 'amount'])->toArray())->toBe($details)
         ->and($payment->details()->count())->toBe($detailCount);
 })->with([
-    'few rows' => [1, 104.2],
-    'three rows' => [3, 115.6],
-    'medium rows' => [10, 155.5],
-    'many rows' => [25, 241.0],
+    'few rows' => [1, 96.2],
+    'three rows' => [3, 107.6],
+    'medium rows' => [10, 147.5],
+    'many rows' => [25, 233.0],
 ]);
+
+it('membuat PDF Student satu halaman yang lebih compact dari basis tinggi lama', function () {
+    $payment = createSinglePageStudentReceipt(1);
+
+    $response = $this->actingAs(User::factory()->create())
+        ->get(route('pembayaran.print', $payment));
+
+    $response->assertOk()->assertHeader('Content-Type', 'application/pdf');
+
+    expect(receiptPdfPageCount($response->getContent()))->toBe(1)
+        ->and(receiptPdfPageHeight($response->getContent()))->toBeLessThan(104.2 * 72 / 25.4);
+});
 
 it('membuat PDF Daycare satu halaman untuk setiap jumlah detail', function (int $detailCount) {
     $payment = createSinglePageDaycareReceipt($detailCount);

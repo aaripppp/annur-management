@@ -100,7 +100,7 @@
     <section class="mt-stack-lg overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
         <div class="flex flex-col gap-3 border-b border-outline-variant p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
             <div>
-                <p class="text-label-sm font-label-sm uppercase tracking-[0.14em] text-primary">Capaian Tagihan Bulan Ini</p>
+                <p class="text-label-sm font-label-sm uppercase tracking-[0.14em] text-primary">{{ $targetCardTitle }}</p>
                 <h2 class="mt-1 text-headline-sm font-headline-sm text-on-surface">{{ $targetArrearsSummary['period_label'] }}</h2>
                 <p class="mt-1 text-body-sm text-on-surface-variant">Target dan tunggakan tagihan bulanan siswa.</p>
             </div>
@@ -109,6 +109,35 @@
                 <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
             </a>
         </div>
+
+        <div class="grid grid-cols-1 gap-3 border-b border-outline-variant p-5 sm:grid-cols-3 sm:p-6">
+            <label class="block min-w-0 text-label-sm font-label-sm text-on-surface-variant">
+                BULAN
+                <select wire:model.live="targetMonth" class="mt-1 h-10 w-full rounded-lg border-outline-variant bg-surface-container-lowest px-3 text-body-sm text-on-surface shadow-sm focus:border-primary focus:ring-primary">
+                    @foreach($targetMonthOptions as $option)
+                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                    @endforeach
+                </select>
+            </label>
+            <label class="block min-w-0 text-label-sm font-label-sm text-on-surface-variant">
+                TAHUN
+                <select wire:model.live="targetYear" class="mt-1 h-10 w-full rounded-lg border-outline-variant bg-surface-container-lowest px-3 text-body-sm text-on-surface shadow-sm focus:border-primary focus:ring-primary">
+                    @foreach($targetYearOptions as $year)
+                        <option value="{{ $year }}">{{ $year }}</option>
+                    @endforeach
+                </select>
+            </label>
+            <label class="block min-w-0 text-label-sm font-label-sm text-on-surface-variant">
+                JENJANG
+                <select wire:model.live="targetJenjang" class="mt-1 h-10 w-full rounded-lg border-outline-variant bg-surface-container-lowest px-3 text-body-sm text-on-surface shadow-sm focus:border-primary focus:ring-primary">
+                    @foreach($targetLevelOptions as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
+        </div>
+
+        <div wire:loading.delay wire:target="targetMonth,targetYear,targetJenjang" class="px-5 pb-4 pt-1 text-xs text-on-surface-variant sm:px-6">Memperbarui capaian tagihan...</div>
 
         @if($targetArrearsSummary['bill_count'] === 0)
             <div class="px-5 py-8 text-center sm:px-6">

@@ -16,7 +16,7 @@ class ReceiptPrintController extends Controller
 {
     private const PDF_WIDTH_MM = 210;
 
-    private const PDF_BASE_HEIGHT_MM = 72;
+    private const PDF_BASE_HEIGHT_MM = 64;
 
     private const PDF_DETAIL_ROW_HEIGHT_MM = 8;
 

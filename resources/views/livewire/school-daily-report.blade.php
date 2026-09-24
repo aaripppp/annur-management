@@ -716,7 +716,7 @@
                             <option value="all">Semua Bank</option>
                             <option value="cash">Tunai / Cash</option>
                             @foreach($bankFilterOptions as $bankFilterOption)
-                                <option value="{{ $bankFilterOption->id }}">{{ $bankFilterOption->name }}</option>
+                                <option value="{{ $bankFilterOption->id }}">{{ $bankFilterOption->name }} • {{ $bankFilterOption->displayAccountNumber() ?? '-' }}</option>
                             @endforeach
                         </select>
                         @error('bankFilter') <p class="mt-1 text-body-sm text-error">{{ $message }}</p> @enderror

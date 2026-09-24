@@ -780,9 +780,20 @@ it('lists live bank masters as channel options without duplicating cash', functi
     expect($html)
         ->toContain('<option value="all">Semua Bank</option>')
         ->toContain('<option value="cash">Tunai / Cash</option>')
-        ->toContain('<option value="'.$first->id.'">BSI</option>')
-        ->toContain('<option value="'.$second->id.'">Mandiri</option>')
+        ->toContain('<option value="'.$first->id.'">BSI • 111111</option>')
+        ->toContain('<option value="'.$second->id.'">Mandiri • 222222</option>')
         ->and(substr_count($html, '<option value="cash">Tunai / Cash</option>'))->toBe(1);
+});
+
+it('shows a dash fallback for bank channel options without an account number', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create(['name' => 'BCA', 'account_number' => null]);
+
+    $html = Livewire::actingAs($user)
+        ->test(SchoolDailyReport::class, ['activeTab' => 'bank'])
+        ->html();
+
+    expect($html)->toContain('<option value="'.$bank->id.'">BCA • -</option>');
 });
 
 it('renders bank channel options from the database only', function () {

@@ -6,6 +6,7 @@ use App\Models\DaycarePayment;
 use App\Models\Payment;
 use App\Models\ProspectiveStudentPayment;
 use App\Services\DashboardOperationalMetricsService;
+use App\Services\ReportYearOptionsService;
 use App\Services\StudentTargetArrearsReportService;
 use App\Support\RecentTransaction;
 use App\Support\SchoolReportCategory;
@@ -46,6 +47,15 @@ class Dashboard extends Component
 
     public string $appliedOperationalEndDate = '';
 
+    #[Url(as: 'target_bulan')]
+    public int $targetMonth = 0;
+
+    #[Url(as: 'target_tahun')]
+    public int $targetYear = 0;
+
+    #[Url(as: 'target_jenjang')]
+    public string $targetJenjang = SchoolReportLevel::OPTION_ALL;
+
     public function mount(): void
     {
         $today = $this->now()->toDateString();
@@ -73,6 +83,17 @@ class Dashboard extends Component
         $this->appliedOperationalStartDate = $this->operationalStartDate;
         $this->appliedOperationalEndDate = $this->operationalEndDate;
 
+        if ($this->targetMonth < 1 || $this->targetMonth > 12) {
+            $this->targetMonth = (int) $this->now()->format('n');
+        }
+
+        if ($this->targetYear < 2000 || $this->targetYear > 2100) {
+            $this->targetYear = (int) $this->now()->format('Y');
+        }
+
+        if (! array_key_exists($this->targetJenjang, SchoolReportLevel::options())) {
+            $this->targetJenjang = SchoolReportLevel::OPTION_ALL;
+        }
     }
 
     public function updatedOperationalUnit(): void
@@ -106,6 +127,7 @@ class Dashboard extends Component
     public function render(
         DashboardOperationalMetricsService $operationalMetricsService,
         StudentTargetArrearsReportService $targetArrearsService,
+        ReportYearOptionsService $reportYearService,
     ): View {
         [$operationalStart, $operationalEnd] = $this->operationalDateRange();
         $operationalMetrics = $operationalMetricsService->generate(
@@ -114,11 +136,10 @@ class Dashboard extends Component
             $operationalEnd,
         );
         $currentMonth = $this->now();
-        $targetMonth = (int) $currentMonth->format('n');
-        $targetYear = (int) $currentMonth->format('Y');
         $targetArrearsSummary = $targetArrearsService->generateMonthlySummary(
-            $targetMonth,
-            $targetYear,
+            $this->targetMonth,
+            $this->targetYear,
+            SchoolReportLevel::fromValue($this->targetJenjang),
         );
 
         $recentStudentPayments = Payment::with([
@@ -231,15 +252,19 @@ class Dashboard extends Component
             'bankTotals' => $operationalMetrics['bank_totals'],
             'recentTransactions' => $recentTransactions,
             'targetArrearsSummary' => $targetArrearsSummary,
+            'targetCardTitle' => $this->targetCardTitle($targetArrearsSummary['period_label']),
             'targetArrearsUrl' => route('laporan.index', [
                 'tab' => 'target',
                 'target_mode' => StudentTargetArrearsReportService::MODE_MONTHLY,
-                'target_month' => $targetMonth,
-                'target_year' => $targetYear,
-                'jenjang' => SchoolReportLevel::OPTION_ALL,
+                'target_month' => $this->targetMonth,
+                'target_year' => $this->targetYear,
+                'jenjang' => $this->targetJenjang,
             ]),
             'operationalUnitOptions' => DashboardOperationalMetricsService::unitOptions(),
             'operationalPeriodOptions' => self::periodOptions(),
+            'targetMonthOptions' => $this->monthOptions(),
+            'targetYearOptions' => $reportYearService->options(),
+            'targetLevelOptions' => SchoolReportLevel::options(),
         ]);
     }
 
@@ -295,6 +320,35 @@ class Dashboard extends Component
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    private function targetCardTitle(string $periodLabel): string
+    {
+        $current = $this->now();
+
+        $isCurrentPeriod = $this->targetMonth === (int) $current->format('n')
+            && $this->targetYear === (int) $current->format('Y');
+
+        return $isCurrentPeriod
+            ? 'Capaian Tagihan Bulan Ini'
+            : 'Capaian Tagihan '.$periodLabel;
+    }
+
+    /** @return list<array{value: int, label: string}> */
+    private function monthOptions(): array
+    {
+        $months = [];
+
+        foreach (range(1, 12) as $month) {
+            $months[] = [
+                'value' => $month,
+                'label' => CarbonImmutable::create(2000, $month, 1)
+                    ->settings(['locale' => 'id'])
+                    ->translatedFormat('F'),
+            ];
+        }
+
+        return $months;
     }
 
     private function now(): CarbonImmutable

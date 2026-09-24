@@ -8,6 +8,48 @@ use App\Models\Student;
 use App\Models\StudentBill;
 use App\Models\User;
 
+it('menghitung status Lunas untuk tagihan bernilai nol tanpa pembayaran', function () {
+    $student = Student::factory()->create();
+    $type = PaymentType::factory()->create();
+
+    $bill = StudentBill::factory()->create([
+        'student_id' => $student->id,
+        'payment_type_id' => $type->id,
+        'amount' => 0,
+        'period_month' => 8,
+        'period_year' => 2026,
+    ]);
+
+    expect((float) $bill->effective_amount)->toBe(0.0)
+        ->and((float) $bill->paid_amount)->toBe(0.0)
+        ->and((float) $bill->remaining_amount)->toBe(0.0)
+        ->and($bill->status)->toBe(StudentBill::STATUS_PAID)
+        ->and($bill->isSettled())->toBeTrue();
+});
+
+it('kembali ke status Belum Bayar saat tagihan nol diubah menjadi positif', function () {
+    $student = Student::factory()->create();
+    $type = PaymentType::factory()->create();
+
+    $bill = StudentBill::factory()->create([
+        'student_id' => $student->id,
+        'payment_type_id' => $type->id,
+        'amount' => 0,
+        'period_month' => 8,
+        'period_year' => 2026,
+    ]);
+
+    expect($bill->status)->toBe(StudentBill::STATUS_PAID);
+
+    $bill->update(['amount' => 970000]);
+
+    $bill->refresh();
+
+    expect((float) $bill->remaining_amount)->toBe(970000.0)
+        ->and($bill->status)->toBe(StudentBill::STATUS_UNPAID)
+        ->and($bill->isSettled())->toBeFalse();
+});
+
 it('menghitung status tagihan Belum Bayar', function () {
     $student = Student::factory()->create();
     $type = PaymentType::factory()->create();

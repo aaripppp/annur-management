@@ -16,6 +16,8 @@
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
+            min-height: 0 !important;
+            height: auto !important;
         }
 
         body > aside,

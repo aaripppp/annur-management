@@ -228,7 +228,7 @@ it('memberi ruang otorisasi dan tinggi kertas dinamis yang sama dengan kwitansi 
 
     $daycarePaper = $renderer->papers[0];
     $studentPaper = $renderer->papers[1];
-    $expectedHeightMillimeters = 72 + (3 * 5.7) + 26.5;
+    $expectedHeightMillimeters = 64 + (3 * 5.7) + 26.5;
 
     expect($daycarePaper[2])->toBe($studentPaper[2])
         ->and($daycarePaper[3])->toBe($studentPaper[3])
