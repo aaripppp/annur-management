@@ -4,7 +4,7 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <title>Kwitansi Pembayaran - Annur Management</title>
     <style>
-        @page { margin: 0; }
+        @page { size: 216mm 330mm; margin: 0; }
         * { box-sizing: border-box; }
         body { margin: 0; padding: 2mm; color: #172033; background: #ffffff; font-family: "DejaVu Sans", sans-serif; font-size: 9px; }
         .receipt-wrapper { width: 100%; border: 1px solid #d8dee8; border-radius: 10px; overflow: hidden; page-break-inside: avoid; break-inside: avoid; }

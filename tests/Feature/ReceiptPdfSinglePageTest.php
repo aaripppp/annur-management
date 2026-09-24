@@ -62,14 +62,15 @@ function receiptPdfPageCount(string $pdf): int
     return preg_match_all('/\/Type\s*\/Page\b/', $pdf);
 }
 
-function receiptPdfPageHeight(string $pdf): float
+/** @return array{0: float, 1: float} */
+function receiptPdfPageSize(string $pdf): array
 {
-    preg_match('/\/MediaBox\s*\[\s*\S+\s+\S+\s+\S+\s+(\S+)\s*]/', $pdf, $matches);
+    preg_match('/\/MediaBox\s*\[\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*]/', $pdf, $matches);
 
-    return (float) ($matches[1] ?? 0);
+    return [(float) ($matches[3] ?? 0), (float) ($matches[4] ?? 0)];
 }
 
-it('membuat PDF Student satu halaman dengan tinggi dinamis untuk setiap jumlah detail', function (int $detailCount, float $expectedHeightInMillimeters) {
+it('merender PDF Student satu halaman di atas kertas F4B portrait untuk setiap jumlah detail', function (int $detailCount) {
     $payment = createSinglePageStudentReceipt($detailCount);
     $receiptNumber = $payment->receipt_number;
     $total = $payment->total_amount;
@@ -80,20 +81,18 @@ it('membuat PDF Student satu halaman dengan tinggi dinamis untuk setiap jumlah d
 
     $response->assertOk()->assertHeader('Content-Type', 'application/pdf');
 
+    [$widthPt, $heightPt] = receiptPdfPageSize($response->getContent());
+
     expect(receiptPdfPageCount($response->getContent()))->toBe(1)
-        ->and(abs(receiptPdfPageHeight($response->getContent()) - ($expectedHeightInMillimeters * 72 / 25.4)))->toBeLessThan(0.01)
+        ->and(abs($widthPt - 612.28))->toBeLessThan(0.01)
+        ->and(abs($heightPt - 935.43))->toBeLessThan(0.01)
         ->and($payment->refresh()->receipt_number)->toBe($receiptNumber)
         ->and($payment->total_amount)->toBe($total)
         ->and($payment->details()->orderBy('id')->get(['description', 'amount'])->toArray())->toBe($details)
         ->and($payment->details()->count())->toBe($detailCount);
-})->with([
-    'few rows' => [1, 96.2],
-    'three rows' => [3, 107.6],
-    'medium rows' => [10, 147.5],
-    'many rows' => [25, 233.0],
-]);
+})->with([1, 3, 10, 25]);
 
-it('membuat PDF Student satu halaman yang lebih compact dari basis tinggi lama', function () {
+it('memakai kertas F4B portrait dan bukan tinggi halaman dinamis pada PDF kwitansi', function () {
     $payment = createSinglePageStudentReceipt(1);
 
     $response = $this->actingAs(User::factory()->create())
@@ -101,8 +100,12 @@ it('membuat PDF Student satu halaman yang lebih compact dari basis tinggi lama',
 
     $response->assertOk()->assertHeader('Content-Type', 'application/pdf');
 
+    [$widthPt, $heightPt] = receiptPdfPageSize($response->getContent());
+
     expect(receiptPdfPageCount($response->getContent()))->toBe(1)
-        ->and(receiptPdfPageHeight($response->getContent()))->toBeLessThan(104.2 * 72 / 25.4);
+        ->and(abs($widthPt - 612.28))->toBeLessThan(0.01)
+        ->and(abs($heightPt - 935.43))->toBeLessThan(0.01)
+        ->and($heightPt)->toBeGreaterThan($widthPt);
 });
 
 it('membuat PDF Daycare satu halaman untuk setiap jumlah detail', function (int $detailCount) {

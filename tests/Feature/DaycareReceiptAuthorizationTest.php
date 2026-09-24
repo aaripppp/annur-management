@@ -206,7 +206,7 @@ it('tidak menampilkan stempel pada preview web Daycare', function () {
         ->assertDontSee('stample', false);
 });
 
-it('memberi ruang otorisasi dan tinggi kertas dinamis yang sama dengan kwitansi Student', function () {
+it('memberi ruang otorisasi dan kertas F4B portrait yang sama dengan kwitansi Student', function () {
     $creator = User::factory()->create();
     $daycarePayment = daycareAuthorizationPayment($creator);
 
@@ -228,7 +228,7 @@ it('memberi ruang otorisasi dan tinggi kertas dinamis yang sama dengan kwitansi 
 
     $daycarePaper = $renderer->papers[0];
     $studentPaper = $renderer->papers[1];
-    $expectedHeightMillimeters = 64 + (3 * 5.7) + 26.5;
+    $expectedHeightMillimeters = 330;
 
     expect($daycarePaper[2])->toBe($studentPaper[2])
         ->and($daycarePaper[3])->toBe($studentPaper[3])

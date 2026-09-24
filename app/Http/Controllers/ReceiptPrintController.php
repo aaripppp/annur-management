@@ -14,15 +14,9 @@ use Illuminate\Support\Carbon;
 
 class ReceiptPrintController extends Controller
 {
-    private const PDF_WIDTH_MM = 210;
+    private const PDF_WIDTH_PT = 612.28;
 
-    private const PDF_BASE_HEIGHT_MM = 64;
-
-    private const PDF_DETAIL_ROW_HEIGHT_MM = 8;
-
-    private const PDF_STUDENT_DETAIL_ROW_HEIGHT_MM = 5.7;
-
-    private const PDF_AUTHORIZATION_HEIGHT_MM = 26.5;
+    private const PDF_HEIGHT_PT = 935.43;
 
     public function student(Payment $payment): Response
     {
@@ -289,24 +283,9 @@ class ReceiptPrintController extends Controller
      */
     private function respond(array $receipt, string $filename, bool $download): Response
     {
-        $detailCount = count($receipt['details']);
-        $notesHeight = $receipt['notes'] !== null
-            ? 6 + ((int) ceil(mb_strlen($receipt['notes']) / 100) * 3)
-            : 0;
-        $hasAuthorization = $receipt['creatorName'] !== null;
-        $detailRowHeight = $hasAuthorization ? self::PDF_STUDENT_DETAIL_ROW_HEIGHT_MM : self::PDF_DETAIL_ROW_HEIGHT_MM;
-        $authorizationHeight = $hasAuthorization ? self::PDF_AUTHORIZATION_HEIGHT_MM : 0;
-        $heightInMillimeters = self::PDF_BASE_HEIGHT_MM + ($detailCount * $detailRowHeight) + $notesHeight + $authorizationHeight;
-        $pointsPerMillimeter = 72 / 25.4;
-
         $pdf = Pdf::loadView('receipts.pdf', compact('receipt'))
             ->setOption(['defaultFont' => 'DejaVu Sans', 'isRemoteEnabled' => false])
-            ->setPaper([
-                0,
-                0,
-                self::PDF_WIDTH_MM * $pointsPerMillimeter,
-                $heightInMillimeters * $pointsPerMillimeter,
-            ]);
+            ->setPaper([0, 0, self::PDF_WIDTH_PT, self::PDF_HEIGHT_PT]);
 
         return $download ? $pdf->download($filename) : $pdf->stream($filename);
     }
