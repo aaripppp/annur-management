@@ -488,7 +488,7 @@ it('row student menampilkan tombol hapus', function () {
 
     Livewire::test(PaymentIndex::class)
         ->call('setActiveTab', 'history')
-        ->assertSeeHtml('wire:click="confirmDelete('.$studentPayment->id.')"');
+        ->assertSeeHtml('wire:click="confirmDelete(\''.$studentPayment->id.'\', \'student\')"', false);
 });
 
 it('riwayat siswa TIDAK menampilkan transaksi daycare', function () {

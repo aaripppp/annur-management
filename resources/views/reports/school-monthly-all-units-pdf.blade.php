@@ -5,8 +5,8 @@
     <title>Laporan Penerimaan Seluruh Unit</title>
     @php
         $categoryCount = max(count($report['categories']), 1);
-        $bankCategoryWidth = number_format((100 - 18 - 11) / $categoryCount, 6, '.', '').'%';
-        $cashCategoryWidth = number_format((100 - 11) / $categoryCount, 6, '.', '').'%';
+        $bankCategoryWidth = number_format((100 - 8 - 8) / $categoryCount, 6, '.', '').'%';
+        $cashCategoryWidth = number_format((100 - 8) / $categoryCount, 6, '.', '').'%';
         $categoryFontSize = $categoryCount <= 3 ? 7 : ($categoryCount <= 6 ? 6.6 : ($categoryCount <= 9 ? 6.2 : ($categoryCount <= 12 ? 5.8 : 5.3)));
     @endphp
     <style>
@@ -29,11 +29,11 @@
         .report-table { table-layout: fixed; font-size: 7px; }
         .report-table th, .report-table td { padding: 1px 2px; border: .5px solid #000; vertical-align: middle; }
         .report-table th { text-align: center; }
-        .bank { width: 18%; }
+        .bank { width: 8%; }
         .money { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
         .report-table th.money { white-space: normal; text-align: center; font-variant-numeric: normal; word-wrap: break-word; }
         .report-table td.money { font-size: {{ $categoryFontSize }}px; }
-        .row-total { width: 11%; font-weight: bold; }
+        .row-total { width: 8%; font-weight: bold; }
         .total-row { font-weight: bold; }
         .empty { padding: 5px !important; text-align: center; }
         .summary-table { width: 48%; margin: 5px 0 0 auto; page-break-inside: avoid; }
@@ -69,7 +69,7 @@
 
         <div class="section-title">PENERIMAAN TUNAI</div>
         <table class="report-table cash-table">
-            <thead><tr>@foreach($report['categories'] as $category)<th class="money" style="width: {{ $cashCategoryWidth }}">{{ $category['name'] }}</th>@endforeach<th class="money" style="width: 11%;">Total</th></tr></thead>
+            <thead><tr>@foreach($report['categories'] as $category)<th class="money" style="width: {{ $cashCategoryWidth }}">{{ $category['name'] }}</th>@endforeach<th class="money" style="width: 8%;">Total</th></tr></thead>
             <tbody><tr>@foreach($report['categories'] as $category)<td class="money">{{ $report['cash']['amounts'][$category['key']] > 0 ? 'Rp '.number_format($report['cash']['amounts'][$category['key']], 0, ',', '.') : '' }}</td>@endforeach<td class="money total-row">{{ $report['cash']['total'] > 0 ? 'Rp '.number_format($report['cash']['total'], 0, ',', '.') : '' }}</td></tr></tbody>
         </table>
 

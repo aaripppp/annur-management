@@ -148,9 +148,22 @@ it('protects the report page and spreadsheet endpoint with authentication', func
 });
 
 it('renders the daily empty state and the monthly empty state', function () {
+    AcademicYear::deactivateAll();
+    AcademicYear::query()->updateOrCreate(
+        ['year' => '2026/2027'],
+        [
+            'is_active' => true,
+            'start_date' => '2026-07-01',
+            'end_date' => '2027-06-30',
+        ],
+    );
     $this->actingAs(User::factory()->create());
 
-    Livewire::test(SchoolDailyReport::class, ['reportDate' => '2026-08-27', 'reportMonth' => 8, 'reportYear' => 2026])
+    Livewire::test(SchoolDailyReport::class, [
+        'reportDate' => '2026-08-27',
+        'reportMonth' => 8,
+        'monthlyAcademicYear' => '2026/2027',
+    ])
         ->assertSee('Laporan Harian')
         ->assertSee('Belum ada transaksi sekolah pada periode ini.')
         ->assertSee('Rp 0')
@@ -533,9 +546,22 @@ it('rejects a student report end date before its start date', function () {
 });
 
 it('wires the jenjang filter on the livewire report page', function () {
+    AcademicYear::deactivateAll();
+    AcademicYear::query()->updateOrCreate(
+        ['year' => '2026/2027'],
+        [
+            'is_active' => true,
+            'start_date' => '2026-07-01',
+            'end_date' => '2027-06-30',
+        ],
+    );
     $this->actingAs(User::factory()->create());
 
-    Livewire::test(SchoolDailyReport::class, ['reportDate' => '2026-08-27', 'reportMonth' => 8, 'reportYear' => 2026])
+    Livewire::test(SchoolDailyReport::class, [
+        'reportDate' => '2026-08-27',
+        'reportMonth' => 8,
+        'monthlyAcademicYear' => '2026/2027',
+    ])
         ->assertSet('schoolLevel', 'all')
         ->assertSee('Dari Tanggal')
         ->assertSee('Sampai Tanggal')

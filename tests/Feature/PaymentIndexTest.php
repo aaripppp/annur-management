@@ -1,17 +1,30 @@
 <?php
 
+use App\Enums\BillFrequency;
 use App\Livewire\Dashboard;
 use App\Livewire\PaymentIndex;
 use App\Livewire\StudentDetail;
 use App\Models\AcademicYear;
 use App\Models\Bank;
+use App\Models\BillAdjustment;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
+use App\Models\PaymentType;
+use App\Models\ProspectiveStudent;
+use App\Models\ProspectiveStudentBill;
+use App\Models\ProspectiveStudentPayment;
+use App\Models\ProspectiveStudentPaymentDetail;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\StudentAcademicEnrollment;
 use App\Models\StudentBill;
 use App\Models\User;
+use App\Services\TransactionHistoryService;
+use App\Support\TransactionHistoryRow;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
@@ -109,6 +122,53 @@ function makeHistoryPayment(
     return $payment->refresh();
 }
 
+function makeProspectiveHistoryPayment(
+    ProspectiveStudent $prospect,
+    Bank $bank,
+    User $user,
+    string $receiptNumber,
+    string $paymentDate = '2026-08-10',
+    string $status = ProspectiveStudentPayment::STATUS_ACTIVE
+): ProspectiveStudentPayment {
+    return ProspectiveStudentPayment::query()->create([
+        'receipt_number' => $receiptNumber,
+        'prospective_student_id' => $prospect->id,
+        'bank_id' => $bank->id,
+        'payment_date' => $paymentDate,
+        'total_amount' => 250000,
+        'status' => $status,
+        'created_by' => $user->id,
+    ]);
+}
+
+function makeProspectiveBill(
+    ProspectiveStudent $prospect,
+    PaymentType $type,
+    int $amount,
+    string $academicYear = '2026/2027'
+): ProspectiveStudentBill {
+    return ProspectiveStudentBill::query()->create([
+        'prospective_student_id' => $prospect->id,
+        'payment_type_id' => $type->id,
+        'amount' => $amount,
+        'billing_frequency' => BillFrequency::OneTime,
+        'academic_year' => $academicYear,
+    ]);
+}
+
+function payProspectiveBill(
+    ProspectiveStudentPayment $payment,
+    ProspectiveStudentBill $bill,
+    int $amount
+): ProspectiveStudentPaymentDetail {
+    return ProspectiveStudentPaymentDetail::query()->create([
+        'prospective_student_payment_id' => $payment->id,
+        'prospective_student_bill_id' => $bill->id,
+        'payment_type_id' => $bill->payment_type_id,
+        'amount' => $amount,
+    ]);
+}
+
 it('menampilkan pencarian siswa pada halaman pembayaran', function () {
     Livewire::test(PaymentIndex::class)
         ->assertSee('Pembayaran')
@@ -184,8 +244,8 @@ it('menampilkan detail dan edit hanya untuk transaksi aktif', function () {
         ->assertSee(route('pembayaran.show', $cancelledPayment->id), false)
         ->assertSee(route('pembayaran.edit', $activePayment->id), false)
         ->assertDontSee(route('pembayaran.edit', $cancelledPayment->id), false)
-        ->assertSeeHtml('wire:click="confirmDelete('.$activePayment->id.')"')
-        ->assertSeeHtml('wire:click="confirmDelete('.$cancelledPayment->id.')"')
+        ->assertSeeHtml('wire:click="confirmDelete(\''.$activePayment->id.'\', \'student\')"', false)
+        ->assertSeeHtml('wire:click="confirmDelete(\''.$cancelledPayment->id.'\', \'student\')"', false)
         ->assertSeeHtml('title="Hapus Transaksi"')
         ->assertDontSeeHtml('title="Batalkan Transaksi"');
 });
@@ -1397,4 +1457,654 @@ it('edit profil siswa lulus tidak mengubah enrollment historis', function () {
     expect($student->fresh()->class_id)->toBe($newProfileClass->id)
         ->and($historicalEnrollment->fresh()->school_class_id)->toBe($historicalClass->id)
         ->and($graduatedEnrollment->fresh()->school_class_id)->toBe($graduationClass->id);
+});
+
+it('baris riwayat calon siswa menampilkan tombol hapus transaksi', function () {
+    $user = User::factory()->create();
+    $prospect = ProspectiveStudent::factory()->create();
+    $payment = makeProspectiveHistoryPayment($prospect, Bank::factory()->create(), $user, 'KWT-REG-BTN');
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->assertSee($payment->receipt_number)
+        ->assertSeeHtml('wire:click="confirmDelete(\'prospect-'.$payment->id.'\', \'prospective\')"', false)
+        ->assertSeeHtml('title="Hapus Transaksi"', false);
+});
+
+it('baris riwayat siswa tetap menampilkan tombol hapus transaksi seperti sebelumnya', function () {
+    $user = User::factory()->create();
+    $payment = makeHistoryPayment(makeBillStudent(), Bank::factory()->create(), $user, 'KWT-STUDENT-BTN', '2026-08-10');
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->assertSee($payment->receipt_number)
+        ->assertSeeHtml('wire:click="confirmDelete(\''.$payment->id.'\', \'student\')"', false)
+        ->assertSeeHtml('title="Hapus Transaksi"', false);
+});
+
+it('delete transaksi calon siswa menghapus payment beserta detailnya', function () {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $prospect = ProspectiveStudent::factory()->create();
+    $bank = Bank::factory()->create();
+    $type = makeBillType('Formulir Delete');
+    $bill = makeProspectiveBill($prospect, $type, 350000);
+    $payment = makeProspectiveHistoryPayment($prospect, $bank, $user, 'KWT-REG-DELETE');
+    payProspectiveBill($payment, $bill, 350000);
+
+    expect($bill->fresh()->paid_amount)->toBe(350000.0);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->call('confirmDelete', 'prospect-'.$payment->id, 'prospective')
+        ->assertSet('isDeleteModalOpen', true)
+        ->assertSet('deletingId', $payment->id)
+        ->assertSet('deletingSource', 'prospective')
+        ->call('delete')
+        ->assertSet('isDeleteModalOpen', false)
+        ->assertSet('deletingId', null)
+        ->assertSet('deletingSource', '');
+
+    expect(ProspectiveStudentPayment::query()->whereKey($payment->id)->exists())->toBeFalse()
+        ->and(ProspectiveStudentPaymentDetail::query()
+            ->where('prospective_student_payment_id', $payment->id)
+            ->exists())->toBeFalse()
+        ->and(ProspectiveStudentBill::query()->whereKey($bill->id)->exists())->toBeTrue();
+});
+
+it('permanent delete calon siswa mengembalikan tagihan lunas menjadi belum bayar', function () {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $prospect = ProspectiveStudent::factory()->create();
+    $type = makeBillType('Formulir Lunas');
+    $bill = makeProspectiveBill($prospect, $type, 350000);
+    $payment = makeProspectiveHistoryPayment($prospect, Bank::factory()->create(), $user, 'KWT-REG-LUNAS');
+    payProspectiveBill($payment, $bill, 350000);
+
+    expect($bill->fresh()->remaining_amount)->toBe(0.0)
+        ->and($bill->fresh()->status)->toBe(ProspectiveStudentBill::STATUS_PAID);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->call('confirmDelete', 'prospect-'.$payment->id, 'prospective')
+        ->call('delete');
+
+    expect($bill->fresh()->paid_amount)->toBe(0.0)
+        ->and($bill->fresh()->remaining_amount)->toBe(350000.0)
+        ->and($bill->fresh()->status)->toBe(ProspectiveStudentBill::STATUS_UNPAID);
+});
+
+it('permanent delete calon siswa mengembalikan saldo parsial tanpa merusak pembayaran lain', function () {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $prospect = ProspectiveStudent::factory()->create();
+    $type = makeBillType('Formulir Parsial');
+    $bill = makeProspectiveBill($prospect, $type, 350000);
+    $firstPayment = makeProspectiveHistoryPayment($prospect, Bank::factory()->create(), $user, 'KWT-REG-PARTIAL-A');
+    $secondPayment = makeProspectiveHistoryPayment($prospect, Bank::factory()->create(), $user, 'KWT-REG-PARTIAL-B');
+    payProspectiveBill($firstPayment, $bill, 200000);
+    payProspectiveBill($secondPayment, $bill, 150000);
+
+    expect($bill->fresh()->paid_amount)->toBe(350000.0)
+        ->and($bill->fresh()->status)->toBe(ProspectiveStudentBill::STATUS_PAID);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->call('confirmDelete', 'prospect-'.$firstPayment->id, 'prospective')
+        ->call('delete');
+
+    expect(ProspectiveStudentPayment::query()->whereKey($firstPayment->id)->exists())->toBeFalse()
+        ->and($secondPayment->fresh())->not->toBeNull()
+        ->and($bill->fresh()->paid_amount)->toBe(150000.0)
+        ->and($bill->fresh()->remaining_amount)->toBe(200000.0)
+        ->and($bill->fresh()->status)->toBe(ProspectiveStudentBill::STATUS_PARTIAL);
+});
+
+it('permanent delete calon siswa menghapus file receipt dari storage', function () {
+    Storage::fake('public');
+
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $payment = makeProspectiveHistoryPayment(ProspectiveStudent::factory()->create(), Bank::factory()->create(), $user, 'KWT-REG-RECEIPT');
+    Storage::disk('public')->put('receipts/prospect-delete-proof.pdf', 'receipt');
+    $payment->update(['receipt' => 'receipts/prospect-delete-proof.pdf']);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->call('confirmDelete', 'prospect-'.$payment->id, 'prospective')
+        ->call('delete');
+
+    Storage::disk('public')->assertMissing('receipts/prospect-delete-proof.pdf');
+});
+
+it('delete transaksi calon siswa menampilkan flash sukses', function () {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $payment = makeProspectiveHistoryPayment(ProspectiveStudent::factory()->create(), Bank::factory()->create(), $user, 'KWT-REG-FLASH');
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->call('confirmDelete', 'prospect-'.$payment->id, 'prospective')
+        ->call('delete')
+        ->assertHasNoErrors();
+
+    expect(ProspectiveStudentPayment::query()->whereKey($payment->id)->exists())->toBeFalse()
+        ->and(session()->all()['_flash']['new'] ?? [])->toContain('success');
+});
+
+it('transaksi calon siswa hilang dari riwayat setelah dihapus', function () {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $prospect = ProspectiveStudent::factory()->create();
+    $type = makeBillType('Formulir Riwayat');
+    $bill = makeProspectiveBill($prospect, $type, 350000);
+    $payment = makeProspectiveHistoryPayment($prospect, Bank::factory()->create(), $user, 'KWT-REG-RIWAYAT');
+    payProspectiveBill($payment, $bill, 350000);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->assertSee('KWT-REG-RIWAYAT')
+        ->call('confirmDelete', 'prospect-'.$payment->id, 'prospective')
+        ->call('delete')
+        ->assertDontSee('KWT-REG-RIWAYAT');
+});
+
+it('id baris calon siswa yang di-namespace di-resolve ke id payment yang benar', function () {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $payment = makeProspectiveHistoryPayment(ProspectiveStudent::factory()->create(), Bank::factory()->create(), $user, 'KWT-REG-ID');
+
+    $component = Livewire::test(PaymentIndex::class)->call('setActiveTab', 'history');
+
+    $component->call('confirmDelete', 'prospect-'.$payment->id, 'prospective')
+        ->assertSet('deletingId', $payment->id)
+        ->assertSet('isDeleteModalOpen', true);
+
+    $component->call('cancelDelete')
+        ->assertSet('deletingId', null)
+        ->assertSet('isDeleteModalOpen', false);
+
+    $component->call('confirmDelete', 'prospect-'.$payment->id, 'prospective')
+        ->assertSet('deletingId', $payment->id)
+        ->assertSet('deletingSource', 'prospective');
+});
+
+it('id baris rusak tidak pernah di-resolve ke payment', function (mixed $rowId, string $source) {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $payment = makeProspectiveHistoryPayment(ProspectiveStudent::factory()->create(), Bank::factory()->create(), $user, 'KWT-REG-MALFORMED');
+
+    $component = Livewire::test(PaymentIndex::class)->call('setActiveTab', 'history');
+
+    $component->call('confirmDelete', $rowId, $source)
+        ->assertSet('isDeleteModalOpen', false)
+        ->assertSet('deletingId', null);
+
+    $component->call('delete')
+        ->assertSet('isDeleteModalOpen', false);
+
+    expect(ProspectiveStudentPayment::query()->whereKey($payment->id)->exists())->toBeTrue();
+})->with([
+    'prefix kosong' => ['prospect-', 'prospective'],
+    'prefix terpotong' => ['prospe', 'prospective'],
+    'bagian angka bukan digit' => ['prospect-abc', 'prospective'],
+    'bagian angka negatif' => ['prospect--5', 'prospective'],
+    'bagian angka nol' => ['prospect-0', 'prospective'],
+    'id siswa negatif' => ['-5', 'student'],
+    'id siswa nol' => ['0', 'student'],
+    'sumber tidak dikenal' => ['1', 'unknown'],
+    'sumber kosong' => ['1', ''],
+    'id siswa tanpa prefix' => ['5', 'prospective'],
+    'id prospek tanpa prefix' => ['prospect-5', 'student'],
+]);
+
+it('delete transaksi siswa tetap memakai flow dan service siswa', function () {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $student = makeBillStudent();
+    $type = makeBillType('SPP Delete Siswa');
+    $bill = makeMonthlyBill($student, $type, 970000, 8, 2026);
+    $payment = payWorkspaceBill($bill, 400000);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->call('confirmDelete', $payment->id)
+        ->assertSet('deletingSource', 'student')
+        ->call('delete')
+        ->assertHasNoErrors();
+
+    expect($payment->fresh())->toBeNull()
+        ->and(PaymentDetail::query()->where('payment_id', $payment->id)->exists())->toBeFalse()
+        ->and($bill->fresh()->paid_amount)->toBe(0.0)
+        ->and($bill->fresh()->remaining_amount)->toBe(970000.0);
+});
+
+it('delete menerima kedua argumen dan sumber tidak dikenal tidak menghapus apa pun', function () {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $payment = makeHistoryPayment(makeBillStudent(), Bank::factory()->create(), $user, 'KWT-GUARD', '2026-08-10');
+
+    $component = Livewire::test(PaymentIndex::class)->call('setActiveTab', 'history');
+
+    $component->set('deletingId', $payment->id)
+        ->set('deletingSource', 'unknown')
+        ->call('delete')
+        ->assertSet('isDeleteModalOpen', false);
+
+    expect($payment->fresh())->not->toBeNull();
+
+    $component->set('deletingSource', 'student')
+        ->call('delete')
+        ->assertSet('isDeleteModalOpen', false);
+
+    expect($payment->fresh())->toBeNull();
+});
+
+it('lookup payment untuk hapus hanya terjadi sekali saat modal dibuka bukan per baris', function () {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $prospect = ProspectiveStudent::factory()->create();
+    $bank = Bank::factory()->create();
+    $bill = makeProspectiveBill($prospect, makeBillType('Formulir Lookup'), 350000);
+
+    for ($index = 1; $index <= 12; $index++) {
+        $payment = makeProspectiveHistoryPayment($prospect, $bank, $user, 'KWT-REG-LOOKUP-'.$index);
+        payProspectiveBill($payment, $bill, 100000);
+    }
+
+    $targetId = ProspectiveStudentPayment::query()->orderByDesc('id')->value('id');
+
+    $component = Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->assertSee('KWT-REG-LOOKUP-1')
+        ->assertSeeHtml('wire:click="confirmDelete(\'prospect-'.$targetId.'\', \'prospective\')"', false);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $component->call('confirmDelete', 'prospect-'.$targetId, 'prospective')
+        ->assertSet('isDeleteModalOpen', true)
+        ->assertSet('deletingId', $targetId);
+
+    $queries = collect(DB::getQueryLog())->pluck('query');
+    DB::disableQueryLog();
+    DB::flushQueryLog();
+
+    $singleIdLookups = $queries
+        ->filter(fn (string $query): bool => str_contains($query, 'from "prospective_student_payments"')
+            && str_contains($query, '"prospective_student_payments"."id" = ?'))
+        ->count();
+
+    $bulkLookups = $queries
+        ->filter(fn (string $query): bool => str_contains($query, 'from "prospective_student_payments"')
+            && str_contains($query, 'in (?'))
+        ->count();
+
+    expect($singleIdLookups)->toBeLessThanOrEqual(2)
+        ->and($bulkLookups)->toBeLessThanOrEqual(2);
+});
+
+function historyPaginator(array $filters = []): LengthAwarePaginator
+{
+    return app(TransactionHistoryService::class)->getHistory(...$filters);
+}
+
+/** @return Collection<int, TransactionHistoryRow> */
+function historyRows(array $filters = []): Collection
+{
+    return collect(historyPaginator($filters)->items());
+}
+
+function historyRow(string $receiptNumber, array $filters = []): TransactionHistoryRow
+{
+    $row = historyRows($filters)->firstWhere('receiptNumber', $receiptNumber);
+
+    expect($row)->toBeInstanceOf(TransactionHistoryRow::class);
+
+    return $row;
+}
+
+function setPaymentCreatedAt(Payment|ProspectiveStudentPayment $payment, string $createdAt): void
+{
+    $payment->forceFill(['created_at' => $createdAt, 'updated_at' => $createdAt])->saveQuietly();
+}
+
+/**
+ * Kumpulkan SQL yang dijalankan di dalam closure, lalu kembalikan daftar string SQL.
+ * Memakai query log (bukan DB::listen) supaya aman dipanggil berulang dalam satu test.
+ *
+ * @return list<string>
+ */
+function captureHistoryQueries(Closure $run): array
+{
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $run();
+
+    $queries = collect(DB::getQueryLog())->pluck('query')->all();
+    DB::disableQueryLog();
+    DB::flushQueryLog();
+
+    return $queries;
+}
+
+function countQueriesContaining(array $queries, string $needle): int
+{
+    return collect($queries)->filter(fn (string $sql): bool => str_contains($sql, $needle))->count();
+}
+
+const PROSPECT_LAZY_DETAIL_QUERY = '"prospective_student_payment_details"."prospective_student_bill_id" = ?';
+
+const PROSPECT_LAZY_PAYMENT_QUERY = '"prospective_student_payments"."id" = ?';
+
+const STUDENT_LAZY_DETAIL_QUERY = '"payment_details"."bill_id" = ?';
+
+const STUDENT_LAZY_ADJUSTMENT_QUERY = '"bill_adjustments"."bill_id" = ?';
+
+/**
+ * @param  Closure(): mixed  $run
+ * @return array{total: int, lazy: int}
+ */
+function measureHistoryQueries(Closure $run): array
+{
+    $queries = captureHistoryQueries($run);
+
+    return [
+        'total' => count($queries),
+        'lazy' => collect([
+            PROSPECT_LAZY_DETAIL_QUERY,
+            PROSPECT_LAZY_PAYMENT_QUERY,
+            STUDENT_LAZY_DETAIL_QUERY,
+            STUDENT_LAZY_ADJUSTMENT_QUERY,
+        ])->sum(fn (string $needle): int => countQueriesContaining($queries, $needle)),
+    ];
+}
+
+function makeProspectiveSettlementPayment(
+    ProspectiveStudent $prospect,
+    Bank $bank,
+    User $user,
+    string $receiptNumber,
+    string $typeName,
+    int $billAmount,
+    int $paidAmount
+): ProspectiveStudentPayment {
+    $bill = makeProspectiveBill($prospect, makeBillType($typeName), $billAmount);
+    $payment = makeProspectiveHistoryPayment($prospect, $bank, $user, $receiptNumber);
+    payProspectiveBill($payment, $bill, $paidAmount);
+
+    return $payment;
+}
+
+it('status label riwayat calon siswa tetap Lunas saat tagihan lunas', function () {
+    $user = User::factory()->create();
+    $prospect = ProspectiveStudent::factory()->create();
+
+    makeProspectiveSettlementPayment(
+        $prospect,
+        Bank::factory()->create(),
+        $user,
+        'KWT-REG-SET-LUNAS',
+        'Formulir Settlement Lunas',
+        350000,
+        350000
+    );
+
+    $row = historyRow('KWT-REG-SET-LUNAS');
+
+    expect($row->statusLabel)->toBe('Lunas')
+        ->and($row->source)->toBe('prospective')
+        ->and($row->isActive)->toBeTrue()
+        ->and($row->badgeLabel)->toBe('Pendaftaran');
+});
+
+it('status label riwayat calon siswa tetap Sebagian saat tagihan hanya dibayar sebagian', function () {
+    $user = User::factory()->create();
+    $prospect = ProspectiveStudent::factory()->create();
+
+    makeProspectiveSettlementPayment(
+        $prospect,
+        Bank::factory()->create(),
+        $user,
+        'KWT-REG-SET-SEBAGIAN',
+        'Formulir Settlement Sebagian',
+        350000,
+        150000
+    );
+
+    expect(historyRow('KWT-REG-SET-SEBAGIAN')->statusLabel)->toBe('Sebagian');
+});
+
+it('status label riwayat calon siswa tetap Dibatalkan untuk transaksi batal', function () {
+    $user = User::factory()->create();
+    $prospect = ProspectiveStudent::factory()->create();
+
+    $payment = makeProspectiveSettlementPayment(
+        $prospect,
+        Bank::factory()->create(),
+        $user,
+        'KWT-REG-SET-BATAL',
+        'Formulir Settlement Batal',
+        350000,
+        350000
+    );
+    $payment->update(['status' => ProspectiveStudentPayment::STATUS_CANCELLED]);
+
+    $row = historyRow('KWT-REG-SET-BATAL');
+
+    expect($row->statusLabel)->toBe('Dibatalkan')
+        ->and($row->isActive)->toBeFalse()
+        ->and($row->editUrl)->toBeNull();
+});
+
+it('label detail riwayat calon siswa tetap memakai tanda plus tanpa deduplikasi', function () {
+    $user = User::factory()->create();
+    $prospect = ProspectiveStudent::factory()->create();
+    $bank = Bank::factory()->create();
+
+    $twoLabels = makeProspectiveHistoryPayment($prospect, $bank, $user, 'KWT-REG-LABEL-2');
+    payProspectiveBill($twoLabels, makeProspectiveBill($prospect, makeBillType('Formulir A'), 350000), 100000);
+    payProspectiveBill($twoLabels, makeProspectiveBill($prospect, makeBillType('Formulir B'), 350000), 100000);
+
+    $threeLabels = makeProspectiveHistoryPayment($prospect, $bank, $user, 'KWT-REG-LABEL-3');
+    payProspectiveBill($threeLabels, makeProspectiveBill($prospect, makeBillType('Formulir C'), 350000), 100000);
+    payProspectiveBill($threeLabels, makeProspectiveBill($prospect, makeBillType('Formulir D'), 350000), 100000);
+    payProspectiveBill($threeLabels, makeProspectiveBill($prospect, makeBillType('Formulir E'), 350000), 100000);
+
+    $duplicates = makeProspectiveHistoryPayment($prospect, $bank, $user, 'KWT-REG-LABEL-DUP');
+    payProspectiveBill($duplicates, makeProspectiveBill($prospect, makeBillType('Formulir X'), 350000), 100000);
+    payProspectiveBill($duplicates, makeProspectiveBill($prospect, makeBillType('Formulir X'), 350000), 100000);
+
+    $empty = makeProspectiveHistoryPayment($prospect, $bank, $user, 'KWT-REG-LABEL-KOSONG');
+
+    expect(historyRow('KWT-REG-LABEL-2')->detailDisplay)->toBe('Formulir A + Formulir B')
+        ->and(historyRow('KWT-REG-LABEL-3')->detailDisplay)->toBe('Formulir C + 2 lainnya')
+        ->and(historyRow('KWT-REG-LABEL-DUP')->detailDisplay)->toBe('Formulir X + Formulir X')
+        ->and(historyRow('KWT-REG-LABEL-KOSONG')->detailDisplay)->toBe('-');
+});
+
+it('jumlah query riwayat calon siswa tidak bertambah linear terhadap jumlah baris', function () {
+    $user = User::factory()->create();
+    $prospect = ProspectiveStudent::factory()->create();
+    $bank = Bank::factory()->create();
+    $bill = makeProspectiveBill($prospect, makeBillType('Formulir Query Guard'), 350000);
+
+    $addRows = function (int $from, int $to) use ($prospect, $bank, $user, $bill): void {
+        for ($index = $from; $index <= $to; $index++) {
+            $payment = makeProspectiveHistoryPayment($prospect, $bank, $user, 'KWT-REG-GUARD-'.$index);
+            payProspectiveBill($payment, $bill, 100000);
+        }
+    };
+
+    $addRows(1, 1);
+    $oneRow = measureHistoryQueries(fn () => historyRows(['perPage' => 50]));
+
+    $addRows(2, 20);
+    $manyRows = measureHistoryQueries(fn () => historyRows(['perPage' => 50]));
+
+    expect(historyRows(['perPage' => 50]))->toHaveCount(20)
+        ->and($oneRow['lazy'])->toBe(0)
+        ->and($manyRows['lazy'])->toBe(0)
+        ->and($manyRows['total'] - $oneRow['total'])->toBeLessThanOrEqual(1);
+});
+
+it('status label riwayat siswa mengikuti settlement tagihan yang sudah dibayar', function () {
+    $user = User::factory()->create();
+    $student = makeBillStudent();
+
+    $lunasBill = makeMonthlyBill($student, makeBillType('SPP Settlement Lunas'), 970000, 8, 2026);
+    $lunasPayment = payWorkspaceBill($lunasBill, 970000);
+
+    $sebagianBill = makeMonthlyBill($student, makeBillType('SPP Settlement Sebagian'), 970000, 9, 2026);
+    $sebagianPayment = payWorkspaceBill($sebagianBill, 300000);
+
+    expect(historyRow($lunasPayment->receipt_number)->statusLabel)->toBe('Lunas')
+        ->and(historyRow($sebagianPayment->receipt_number)->statusLabel)->toBe('Tunggakan');
+});
+
+it('effective amount dan status tagihan siswa tetap memperhitungkan penyesuaian', function () {
+    $user = User::factory()->create();
+    $student = makeBillStudent();
+
+    $discountedBill = makeMonthlyBill($student, makeBillType('SPP Diskon Penuh'), 970000, 8, 2026);
+    BillAdjustment::query()->create([
+        'bill_id' => $discountedBill->id,
+        'type' => BillAdjustment::TYPE_DISCOUNT,
+        'amount' => -700000,
+        'reason' => 'Diskon promo',
+    ]);
+    $lunasPayment = payWorkspaceBill($discountedBill, 970000);
+
+    $partialBill = makeMonthlyBill($student, makeBillType('SPP Diskon Sebagian'), 970000, 9, 2026);
+    BillAdjustment::query()->create([
+        'bill_id' => $partialBill->id,
+        'type' => BillAdjustment::TYPE_DISCOUNT,
+        'amount' => -700000,
+        'reason' => 'Diskon promo',
+    ]);
+    $partialPayment = payWorkspaceBill($partialBill, 150000);
+
+    expect($discountedBill->fresh()->effective_amount)->toBe(270000.0)
+        ->and($partialBill->fresh()->effective_amount)->toBe(270000.0)
+        ->and($partialBill->fresh()->remaining_amount)->toBe(120000.0)
+        ->and($partialBill->fresh()->status)->toBe(StudentBill::STATUS_PARTIAL)
+        ->and(historyRow($lunasPayment->receipt_number)->statusLabel)->toBe('Lunas')
+        ->and(historyRow($partialPayment->receipt_number)->statusLabel)->toBe('Tunggakan');
+});
+
+it('jumlah query riwayat siswa tidak bertambah linear terhadap jumlah baris', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $student = makeBillStudent();
+    $type = makeBillType('SPP Query Guard');
+
+    $addRows = function (int $from, int $to) use ($student, $bank, $user, $type): void {
+        for ($index = $from; $index <= $to; $index++) {
+            $bill = makeMonthlyBill($student, $type, 970000, 8, 2026);
+            PaymentDetail::query()->create([
+                'payment_id' => makeHistoryPayment($student, $bank, $user, 'KWT-SISWA-GUARD-'.$index, '2026-08-10')->id,
+                'bill_id' => $bill->id,
+                'payment_type_id' => $type->id,
+                'period_month' => 8,
+                'period_year' => 2026,
+                'amount' => 970000,
+            ]);
+        }
+    };
+
+    $addRows(1, 1);
+    $oneRow = measureHistoryQueries(fn () => historyRows(['perPage' => 50]));
+
+    $addRows(2, 20);
+    $manyRows = measureHistoryQueries(fn () => historyRows(['perPage' => 50]));
+
+    expect(historyRows(['perPage' => 50]))->toHaveCount(20)
+        ->and($oneRow['lazy'])->toBe(0)
+        ->and($manyRows['lazy'])->toBe(0)
+        ->and($manyRows['total'] - $oneRow['total'])->toBeLessThanOrEqual(1);
+});
+
+it('halaman campuran siswa dan calon siswa tetap urut dan tidak memicu query per baris', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $student = makeBillStudent();
+    $prospect = ProspectiveStudent::factory()->create();
+
+    $studentBill = makeMonthlyBill($student, makeBillType('SPP Campuran'), 970000, 8, 2026);
+    $studentPayment = makeHistoryPayment($student, $bank, $user, 'KWT-CAMPURAN-SISWA', '2026-08-10');
+    PaymentDetail::query()->create([
+        'payment_id' => $studentPayment->id,
+        'bill_id' => $studentBill->id,
+        'payment_type_id' => $studentBill->payment_type_id,
+        'period_month' => 8,
+        'period_year' => 2026,
+        'amount' => 970000,
+    ]);
+    setPaymentCreatedAt($studentPayment, '2026-08-10 08:00:00');
+
+    $prospectBill = makeProspectiveBill($prospect, makeBillType('Formulir Campuran'), 350000);
+    $prospectPayment = makeProspectiveHistoryPayment($prospect, $bank, $user, 'KWT-CAMPURAN-PROSPEK');
+    payProspectiveBill($prospectPayment, $prospectBill, 350000);
+    setPaymentCreatedAt($prospectPayment, '2026-08-11 08:00:00');
+
+    $measurement = measureHistoryQueries(fn () => historyRows(['perPage' => 50]));
+    $rows = historyRows(['perPage' => 50]);
+
+    expect($rows)->toHaveCount(2)
+        ->and($rows->pluck('receiptNumber')->all())->toBe(['KWT-CAMPURAN-PROSPEK', 'KWT-CAMPURAN-SISWA'])
+        ->and($rows->pluck('source')->all())->toBe(['prospective', 'student'])
+        ->and($rows->pluck('statusLabel')->all())->toBe(['Lunas', 'Lunas'])
+        ->and($measurement['lazy'])->toBe(0);
+});
+
+it('paginasi riwayat transaksi tetap 10 per halaman dengan total dan isi yang benar', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $student = makeBillStudent();
+    $prospect = ProspectiveStudent::factory()->create();
+    $bill = makeProspectiveBill($prospect, makeBillType('Formulir Paginasi'), 350000);
+    $studentBill = makeMonthlyBill($student, makeBillType('SPP Paginasi'), 970000, 8, 2026);
+
+    for ($index = 1; $index <= 6; $index++) {
+        $prospectPayment = makeProspectiveHistoryPayment($prospect, $bank, $user, 'KWT-PAGINASI-P'.$index);
+        payProspectiveBill($prospectPayment, $bill, 100000);
+        setPaymentCreatedAt($prospectPayment, '2026-08-20 08:00:00');
+
+        $studentPayment = makeHistoryPayment($student, $bank, $user, 'KWT-PAGINASI-S'.$index, '2026-08-20');
+        PaymentDetail::query()->create([
+            'payment_id' => $studentPayment->id,
+            'bill_id' => $studentBill->id,
+            'payment_type_id' => $studentBill->payment_type_id,
+            'period_month' => 8,
+            'period_year' => 2026,
+            'amount' => 970000,
+        ]);
+        setPaymentCreatedAt($studentPayment, '2026-08-20 08:00:00');
+    }
+
+    Paginator::currentPageResolver(fn (): int => 1);
+    $firstPage = historyPaginator();
+    Paginator::currentPageResolver(fn (): int => 2);
+    $secondPage = historyPaginator();
+
+    expect($firstPage->total())->toBe(12)
+        ->and($firstPage->items())->toHaveCount(10)
+        ->and($secondPage->total())->toBe(12)
+        ->and($secondPage->items())->toHaveCount(2)
+        ->and(array_intersect(
+            collect($firstPage->items())->pluck('id')->all(),
+            collect($secondPage->items())->pluck('id')->all(),
+        ))->toBe([]);
 });

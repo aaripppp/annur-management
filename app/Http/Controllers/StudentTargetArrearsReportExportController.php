@@ -26,6 +26,7 @@ class StudentTargetArrearsReportExportController extends Controller
             (int) $validated['year'],
             $validated['academic_year'] ?? '',
             SchoolReportLevel::fromValue($validated['school_level'] ?? SchoolReportLevel::OPTION_ALL),
+            isset($validated['class_id']) ? (int) $validated['class_id'] : null,
         );
         $path = $spreadsheet->create($report);
         $filename = 'target-tunggakan-'.$report['mode'].'-'.str_replace('/', '-', $report['period_label']).'.xlsx';
@@ -46,6 +47,7 @@ class StudentTargetArrearsReportExportController extends Controller
             'year' => ['required', 'integer', 'between:2000,2100'],
             'academic_year' => ['nullable', 'string', 'max:9', 'required_unless:mode,monthly'],
             'school_level' => ['nullable', 'string', Rule::in(array_keys(SchoolReportLevel::options()))],
+            'class_id' => ['nullable', 'integer', 'exists:school_classes,id'],
         ];
     }
 }

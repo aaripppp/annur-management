@@ -45,8 +45,13 @@ it('renders the level bank and cash matrices with blank zero amounts and reconci
         ->toContain('rowspan="2"')
         ->toContain('Rp 300.000', 'Rp 100.000', 'Rp 400.000')
         ->not->toContain('Rp 0')
-        ->toContain('.level { width: 9%; text-align: center; vertical-align: middle; font-weight: bold; }')
+        ->toContain('.level { width: 3.5%; text-align: center; vertical-align: middle; font-weight: bold; }')
+        ->toContain('.bank { width: 9%; word-wrap: break-word; }')
+        ->toContain('.row-total, .level-total { width: 5%; font-weight: bold; }')
+        ->toContain('<th class="level" style="width: 3.5%;">Jenjang</th>')
+        ->toContain('<th class="money" style="width: 5%;">Total</th>')
         ->toContain('GRAND TOTAL', $user->name)
+        ->toContain('<tfoot><tr class="total-row"><td>TOTAL</td>')
         ->toContain('Nova Rabi&#039;ah Nurrohmah, SE');
 });
 

@@ -15,6 +15,7 @@ use App\Support\SchoolReportDocument;
 use App\Support\SchoolReportLevel;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use InvalidArgumentException;
 
 class StudentTargetArrearsReportService
@@ -34,6 +35,7 @@ class StudentTargetArrearsReportService
     }
 
     /**
+     * @param  int|null  $schoolClassId  Kelas historis pada tahun periode; null = semua kelas
      * @return array<string, mixed>
      */
     public function generate(
@@ -42,12 +44,13 @@ class StudentTargetArrearsReportService
         int $year,
         string $academicYear,
         ?SchoolLevel $schoolLevel = null,
+        ?int $schoolClassId = null,
     ): array {
         if ($mode === self::MODE_ALL) {
-            return $this->generateAll($month, $year, $academicYear, $schoolLevel);
+            return $this->generateAll($month, $year, $academicYear, $schoolLevel, $schoolClassId);
         }
 
-        return $this->build($mode, $month, $year, $academicYear, $schoolLevel, true);
+        return $this->build($mode, $month, $year, $academicYear, $schoolLevel, true, $schoolClassId);
     }
 
     /** @return array<string, mixed> */
@@ -62,11 +65,12 @@ class StudentTargetArrearsReportService
         int $year,
         string $academicYear,
         ?SchoolLevel $schoolLevel,
+        ?int $schoolClassId,
     ): array {
         $sections = [
-            self::MODE_MONTHLY => $this->build(self::MODE_MONTHLY, $month, $year, $academicYear, $schoolLevel, true),
-            self::MODE_YEARLY => $this->build(self::MODE_YEARLY, $month, $year, $academicYear, $schoolLevel, true),
-            self::MODE_ONE_TIME => $this->build(self::MODE_ONE_TIME, $month, $year, $academicYear, $schoolLevel, true),
+            self::MODE_MONTHLY => $this->build(self::MODE_MONTHLY, $month, $year, $academicYear, $schoolLevel, true, $schoolClassId),
+            self::MODE_YEARLY => $this->build(self::MODE_YEARLY, $month, $year, $academicYear, $schoolLevel, true, $schoolClassId),
+            self::MODE_ONE_TIME => $this->build(self::MODE_ONE_TIME, $month, $year, $academicYear, $schoolLevel, true, $schoolClassId),
         ];
         $target = array_sum(array_column(array_column($sections, 'totals'), 'target'));
         $paid = array_sum(array_column(array_column($sections, 'totals'), 'paid'));
@@ -106,13 +110,17 @@ class StudentTargetArrearsReportService
         string $academicYear,
         ?SchoolLevel $schoolLevel,
         bool $includeDetails,
+        ?int $schoolClassId = null,
     ): array {
         $frequency = BillFrequency::from($mode);
         $monthlyDate = CarbonImmutable::create($year, $month, 1);
         $periodAcademicYear = $mode === self::MODE_MONTHLY
             ? $this->academicYearForDate($monthlyDate)?->year
             : $academicYear;
-        $requiresEnrollment = $includeDetails || $schoolLevel !== null;
+        // Relasi enrollment hanya dibutuhkan untuk mengisi kolom kelas pada detail,
+        // karena jenjang dan kelas sudah dibatasi di SQL. Ringkasan dashboard yang
+        // tidak menyertakan detail jadi tidak perlu memuat relasi ini.
+        $requiresEnrollment = $includeDetails;
 
         $bills = StudentBill::query()
             ->where('billing_frequency', $frequency->value)
@@ -122,6 +130,15 @@ class StudentTargetArrearsReportService
                     ->where('period_month', $month)
                     ->where('period_year', $year),
                 fn (Builder $query) => $query->where('academic_year', $academicYear)
+            )
+            ->when(
+                $schoolLevel !== null,
+                fn (Builder $query) => $this->constrainPeriodEnrollment(
+                    $query,
+                    $periodAcademicYear,
+                    $schoolLevel,
+                    $schoolClassId,
+                )
             )
             ->with('paymentType')
             ->when($requiresEnrollment, fn (Builder $query) => $query->with([
@@ -152,10 +169,6 @@ class StudentTargetArrearsReportService
 
         foreach ($bills as $bill) {
             $enrollment = $requiresEnrollment ? $this->periodEnrollment($bill, $periodAcademicYear) : null;
-
-            if ($schoolLevel !== null && $this->enrollmentLevel($enrollment) !== $schoolLevel) {
-                continue;
-            }
 
             $billCount++;
 
@@ -240,6 +253,51 @@ class StudentTargetArrearsReportService
             ->first();
     }
 
+    /**
+     * Batasi tagihan pada enrollment kelas di tahun periode laporan.
+     *
+     * Sumber kebenaran adalah StudentAcademicEnrollment, bukan students.class_id:
+     * kelas siswa saat ini sudah berubah setelah kenaikan kelas, sedangkan tagihan
+     * yang sedang dihitung milik tahun periode laporan. Karena
+     * student_academic_enrollments punya batasan unik (student_id, academic_year_id),
+     * satu siswa hanya punya satu enrollment per tahun, sehingga EXISTS di SQL
+     * setara dengan pemilihan enrollment pertama yang sebelumnya dilakukan di PHP.
+     *
+     * Bulan tidak muncul di sini: tagihan tahunan dan sekali bayar tidak punya
+     * periode bulanan, sehingga keduanya memakai academic year terpilih.
+     *
+     * Method ini hanya dipanggil saat jenjang tidak null. "Semua Jenjang"
+     * berarti tanpa pembatasan sama sekali, termasuk mengabaikan kelas, karena
+     * kelas selalu berjenjang sehingga kombinasi itu tidak mungkin di UI.
+     *
+     * @param  Builder<StudentBill>  $bills
+     * @return Builder<StudentBill>
+     */
+    private function constrainPeriodEnrollment(
+        Builder $bills,
+        ?string $periodAcademicYear,
+        SchoolLevel $schoolLevel,
+        ?int $schoolClassId,
+    ): Builder {
+        return $bills->whereExists(function (QueryBuilder $enrollments) use ($periodAcademicYear, $schoolLevel, $schoolClassId): void {
+            $enrollments->selectRaw('1')
+                ->from('student_academic_enrollments as target_enrollments')
+                ->join('academic_years as target_years', 'target_years.id', '=', 'target_enrollments.academic_year_id')
+                ->whereColumn('target_enrollments.student_id', 'student_bills.student_id')
+                ->where('target_years.year', $periodAcademicYear);
+
+            if ($schoolClassId !== null) {
+                $enrollments->where('target_enrollments.school_class_id', $schoolClassId);
+
+                return;
+            }
+
+            $enrollments
+                ->join('school_classes as target_classes', 'target_classes.id', '=', 'target_enrollments.school_class_id')
+                ->whereIn('target_classes.level', $schoolLevel->classLevels());
+        });
+    }
+
     private function periodEnrollment(StudentBill $bill, ?string $academicYear): ?StudentAcademicEnrollment
     {
         if ($academicYear === null) {
@@ -279,13 +337,6 @@ class StudentTargetArrearsReportService
             'achievement_percentage' => 0.0,
             'details' => [],
         ];
-    }
-
-    private function enrollmentLevel(?StudentAcademicEnrollment $enrollment): ?SchoolLevel
-    {
-        $schoolClass = $enrollment?->getRelation('schoolClass');
-
-        return $schoolClass instanceof SchoolClass ? $schoolClass->school_level : null;
     }
 
     private function enrollmentClassName(?StudentAcademicEnrollment $enrollment): string

@@ -12,6 +12,7 @@ use App\Models\ProspectiveStudentPayment;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Services\PaymentDeletionService;
+use App\Services\ProspectiveStudentPaymentDeletionService;
 use App\Services\StudentPhotoService;
 use App\Services\StudentProfileUpdater;
 use App\Services\TransactionHistoryService;
@@ -22,6 +23,7 @@ use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Validator;
 use Livewire\Attributes\Layout;
@@ -38,6 +40,18 @@ class PaymentIndex extends Component
     use ManagesStudentBills;
     use WithFileUploads;
     use WithPagination;
+
+    private const SOURCE_STUDENT = 'student';
+
+    private const SOURCE_PROSPECTIVE = 'prospective';
+
+    /**
+     * Awalan id baris riwayat untuk pembayaran calon siswa.
+     *
+     * TransactionHistoryService me-namespace id supaya tidak bentrok dengan id
+     * pembayaran siswa pada union query.
+     */
+    private const PROSPECT_ID_PREFIX = 'prospect-';
 
     #[Url(as: 'tab')]
     public string $activeTab = 'student';
@@ -171,19 +185,27 @@ class PaymentIndex extends Component
         }
     }
 
-    public function confirmDelete(int $paymentId): void
+    public function confirmDelete(int|string $rowId, string $source = self::SOURCE_STUDENT): void
     {
         if ($this->activeTab !== 'history') {
             return;
         }
 
-        $payment = Payment::query()->find($paymentId);
+        $paymentId = $this->resolveHistoryPaymentId($rowId, $source);
+
+        if ($paymentId === null) {
+            return;
+        }
+
+        $payment = $source === self::SOURCE_PROSPECTIVE
+            ? ProspectiveStudentPayment::query()->with('prospectiveStudent')->find($paymentId)
+            : Payment::query()->with('student')->find($paymentId);
 
         if (! $payment) {
             return;
         }
 
-        $this->deletingSource = 'student';
+        $this->deletingSource = $source;
         $this->deletingId = $paymentId;
         $this->isDeleteModalOpen = true;
     }
@@ -195,16 +217,63 @@ class PaymentIndex extends Component
         $this->deletingSource = '';
     }
 
-    public function delete(PaymentDeletionService $deletionService): void
-    {
-        if (! $this->deletingId || $this->deletingSource !== 'student') {
+    public function delete(
+        PaymentDeletionService $deletionService,
+        ProspectiveStudentPaymentDeletionService $prospectiveDeletionService,
+    ): void {
+        if (! $this->deletingId) {
             return;
         }
 
-        $deletionService->delete($this->deletingId);
+        try {
+            if ($this->deletingSource === self::SOURCE_STUDENT) {
+                $deletionService->delete($this->deletingId);
+            } elseif ($this->deletingSource === self::SOURCE_PROSPECTIVE) {
+                $prospectiveDeletionService->delete($this->deletingId);
+            } else {
+                return;
+            }
+        } catch (ModelNotFoundException) {
+            $this->cancelDelete();
+            session()->flash('error', 'Transaksi pembayaran sudah tidak ada.');
+
+            return;
+        }
 
         $this->cancelDelete();
         session()->flash('success', 'Transaksi pembayaran berhasil dihapus permanen.');
+    }
+
+    /**
+     * Ubah id baris riwayat menjadi id pembayaran yang utuh, atau null bila tidak valid.
+     *
+     * Id calon siswa di-namespace dengan awalan "prospect-" supaya tidak bentrok
+     * dengan id pembayaran siswa pada union query, jadi prefix-nya harus dibuang
+     * eksplisit. Id yang sumbernya tidak dikenal, prefix-nya tidak lengkap, atau
+     * bagian angkanya bukan digit semuanya ditolak, sehingga id rusak tidak pernah
+     * bisa bocor menjadi 0 dan menunjuk pembayaran yang salah.
+     */
+    private function resolveHistoryPaymentId(int|string $rowId, string $source): ?int
+    {
+        $rawId = (string) $rowId;
+
+        if ($source === self::SOURCE_STUDENT) {
+            return ctype_digit($rawId) ? (int) $rawId : null;
+        }
+
+        if ($source !== self::SOURCE_PROSPECTIVE || ! str_starts_with($rawId, self::PROSPECT_ID_PREFIX)) {
+            return null;
+        }
+
+        $numericPart = substr($rawId, strlen(self::PROSPECT_ID_PREFIX));
+
+        if (! ctype_digit($numericPart)) {
+            return null;
+        }
+
+        $paymentId = (int) $numericPart;
+
+        return $paymentId > 0 ? $paymentId : null;
     }
 
     public function updatedSearch(): void
@@ -526,9 +595,9 @@ class PaymentIndex extends Component
             $banks = Bank::query()->orderBy('name')->get();
 
             if ($this->isDeleteModalOpen && $this->deletingId) {
-                $deletingPayment = Payment::query()
-                    ->with('student')
-                    ->find($this->deletingId);
+                $deletingPayment = $this->deletingSource === self::SOURCE_PROSPECTIVE
+                    ? ProspectiveStudentPayment::query()->with('prospectiveStudent')->find($this->deletingId)
+                    : Payment::query()->with('student')->find($this->deletingId);
             }
         }
 

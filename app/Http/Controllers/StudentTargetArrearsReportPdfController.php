@@ -24,6 +24,7 @@ class StudentTargetArrearsReportPdfController extends Controller
             'year' => ['required', 'integer', 'between:2000,2100'],
             'academic_year' => ['nullable', 'string', 'max:9', 'required_unless:mode,monthly'],
             'school_level' => ['nullable', 'string', Rule::in(array_keys(SchoolReportLevel::options()))],
+            'class_id' => ['nullable', 'integer', 'exists:school_classes,id'],
         ]);
         $user = $request->user();
         abort_unless($user instanceof User, 403);
@@ -34,6 +35,7 @@ class StudentTargetArrearsReportPdfController extends Controller
             (int) $validated['year'],
             $validated['academic_year'] ?? '',
             SchoolReportLevel::fromValue($validated['school_level'] ?? SchoolReportLevel::OPTION_ALL),
+            isset($validated['class_id']) ? (int) $validated['class_id'] : null,
         );
         $document = [
             'unit' => $report['unit_name'],

@@ -60,7 +60,7 @@ it('streams a valid F4B PDF inline with the selected date filename and logo', fu
         ->and(public_path('images/annur_logo2.png'))->toBeFile();
 });
 
-it('renders the accounting form sections, blank empty categories, totals and signatures', function () {
+it('renders the accounting form sections, per-section categories, totals and signatures', function () {
     $user = User::factory()->create(['name' => 'Petugas PDF']);
     $student = Student::factory()->create(['nama_lengkap' => 'Siswa PDF']);
     $cash = Bank::factory()->cash()->create();
@@ -161,4 +161,134 @@ it('renders the unit meta on the daily PDF for a scoped report', function () {
         ->get(route('laporan.harian.pdf', ['start_date' => $date, 'end_date' => $date, 'school_level' => 'SD']))
         ->assertOk()
         ->assertHeader('Content-Disposition', 'inline; filename=laporan-harian-sekolah-2026-08-27.pdf');
+});
+
+/** @return array<string, mixed> */
+function dailyPdfDocument(array $report, User $user): array
+{
+    $localizedDate = $report['end_date']->settings(['locale' => 'id']);
+
+    return [
+        'unit' => $report['unit_name'],
+        'period_title' => $report['period_title'],
+        'period_label' => $report['period_label'],
+        'approval' => [
+            'admin_name' => $user->name,
+            'reviewer_title' => 'Kepala Tata Usaha',
+            'reviewer_name' => 'Windiarti, SE',
+            'city_and_date' => 'Bekasi, '.$localizedDate->translatedFormat('d F Y'),
+            'report_creator_name' => 'Arif Hamdani',
+        ],
+    ];
+}
+
+/**
+ * @return list<array{key: string, bank_id: int|null, name: string, categories: list<array{name: string}>, total: float}>
+ */
+function dailyPdfSections(array $report): array
+{
+    return $report['form_sections'];
+}
+
+it('omits banks that have no amount on the daily PDF', function () {
+    $user = User::factory()->create();
+    $student = Student::factory()->create();
+    $funded = Bank::factory()->create(['name' => 'BNI', 'account_number' => '111111']);
+    Bank::factory()->create(['name' => 'Mandiri Nol', 'account_number' => '222222']);
+    $spp = makeBillType('SPP Hide Bank');
+
+    createPdfReportPayment($student, $funded, $user, '2026-08-27', [
+        ['payment_type_id' => $spp->id, 'amount' => 300_000],
+    ]);
+
+    $report = app(SchoolDailyReportService::class)->generate('2026-08-27', '2026-08-27');
+    $names = array_column(dailyPdfSections($report), 'name');
+
+    expect($names)->toBe(['BNI 111111'])
+        ->and($report['grand_total'])->toBe(300_000.0);
+});
+
+it('keeps payment types per section so a type only shows on banks that received it', function () {
+    $user = User::factory()->create();
+    $student = Student::factory()->create();
+    $bankA = Bank::factory()->create(['name' => 'Bank A', 'account_number' => 'A1']);
+    $bankB = Bank::factory()->create(['name' => 'Bank B', 'account_number' => 'B1']);
+    $spp = makeBillType('SPP Per Section');
+    $ekskul = makeBillType('Ekskul Per Section');
+
+    createPdfReportPayment($student, $bankA, $user, '2026-08-27', [
+        ['payment_type_id' => $spp->id, 'amount' => 400_000],
+    ]);
+    createPdfReportPayment($student, $bankB, $user, '2026-08-27', [
+        ['payment_type_id' => $ekskul->id, 'amount' => 175_000],
+    ]);
+
+    $report = app(SchoolDailyReportService::class)->generate('2026-08-27', '2026-08-27');
+    $byName = collect(dailyPdfSections($report))->keyBy('name');
+
+    expect($byName)->toHaveKeys(['Bank A A1', 'Bank B B1'])
+        ->and(array_column($byName['Bank A A1']['categories'], 'name'))->toBe(['SPP Per Section'])
+        ->and(array_column($byName['Bank B B1']['categories'], 'name'))->toBe(['Ekskul Per Section'])
+        ->and($byName['Bank A A1']['total'])->toBe(400_000.0)
+        ->and($byName['Bank B B1']['total'])->toBe(175_000.0)
+        ->and($report['grand_total'])->toBe(575_000.0);
+});
+
+it('omits the cash section when cash has no amount on the daily PDF', function () {
+    $user = User::factory()->create();
+    $student = Student::factory()->create();
+    $cash = Bank::factory()->cash()->create();
+    $bank = Bank::factory()->create(['name' => 'BRI', 'account_number' => '333333']);
+    $spp = makeBillType('SPP Tanpa Tunai');
+
+    createPdfReportPayment($student, $bank, $user, '2026-08-27', [
+        ['payment_type_id' => $spp->id, 'amount' => 275_000],
+    ]);
+
+    $report = app(SchoolDailyReportService::class)->generate('2026-08-27', '2026-08-27');
+    $keys = array_column(dailyPdfSections($report), 'key');
+
+    expect($keys)->toBe(['bank-'.$bank->id])
+        ->and($report['channels']['cash']['total'])->toEqual(0.0)
+        ->and($report['grand_total'])->toBe(275_000.0);
+});
+
+it('keeps only the cash section when the daily report has cash alone', function () {
+    $user = User::factory()->create();
+    $student = Student::factory()->create();
+    $cash = Bank::factory()->cash()->create();
+    $spp = makeBillType('SPP Tunai Saja');
+
+    createPdfReportPayment($student, $cash, $user, '2026-08-27', [
+        ['payment_type_id' => $spp->id, 'amount' => 120_000],
+    ]);
+
+    $report = app(SchoolDailyReportService::class)->generate('2026-08-27', '2026-08-27');
+    $sections = dailyPdfSections($report);
+
+    expect($sections)->toHaveCount(1)
+        ->and($sections[0]['key'])->toBe('cash')
+        ->and($sections[0]['name'])->toBe('TUNAI')
+        ->and($sections[0]['total'])->toBe(120_000.0)
+        ->and(array_column($sections[0]['categories'], 'name'))->toBe(['SPP Tunai Saja']);
+});
+
+it('renders a clean empty state on the daily PDF when there is no transaction', function () {
+    $user = User::factory()->create(['name' => 'Petugas Kosong']);
+    Bank::factory()->create(['name' => 'Bank Tanpa Transaksi', 'account_number' => '999999']);
+    Bank::factory()->cash()->create();
+
+    $report = app(SchoolDailyReportService::class)->generate('2026-08-27', '2026-08-27');
+    $html = view('reports.school-daily-pdf', [
+        'report' => $report,
+        'document' => dailyPdfDocument($report, $user),
+    ])->render();
+
+    expect(dailyPdfSections($report))->toBe([])
+        ->and($report['grand_total'])->toEqual(0.0)
+        ->and($html)->toContain('Tidak ada transaksi pada periode/filter ini.')
+        ->toContain('LAPORAN KAS HARIAN')
+        ->toContain('27 Agustus 2026')
+        ->toContain('TOTAL PENERIMAAN (DEBET/TRANSFER)')
+        ->not->toContain('Bank Tanpa Transaksi');
 });

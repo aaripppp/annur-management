@@ -5,8 +5,8 @@
     <title>Laporan Penerimaan Per Jenjang</title>
     @php
         $categoryCount = max(count($report['categories']), 1);
-        $bankCategoryWidth = number_format((100 - 9 - 15 - 10 - 10) / $categoryCount, 6, '.', '').'%';
-        $cashCategoryWidth = number_format((100 - 12 - 11) / $categoryCount, 6, '.', '').'%';
+        $bankCategoryWidth = number_format((100 - 3.5 - 9 - 5 - 5) / $categoryCount, 6, '.', '').'%';
+        $cashCategoryWidth = number_format((100 - 3.5 - 5) / $categoryCount, 6, '.', '').'%';
         $categoryFontSize = $categoryCount <= 3 ? 7 : ($categoryCount <= 6 ? 6.6 : ($categoryCount <= 9 ? 6.2 : ($categoryCount <= 12 ? 5.8 : 5.3)));
     @endphp
     <style>
@@ -29,12 +29,12 @@
         .report-table { table-layout: fixed; font-size: 7px; }
         .report-table th, .report-table td { padding: 1px 2px; border: .5px solid #000; vertical-align: middle; }
         .report-table th { text-align: center; }
-        .level { width: 9%; text-align: center; vertical-align: middle; font-weight: bold; }
-        .bank { width: 15%; }
+        .level { width: 3.5%; text-align: center; vertical-align: middle; font-weight: bold; }
+        .bank { width: 9%; word-wrap: break-word; }
         .money { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
         .report-table th.money { white-space: normal; text-align: center; font-variant-numeric: normal; word-wrap: break-word; }
         .report-table td.money { font-size: {{ $categoryFontSize }}px; }
-        .row-total, .level-total { width: 10%; font-weight: bold; }
+        .row-total, .level-total { width: 5%; font-weight: bold; }
         .level-group { page-break-inside: avoid; }
         .total-row { font-weight: bold; }
         .empty { padding: 5px !important; text-align: center; }
@@ -82,9 +82,9 @@
 
     <div class="section-title">PENERIMAAN TUNAI</div>
     <table class="report-table cash-table">
-        <thead><tr><th class="level" style="width: 12%;">Jenjang</th>@foreach($report['categories'] as $category)<th class="money" style="width: {{ $cashCategoryWidth }}">{{ $category['name'] }}</th>@endforeach<th class="money" style="width: 11%;">Total</th></tr></thead>
+        <thead><tr><th class="level" style="width: 3.5%;">Jenjang</th>@foreach($report['categories'] as $category)<th class="money" style="width: {{ $cashCategoryWidth }}">{{ $category['name'] }}</th>@endforeach<th class="money" style="width: 5%;">Total</th></tr></thead>
         <tbody>@forelse($report['cash']['levels'] as $level)<tr><td class="level">{{ $level['level_label'] }}</td>@foreach($report['categories'] as $category)<td class="money">{{ $level['cash_amounts'][$category['key']] > 0 ? 'Rp '.number_format($level['cash_amounts'][$category['key']], 0, ',', '.') : '' }}</td>@endforeach<td class="money total-row">Rp {{ number_format($level['cash_total'], 0, ',', '.') }}</td></tr>@empty<tr><td class="empty" colspan="{{ count($report['categories']) + 2 }}">Tidak ada penerimaan tunai</td></tr>@endforelse</tbody>
-        <tfoot><tr class="total-row"><td>TOTAL PENERIMAAN TUNAI</td>@foreach($report['categories'] as $category)<td class="money">{{ $report['cash']['category_totals'][$category['key']] > 0 ? 'Rp '.number_format($report['cash']['category_totals'][$category['key']], 0, ',', '.') : '' }}</td>@endforeach<td class="money">{{ $report['cash']['total'] > 0 ? 'Rp '.number_format($report['cash']['total'], 0, ',', '.') : '' }}</td></tr></tfoot>
+        <tfoot><tr class="total-row"><td>TOTAL</td>@foreach($report['categories'] as $category)<td class="money">{{ $report['cash']['category_totals'][$category['key']] > 0 ? 'Rp '.number_format($report['cash']['category_totals'][$category['key']], 0, ',', '.') : '' }}</td>@endforeach<td class="money">{{ $report['cash']['total'] > 0 ? 'Rp '.number_format($report['cash']['total'], 0, ',', '.') : '' }}</td></tr></tfoot>
     </table>
 
     <div class="section-title">RINGKASAN TOTAL</div>

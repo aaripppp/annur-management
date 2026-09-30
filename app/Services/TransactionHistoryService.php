@@ -35,9 +35,22 @@ class TransactionHistoryService
         $studentIds = collect($items)->where('source', 'student')->pluck('id')->all();
         $prospectiveIds = collect($items)->where('source', 'prospective')->pluck('id')->all();
 
+        // Relasi tagihan dipuat dua arah. Arah maju (payment -> details -> bill)
+        // dipakai untuk menyusun label, sedangkan arah-balik (bill -> paymentDetails,
+        // bill -> adjustments) dibutuhkan oleh accessor paid_amount/effective_amount
+        // saat menghitung settlement. Tanpa pemuatan batch ini, setiap tagihan di
+        // halaman memicu query sendiri di dalam loop pemetaan baris.
         $students = $studentIds !== []
             ? Payment::query()
-                ->with(['student.schoolClass', 'bank', 'user', 'details.bill'])
+                ->with([
+                    'student.schoolClass',
+                    'bank',
+                    'user',
+                    'details' => fn ($query) => $query->with([
+                        'bill.adjustments',
+                        'bill.paymentDetails.payment:id,status',
+                    ]),
+                ])
                 ->whereIn('id', $studentIds)
                 ->get()
                 ->keyBy('id')
@@ -48,7 +61,11 @@ class TransactionHistoryService
                     'prospectiveStudent.schoolClass',
                     'bank',
                     'creator',
-                    'details' => fn ($query) => $query->with(['paymentType', 'bill.paymentType']),
+                    'details' => fn ($query) => $query->with([
+                        'paymentType',
+                        'bill.paymentType',
+                        'bill.paymentDetails.payment:id,status',
+                    ]),
                 ])
                 ->whereIn('id', $prospectiveIds)
                 ->get()

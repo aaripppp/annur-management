@@ -2,6 +2,7 @@
 
 use App\Enums\SchoolLevel;
 use App\Livewire\SchoolDailyReport;
+use App\Models\AcademicYear;
 use App\Models\Bank;
 use App\Models\DaycarePayment;
 use App\Models\DaycarePaymentDetail;
@@ -126,6 +127,15 @@ it('returns clear empty matrices without populated active bank rows', function (
 });
 
 it('nests all monthly modes under the monthly top-level tab and preserves the period', function () {
+    AcademicYear::deactivateAll();
+    AcademicYear::query()->updateOrCreate(
+        ['year' => '2026/2027'],
+        [
+            'is_active' => true,
+            'start_date' => '2026-07-01',
+            'end_date' => '2027-06-30',
+        ],
+    );
     $this->actingAs(User::factory()->create());
 
     $component = Livewire::test(SchoolDailyReport::class)
@@ -140,12 +150,13 @@ it('nests all monthly modes under the monthly top-level tab and preserves the pe
         ->assertSee('Per Jenjang')
         ->assertSee('Seluruh Unit')
         ->set('reportMonth', 9)
-        ->set('reportYear', 2026)
         ->call('setMonthlyMode', SchoolDailyReport::MONTHLY_MODE_BY_LEVEL)
+        ->assertSet('monthlyAcademicYear', '2026/2027')
         ->assertSet('reportMonth', 9)
         ->assertSet('reportYear', 2026)
         ->assertSee('Penerimaan Bank per Jenjang')
         ->call('setMonthlyMode', SchoolDailyReport::MONTHLY_MODE_ALL_UNITS)
+        ->assertSet('monthlyAcademicYear', '2026/2027')
         ->assertSet('reportMonth', 9)
         ->assertSet('reportYear', 2026)
         ->assertSee('Belum ada penerimaan siswa pada September 2026.');
@@ -171,6 +182,15 @@ it('renders the all-units bank and cash matrices with blank zeros and correct ex
     createSchoolMonthlyReportPayment($student, $cash, $user, '2026-09-12', [
         ['payment_type_id' => $type->id, 'amount' => 100_000],
     ]);
+    AcademicYear::deactivateAll();
+    AcademicYear::query()->updateOrCreate(
+        ['year' => '2026/2027'],
+        [
+            'is_active' => true,
+            'start_date' => '2026-07-01',
+            'end_date' => '2027-06-30',
+        ],
+    );
 
     $this->actingAs($user);
 
@@ -178,7 +198,7 @@ it('renders the all-units bank and cash matrices with blank zeros and correct ex
         'activeTab' => 'monthly',
         'monthlyMode' => SchoolDailyReport::MONTHLY_MODE_ALL_UNITS,
         'reportMonth' => 9,
-        'reportYear' => 2026,
+        'monthlyAcademicYear' => '2026/2027',
     ])
         ->assertSee('Penerimaan Bank Seluruh Unit')
         ->assertSee('Penerimaan Tunai Seluruh Unit')

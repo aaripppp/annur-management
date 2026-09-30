@@ -168,17 +168,30 @@ class SchoolDailyReportService
             }
         }
 
-        $sections = [[
-            'key' => 'cash',
-            'bank_id' => null,
-            'name' => 'TUNAI',
-            'type' => Bank::TYPE_CASH,
-            'categories' => $this->formCategoryRows($categories, $cashAmounts),
-            'total' => array_sum($cashAmounts),
-        ]];
+        $sections = [];
+
+        $cashTotal = array_sum($cashAmounts);
+
+        if ($cashTotal > 0) {
+            $sections[] = [
+                'key' => 'cash',
+                'bank_id' => null,
+                'name' => 'TUNAI',
+                'type' => Bank::TYPE_CASH,
+                'categories' => $this->formCategoryRows($categories, $cashAmounts),
+                'total' => $cashTotal,
+            ];
+        }
 
         foreach ($banks as $bank) {
             if ($bank->type !== Bank::TYPE_BANK) {
+                continue;
+            }
+
+            $amounts = $amountsByBank[$bank->id] ?? [];
+            $total = array_sum($amounts);
+
+            if ($total <= 0) {
                 continue;
             }
 
@@ -187,8 +200,8 @@ class SchoolDailyReportService
                 'bank_id' => $bank->id,
                 'name' => trim($bank->name.' '.(string) $bank->account_number),
                 'type' => Bank::TYPE_BANK,
-                'categories' => $this->formCategoryRows($categories, $amountsByBank[$bank->id] ?? []),
-                'total' => array_sum($amountsByBank[$bank->id] ?? []),
+                'categories' => $this->formCategoryRows($categories, $amounts),
+                'total' => $total,
             ];
         }
 
@@ -196,19 +209,35 @@ class SchoolDailyReportService
     }
 
     /**
+     * Baris kategori milik satu section, hanya yang bersaldo lebih dari nol.
+     *
+     * Penyaringan dilakukan per section, bukan global: satu jenis pembayaran bisa
+     * berisi pada bank A dan kosong pada bank B, sehingga setiap section menentukan
+     * sendiri kategori mana yang layak ditampilkan.
+     *
      * @param  list<array{key: string, name: string}>  $categories
      * @param  array<string, float>  $amounts
-     * @return list<array{key: string, name: string, amount: float|null}>
+     * @return list<array{key: string, name: string, amount: float}>
      */
     private function formCategoryRows(array $categories, array $amounts): array
     {
-        return array_map(fn (array $category): array => [
-            'key' => $category['key'],
-            'name' => $category['name'],
-            'amount' => array_key_exists($category['key'], $amounts)
-                ? $amounts[$category['key']]
-                : null,
-        ], $categories);
+        $rows = [];
+
+        foreach ($categories as $category) {
+            $amount = $amounts[$category['key']] ?? null;
+
+            if ($amount === null || $amount <= 0) {
+                continue;
+            }
+
+            $rows[] = [
+                'key' => $category['key'],
+                'name' => $category['name'],
+                'amount' => $amount,
+            ];
+        }
+
+        return $rows;
     }
 
     /**

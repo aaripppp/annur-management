@@ -283,10 +283,22 @@ it('blanks zero monetary cells in the monthly web view while keeping numeric dat
         ->and($report['cash']['total'])->toBe(0)
         ->and($report['bank']['dates'])->toHaveCount(1)
         ->and(count($report['bank']['dates'][0]['banks']))->toBe(2);
+    AcademicYear::deactivateAll();
+    AcademicYear::query()->updateOrCreate(
+        ['year' => '2026/2027'],
+        [
+            'is_active' => true,
+            'start_date' => '2026-07-01',
+            'end_date' => '2027-06-30',
+        ],
+    );
 
     $this->actingAs($user);
 
-    $component = Livewire::test(SchoolDailyReport::class, ['reportMonth' => 8, 'reportYear' => 2026])
+    $component = Livewire::test(SchoolDailyReport::class, [
+        'reportMonth' => 8,
+        'monthlyAcademicYear' => '2026/2027',
+    ])
         ->set('activeTab', 'monthly')
         ->assertSee('PENERIMAAN BANK')
         ->assertSee('PENERIMAAN TUNAI')
@@ -435,10 +447,22 @@ it('renders the compact monthly matrix and period filter', function () {
     createSchoolMonthlyReportPayment($student, $bank, $user, '2026-08-11', [
         ['payment_type_id' => $spp->id, 'amount' => 300_000],
     ]);
+    AcademicYear::deactivateAll();
+    AcademicYear::query()->updateOrCreate(
+        ['year' => '2026/2027'],
+        [
+            'is_active' => true,
+            'start_date' => '2026-07-01',
+            'end_date' => '2027-06-30',
+        ],
+    );
 
     $this->actingAs($user);
 
-    $component = Livewire::test(SchoolDailyReport::class, ['reportMonth' => 8, 'reportYear' => 2026])
+    $component = Livewire::test(SchoolDailyReport::class, [
+        'reportMonth' => 8,
+        'monthlyAcademicYear' => '2026/2027',
+    ])
         ->set('activeTab', 'monthly')
         ->assertSee('Periode Laporan')
         ->assertSee('PENERIMAAN BANK')
@@ -448,7 +472,8 @@ it('renders the compact monthly matrix and period filter', function () {
         ->assertSee($bank->optionLabel())
         ->assertDontSee('Tunai / Cash')
         ->assertSee('Bulan')
-        ->assertSee('Tahun')
+        ->assertSee('Tahun Ajaran')
+        ->assertDontSeeHtml('id="report-year"')
         ->assertSee('Rp 200.000')
         ->assertSee('Rp 300.000')
         ->assertSee('Rp 500.000')
@@ -467,9 +492,22 @@ it('renders the compact monthly matrix and period filter', function () {
 });
 
 it('keeps the daily tab intact while the monthly tab is active', function () {
+    AcademicYear::deactivateAll();
+    AcademicYear::query()->updateOrCreate(
+        ['year' => '2026/2027'],
+        [
+            'is_active' => true,
+            'start_date' => '2026-07-01',
+            'end_date' => '2027-06-30',
+        ],
+    );
     $this->actingAs(User::factory()->create());
 
-    Livewire::test(SchoolDailyReport::class, ['reportDate' => '2026-08-27', 'reportMonth' => 8, 'reportYear' => 2026])
+    Livewire::test(SchoolDailyReport::class, [
+        'reportDate' => '2026-08-27',
+        'reportMonth' => 8,
+        'monthlyAcademicYear' => '2026/2027',
+    ])
         ->assertSee('Belum ada transaksi sekolah pada periode ini.')
         ->call('setActiveTab', 'monthly')
         ->assertSee('Belum ada transaksi sekolah pada bulan ini.')

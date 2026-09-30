@@ -133,7 +133,7 @@ it('renders the level tab with dynamic bank rows blank zeros and export links', 
         'activeTab' => 'monthly',
         'monthlyMode' => SchoolDailyReport::MONTHLY_MODE_BY_LEVEL,
         'reportMonth' => 9,
-        'reportYear' => 2026,
+        'monthlyAcademicYear' => '2026/2027',
     ])
         ->assertSee('Per Jenjang')
         ->assertSee('PENERIMAAN BANK')
@@ -280,6 +280,15 @@ it('renders candidate calon payments under the correct level tab in HTML', funct
     createSchoolMonthlyReportPayment($candidate, $cash, $user, '2026-09-04', [
         ['payment_type_id' => $type->id, 'amount' => 120_000],
     ]);
+    AcademicYear::deactivateAll();
+    AcademicYear::query()->updateOrCreate(
+        ['year' => '2026/2027'],
+        [
+            'is_active' => true,
+            'start_date' => '2026-07-01',
+            'end_date' => '2027-06-30',
+        ],
+    );
 
     $this->actingAs($user);
 
@@ -287,7 +296,7 @@ it('renders candidate calon payments under the correct level tab in HTML', funct
         'activeTab' => 'monthly',
         'monthlyMode' => SchoolDailyReport::MONTHLY_MODE_BY_LEVEL,
         'reportMonth' => 9,
-        'reportYear' => 2026,
+        'monthlyAcademicYear' => '2026/2027',
     ])
         ->assertSee(SchoolLevel::SMA->value)
         ->assertSee('Rp 350.000')

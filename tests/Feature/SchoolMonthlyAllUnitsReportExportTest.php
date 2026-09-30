@@ -95,6 +95,9 @@ it('renders the official all-units PDF with dynamic matrices and creator', funct
         ->not->toContain($cash->optionLabel())
         ->not->toContain('Rp 0')
         ->toContain('Rp 300.000', 'Rp 100.000', 'Rp 400.000')
+        ->toContain('.bank { width: 8%; }')
+        ->toContain('.row-total { width: 8%; font-weight: bold; }')
+        ->toContain('<th class="money" style="width: 8%;">Total</th>')
         ->toContain($user->name)
         ->toContain('Nova Rabi&#039;ah Nurrohmah, SE');
 });

@@ -3,6 +3,7 @@
 use App\Enums\SchoolLevel;
 use App\Livewire\DaycareDailyReport;
 use App\Livewire\SchoolDailyReport;
+use App\Models\AcademicYear;
 use App\Models\Bank;
 use App\Models\Student;
 use App\Models\User;
@@ -16,6 +17,20 @@ function createReactiveBankPayment(
     int $amount,
 ): void {
     createBankRecapPayment($student, $bank, $user, $paymentDate, $paymentDate.' 09:00:00', $amount);
+}
+
+function createReactiveTargetAcademicYear(string $year, bool $isActive = true): AcademicYear
+{
+    $startYear = (int) explode('/', $year, 2)[0];
+
+    return AcademicYear::query()->firstOrCreate(
+        ['year' => $year],
+        [
+            'start_date' => $startYear.'-07-01',
+            'end_date' => ($startYear + 1).'-06-30',
+            'is_active' => $isActive,
+        ],
+    );
 }
 
 it('does not render the tampilkan button on any school report tab', function () {
@@ -98,20 +113,30 @@ it('keeps the monthly report filters reactive without a submit button', function
     createSchoolMonthlyReportPayment($student, $cash, $user, '2026-09-05', [
         ['payment_type_id' => $spp->id, 'amount' => 300_000],
     ]);
+    createReactiveTargetAcademicYear('2026/2027');
+    createReactiveTargetAcademicYear('2027/2028', false);
 
     $component = Livewire::actingAs($user)->test(SchoolDailyReport::class, [
         'activeTab' => 'monthly',
         'reportMonth' => 8,
-        'reportYear' => 2026,
+        'monthlyAcademicYear' => '2026/2027',
     ]);
 
     expect($component->viewData('monthlyReport')['grand_total'])->toBe(500_000.0);
 
-    $component->set('reportMonth', 9);
+    $component->set('reportMonth', 9)
+        ->assertSet('reportYear', 2026);
     expect($component->viewData('monthlyReport')['grand_total'])->toBe(300_000.0);
 
-    $component->set('reportYear', 2027);
-    expect($component->viewData('monthlyReport')['grand_total'])->toBeIn([0, 0.0]);
+    $component->set('reportMonth', 12)
+        ->assertSet('monthlyAcademicYear', '2026/2027')
+        ->assertSet('reportYear', 2026)
+        ->set('reportMonth', 1)
+        ->assertSet('monthlyAcademicYear', '2026/2027')
+        ->assertSet('reportYear', 2027)
+        ->set('monthlyAcademicYear', '2027/2028')
+        ->assertSet('reportMonth', 1)
+        ->assertSet('reportYear', 2028);
 });
 
 it('keeps the target of tunggakan filters reactive without a submit button', function () {
@@ -120,22 +145,40 @@ it('keeps the target of tunggakan filters reactive without a submit button', fun
     $spp = makeBillType('SPP Reaktif Target');
     makeMonthlyBill($student, $spp, 500_000, 9, 2026);
     makeMonthlyBill($student, $spp, 700_000, 10, 2026);
+    createReactiveTargetAcademicYear('2026/2027');
+    createReactiveTargetAcademicYear('2027/2028', false);
 
     $component = Livewire::actingAs($user)->test(SchoolDailyReport::class, [
         'activeTab' => 'target',
         'targetMonth' => 9,
-        'targetYear' => 2026,
         'targetAcademicYear' => '2026/2027',
     ]);
 
     expect($component->viewData('targetReport')['totals']['target'])->toBe(500_000.0);
 
-    $component->set('targetMonth', 10);
+    $component->set('targetMonth', 10)
+        ->assertSet('targetYear', 2026);
     expect($component->viewData('targetReport')['totals']['target'])->toBe(700_000.0);
 
-    $component->set('targetMonth', 9);
-    $component->set('targetYear', 2027);
+    $component->set('targetMonth', 9)
+        ->assertSet('targetYear', 2026);
+    $component->set('targetAcademicYear', '2027/2028')
+        ->assertSet('targetYear', 2027);
     expect($component->viewData('targetReport')['totals']['target'])->toBeIn([0, 0.0]);
+});
+
+it('preserves an explicitly selected target academic year', function () {
+    Livewire::actingAs(User::factory()->create())
+        ->test(SchoolDailyReport::class, [
+            'activeTab' => 'target',
+            'targetMonth' => 1,
+            'targetAcademicYear' => '2024/2025',
+        ])
+        ->assertSet('targetAcademicYear', '2024/2025')
+        ->assertSet('targetYear', 2025)
+        ->set('targetMonth', 7)
+        ->assertSet('targetAcademicYear', '2024/2025')
+        ->assertSet('targetYear', 2024);
 });
 
 it('keeps the target jenjang filter reactive without a submit button', function () {
@@ -144,11 +187,11 @@ it('keeps the target jenjang filter reactive without a submit button', function 
     $spp = makeBillType('SPP Reaktif Jenjang');
     makeMonthlyBill($sdStudent, $spp, 400_000, 9, 2026);
     makeMonthlyBill($smpStudent, $spp, 600_000, 9, 2026);
+    createReactiveTargetAcademicYear('2026/2027');
 
     $component = Livewire::actingAs(User::factory()->create())->test(SchoolDailyReport::class, [
         'activeTab' => 'target',
         'targetMonth' => 9,
-        'targetYear' => 2026,
         'targetAcademicYear' => '2026/2027',
         'schoolLevel' => 'all',
     ]);
@@ -213,26 +256,45 @@ it('keeps the monthly and target export links in sync with the live filter state
     ]);
     [$targetStudent] = makeEnrolledStudent(SchoolLevel::SMP);
     makeMonthlyBill($targetStudent, $spp, 500_000, 10, 2026);
+    createReactiveTargetAcademicYear('2027/2028', false);
 
     $component = Livewire::actingAs($user)->test(SchoolDailyReport::class, [
         'activeTab' => 'monthly',
         'reportMonth' => 8,
-        'reportYear' => 2026,
+        'monthlyAcademicYear' => '2026/2027',
         'targetMonth' => 9,
-        'targetYear' => 2026,
         'targetAcademicYear' => '2026/2027',
     ]);
 
-    $component->set('reportMonth', 9)
+    $component->set('reportMonth', 1)
+        ->assertSet('reportYear', 2027)
         ->assertSee(route('laporan.bulanan.export', [
-            'month' => 9,
-            'year' => 2026,
+            'month' => 1,
+            'year' => 2027,
             'school_level' => 'all',
         ]))
         ->assertSee(route('laporan.bulanan.pdf', [
-            'month' => 9,
-            'year' => 2026,
+            'month' => 1,
+            'year' => 2027,
             'school_level' => 'all',
+        ]))
+        ->call('setMonthlyMode', 'by_level')
+        ->assertSee(route('laporan.jenjang.export', [
+            'month' => 1,
+            'year' => 2027,
+        ]))
+        ->assertSee(route('laporan.jenjang.pdf', [
+            'month' => 1,
+            'year' => 2027,
+        ]))
+        ->call('setMonthlyMode', 'all_units')
+        ->assertSee(route('laporan.seluruh-unit.export', [
+            'month' => 1,
+            'year' => 2027,
+        ]))
+        ->assertSee(route('laporan.seluruh-unit.pdf', [
+            'month' => 1,
+            'year' => 2027,
         ]));
 
     $component->call('setActiveTab', 'target')

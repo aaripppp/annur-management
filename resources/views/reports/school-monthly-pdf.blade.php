@@ -5,8 +5,8 @@
     <title>Laporan Bulanan Sekolah</title>
     @php
         $reportCategoryCount = max(count($report['categories']), 1);
-        $reportCategoryWidth = number_format((100 - 13 - 15 - 9 - 10) / $reportCategoryCount, 6, '.', '').'%';
-        $cashCategoryWidth = number_format((100 - 18 - 11) / $reportCategoryCount, 6, '.', '').'%';
+        $reportCategoryWidth = number_format((100 - 4 - 9 - 5.5 - 5.5) / $reportCategoryCount, 6, '.', '').'%';
+        $cashCategoryWidth = number_format((100 - 5 - 5.5) / $reportCategoryCount, 6, '.', '').'%';
         $categoryFontSize = $reportCategoryCount <= 3 ? 7 : ($reportCategoryCount <= 6 ? 6.6 : ($reportCategoryCount <= 9 ? 6.2 : ($reportCategoryCount <= 12 ? 5.8 : 5.3)));
     @endphp
     <style>
@@ -33,17 +33,17 @@
         .report-table tfoot { display: table-row-group; }
         .section-title { margin: 4px 0 2px; font-size: 8px; font-weight: bold; }
         .date-group { page-break-inside: avoid; }
-        .col-date { width: 13%; font-weight: bold; }
-        .col-bank { width: 15%; }
+        .col-date { width: 4%; font-weight: bold; }
+        .col-bank { width: 9%; word-wrap: break-word; }
         .col-category { width: auto; text-align: right; font-variant-numeric: tabular-nums; }
         .report-table td.col-category { padding-right: 1px; padding-left: 1px; font-size: {{ $categoryFontSize }}px; line-height: 1.08; white-space: nowrap; }
-        .col-total { width: 9%; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: bold; }
-        .col-daily-total { width: 10%; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: bold; }
+        .col-total { width: 5.5%; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: bold; }
+        .col-daily-total { width: 5.5%; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: bold; }
         .report-table td.col-total, .report-table td.col-daily-total, .report-table td.cash-total { padding-right: 1px; padding-left: 1px; font-size: 6.5px; }
         .report-table th.col-category, .report-table th.col-total, .report-table th.col-daily-total, .report-table th.cash-total { text-align: center; }
         .report-table th.col-category { white-space: normal; word-wrap: break-word; }
-        .cash-date { width: 18%; font-weight: bold; }
-        .cash-total { width: 11%; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: bold; }
+        .cash-date { width: 5%; font-weight: bold; }
+        .cash-total { width: 5.5%; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: bold; }
         .total-row { page-break-inside: avoid; font-weight: bold; }
         .empty-row { page-break-inside: avoid; text-align: center; }
         .summary-row { width: 100%; margin-top: 4px; }
@@ -84,11 +84,11 @@
     <div class="section-title">PENERIMAAN BANK</div>
     <table class="report-table bank-table">
         <colgroup>
-            <col style="width: 13%">
-            <col style="width: 15%">
-            @foreach($report['categories'] as $category)<col style="width: {{ $reportCategoryWidth }}">@endforeach
+            <col style="width: 4%">
             <col style="width: 9%">
-            <col style="width: 10%">
+            @foreach($report['categories'] as $category)<col style="width: {{ $reportCategoryWidth }}">@endforeach
+            <col style="width: 5.5%">
+            <col style="width: 5.5%">
         </colgroup>
         <thead>
             <tr>
@@ -141,9 +141,9 @@
     <div class="section-title">PENERIMAAN TUNAI</div>
     <table class="report-table cash-table">
         <colgroup>
-            <col style="width: 18%">
+            <col style="width: 5%">
             @foreach($report['categories'] as $category)<col style="width: {{ $cashCategoryWidth }}">@endforeach
-            <col style="width: 11%">
+            <col style="width: 6%">
         </colgroup>
         <thead>
             <tr>

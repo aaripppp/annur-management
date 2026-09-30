@@ -101,7 +101,7 @@ it('payment type billing frequencies are correct', function () {
         'Uang Kegiatan' => BillFrequency::Yearly,
         'Uang Buku' => BillFrequency::Yearly,
         'Labotarium' => BillFrequency::OneTime,
-        'Adm Jemputan' => BillFrequency::Monthly,
+        'Adm Jemputan' => BillFrequency::OneTime,
         'Jemputan' => BillFrequency::Monthly,
         'SPP' => BillFrequency::Monthly,
         'Ekskul' => BillFrequency::Monthly,

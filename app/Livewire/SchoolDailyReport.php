@@ -67,6 +67,9 @@ class SchoolDailyReport extends Component
     #[Url(as: 'tahun')]
     public int $reportYear = 0;
 
+    #[Url(as: 'tahun_ajaran')]
+    public string $monthlyAcademicYear = '';
+
     #[Url(as: 'monthly_mode')]
     public string $monthlyMode = self::MONTHLY_MODE_BY_DATE;
 
@@ -84,6 +87,9 @@ class SchoolDailyReport extends Component
 
     #[Url(as: 'target_academic_year')]
     public string $targetAcademicYear = '';
+
+    #[Url(as: 'target_kelas')]
+    public ?string $targetSchoolClassId = null;
 
     #[Url(as: 'rekap_tahun_ajaran')]
     public string $classRecapAcademicYearId = '';
@@ -124,32 +130,13 @@ class SchoolDailyReport extends Component
         $this->bankStartDate = $this->bankStartDate !== '' ? $this->bankStartDate : now()->toDateString();
         $this->bankEndDate = $this->bankEndDate !== '' ? $this->bankEndDate : $this->bankStartDate;
 
-        if ($this->reportMonth < 1 || $this->reportMonth > 12) {
-            $this->reportMonth = (int) now()->format('n');
-        }
-
-        if ($this->reportYear < 2000 || $this->reportYear > 2100) {
-            $this->reportYear = (int) now()->format('Y');
-        }
-
-        if ($this->targetMonth < 1 || $this->targetMonth > 12) {
-            $this->targetMonth = (int) now()->format('n');
-        }
-
-        if ($this->targetYear < 2000 || $this->targetYear > 2100) {
-            $this->targetYear = (int) now()->format('Y');
-        }
+        $this->normalizeMonthlyPeriod();
 
         if (! in_array($this->targetMode, StudentTargetArrearsReportService::modes(), true)) {
             $this->targetMode = StudentTargetArrearsReportService::MODE_MONTHLY;
         }
 
-        if ($this->targetAcademicYear === '') {
-            $activeAcademicYear = AcademicYear::active();
-            $this->targetAcademicYear = $activeAcademicYear !== null
-                ? $activeAcademicYear->year
-                : (string) (AcademicYear::query()->orderByDesc('start_date')->value('year') ?? '');
-        }
+        $this->normalizeTargetPeriod();
 
         if ($this->classRecapAcademicYearId === '') {
             $this->classRecapAcademicYearId = (string) (AcademicYear::active()?->id
@@ -162,6 +149,8 @@ class SchoolDailyReport extends Component
         if (! array_key_exists($this->schoolLevel, SchoolReportLevel::options())) {
             $this->schoolLevel = SchoolReportLevel::OPTION_ALL;
         }
+
+        $this->normalizeTargetClassSelection();
 
         if (! $this->bankFilterIsValid()) {
             $this->bankFilter = 'all';
@@ -248,6 +237,15 @@ class SchoolDailyReport extends Component
     public function updatedReportMonth(): void
     {
         $this->validateOnly('reportMonth');
+        $this->normalizeMonthlyPeriod();
+        $this->validateOnly('reportYear');
+    }
+
+    public function updatedMonthlyAcademicYear(): void
+    {
+        $this->normalizeMonthlyPeriod();
+        $this->validateOnly('monthlyAcademicYear');
+        $this->validateOnly('reportYear');
     }
 
     public function updatedReportYear(): void
@@ -255,9 +253,24 @@ class SchoolDailyReport extends Component
         $this->validateOnly('reportYear');
     }
 
+    public function updatedTargetMonth(): void
+    {
+        $this->normalizeTargetPeriod();
+        $this->validateOnly('targetMonth');
+        $this->validateOnly('targetYear');
+    }
+
+    public function updatedTargetAcademicYear(): void
+    {
+        $this->normalizeTargetPeriod();
+        $this->validateOnly('targetAcademicYear');
+        $this->validateOnly('targetYear');
+    }
+
     public function updatedSchoolLevel(): void
     {
         $this->validateOnly('schoolLevel');
+        $this->normalizeTargetClassSelection();
     }
 
     public function updatedClassRecapSchoolLevel(): void
@@ -320,9 +333,12 @@ class SchoolDailyReport extends Component
                     $this->targetYear,
                     $this->targetAcademicYear,
                     $schoolLevel,
+                    $this->targetSchoolClassId === null ? null : (int) $this->targetSchoolClassId,
                 ),
                 'levelReport' => null,
                 'monthOptions' => $this->monthOptions(),
+                'targetMonthOptions' => $this->targetMonthOptions(),
+                'targetClassOptions' => $this->targetClassOptions(),
                 'yearOptions' => $reportYearService->options(),
                 'academicYearOptions' => $this->academicYearOptions(),
                 'levelOptions' => $this->levelOptions(),
@@ -350,6 +366,7 @@ class SchoolDailyReport extends Component
                 'bankReport' => null,
                 'targetReport' => null,
                 'monthOptions' => $this->monthOptions(),
+                'monthlyMonthOptions' => $this->academicYearMonthOptions($this->monthlyAcademicYear),
                 'yearOptions' => $reportYearService->options(),
                 'academicYearOptions' => $this->academicYearOptions(),
                 'levelOptions' => $this->levelOptions(),
@@ -405,12 +422,14 @@ class SchoolDailyReport extends Component
             'bankFilter' => ['required', 'string', 'max:20'],
             'reportMonth' => ['required', 'integer', 'between:1,12'],
             'reportYear' => ['required', 'integer', 'between:2000,2100'],
+            'monthlyAcademicYear' => ['nullable', 'string', 'max:9'],
             'monthlyMode' => ['required', 'string', Rule::in(self::monthlyModes())],
             'schoolLevel' => ['required', 'string', Rule::in(array_keys(SchoolReportLevel::options()))],
             'targetMode' => ['required', 'string', Rule::in(StudentTargetArrearsReportService::modes())],
             'targetMonth' => ['required', 'integer', 'between:1,12'],
             'targetYear' => ['required', 'integer', 'between:2000,2100'],
             'targetAcademicYear' => ['nullable', 'string', 'max:9'],
+            'targetSchoolClassId' => ['nullable', 'integer', 'exists:school_classes,id'],
             'classRecapAcademicYearId' => ['nullable', 'integer', 'exists:academic_years,id'],
             'classRecapSchoolLevel' => ['nullable', 'string', Rule::in(array_column($this->classRecapLevelOptions(), 'value'))],
             'classRecapSchoolClassId' => ['nullable', 'integer', 'exists:school_classes,id'],
@@ -446,6 +465,136 @@ class SchoolDailyReport extends Component
 
         return is_numeric($this->bankFilter)
             && Bank::query()->whereKey((int) $this->bankFilter)->exists();
+    }
+
+    private function normalizeMonthlyPeriod(): void
+    {
+        if ($this->reportMonth < 1 || $this->reportMonth > 12) {
+            $this->reportMonth = (int) now()->format('n');
+        }
+
+        $this->monthlyAcademicYear = $this->resolveAcademicYear($this->monthlyAcademicYear);
+        $this->reportYear = $this->yearForAcademicMonth($this->monthlyAcademicYear, $this->reportMonth);
+    }
+
+    private function normalizeTargetPeriod(): void
+    {
+        if ($this->targetMonth < 1 || $this->targetMonth > 12) {
+            $this->targetMonth = (int) now()->format('n');
+        }
+
+        if ($this->targetAcademicYear === '') {
+            $this->targetAcademicYear = $this->resolveAcademicYear('');
+        }
+
+        $this->targetYear = $this->yearForAcademicMonth($this->targetAcademicYear, $this->targetMonth);
+    }
+
+    private function resolveAcademicYear(string $candidate): string
+    {
+        if ($candidate !== '' && AcademicYear::query()->where('year', $candidate)->exists()) {
+            return $candidate;
+        }
+
+        $activeAcademicYear = AcademicYear::active();
+
+        return $activeAcademicYear !== null
+            ? $activeAcademicYear->year
+            : (string) (AcademicYear::query()->orderByDesc('start_date')->value('year') ?? '');
+    }
+
+    private function yearForAcademicMonth(string $academicYear, int $month): int
+    {
+        if ($academicYear === '') {
+            return (int) now()->format('Y');
+        }
+
+        $startYear = (int) explode('/', $academicYear, 2)[0];
+
+        return $month >= 7 ? $startYear : $startYear + 1;
+    }
+
+    /** @return list<array{value: int, label: string}> */
+    private function academicYearMonthOptions(string $academicYear): array
+    {
+        if ($academicYear === '') {
+            return [];
+        }
+
+        $months = array_merge(range(7, 12), range(1, 6));
+
+        return array_map(fn (int $month): array => [
+            'value' => $month,
+            'label' => CarbonImmutable::create($this->yearForAcademicMonth($academicYear, $month), $month, 1)
+                ->settings(['locale' => 'id'])
+                ->translatedFormat('F Y'),
+        ], $months);
+    }
+
+    /** @return list<array{value: int, label: string}> */
+    private function targetMonthOptions(): array
+    {
+        return $this->academicYearMonthOptions($this->targetAcademicYear);
+    }
+
+    /**
+     * Opsi kelas untuk tab Target & Tunggakan, terbatas pada jenjang terpilih.
+     *
+     * Satu query terkunci di SQL lewat level kelas, bukan memuat semua kelas
+     * lalu menyaringnya di PHP. Jenjang "Semua Jenjang" tidak punya daftar kelas
+     * yang masuk akal karena kelas selalu berjenjang, jadi opsi dikosongkan dan
+     * state kelas dinormalisasi menjadi null.
+     *
+     * @return list<array{value: int, label: string}>
+     */
+    private function targetClassOptions(): array
+    {
+        $schoolLevel = SchoolReportLevel::fromValue($this->schoolLevel);
+
+        if ($schoolLevel === null) {
+            return [];
+        }
+
+        return SchoolClass::query()
+            ->whereIn('level', $schoolLevel->classLevels())
+            ->orderBy('level')
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (SchoolClass $schoolClass): array => [
+                'value' => $schoolClass->id,
+                'label' => $schoolClass->name,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Jaga konsistensi filter kelas dengan jenjang terpilih.
+     *
+     * Rule exists hanya memastikan kelas ada, bukan bahwa kelas itu milik
+     * jenjang yang sedang dipilih, sehingga kelas dari jenjang lain (mis. dari
+     * URL lama) harus dinormalisasi. Mengikuti normalizeClassRecapSelection()
+     * untuk tab Rekap Per Kelas. Changing bulan atau tahun ajaran tidak
+     * menyentuh state kelas karena daftar kelas hanya bergantung pada jenjang.
+     */
+    private function normalizeTargetClassSelection(): void
+    {
+        $schoolLevel = SchoolReportLevel::fromValue($this->schoolLevel);
+
+        if ($schoolLevel === null || $this->targetSchoolClassId === null || $this->targetSchoolClassId === '') {
+            $this->targetSchoolClassId = null;
+
+            return;
+        }
+
+        $classIsValid = SchoolClass::query()
+            ->whereKey((int) $this->targetSchoolClassId)
+            ->whereIn('level', $schoolLevel->classLevels())
+            ->exists();
+
+        if (! $classIsValid) {
+            $this->targetSchoolClassId = null;
+        }
     }
 
     /** @return list<array{value: int, label: string}> */

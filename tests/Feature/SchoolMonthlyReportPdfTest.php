@@ -245,11 +245,17 @@ it('keeps every dynamic category in one compact table', function () {
     $monthlyComparison = monthlyPdfComparison($report);
     $html = view('reports.school-monthly-pdf', compact('report', 'document', 'monthlyComparison'))->render();
 
-    $categoryWidth = number_format((100 - 13 - 15 - 9 - 10) / 6, 6, '.', '').'%';
-    $cashCategoryWidth = number_format((100 - 18 - 11) / 6, 6, '.', '').'%';
+    $categoryWidth = number_format((100 - 4 - 9 - 5.5 - 5.5) / 6, 6, '.', '').'%';
+    $cashCategoryWidth = number_format((100 - 5 - 5.5) / 6, 6, '.', '').'%';
 
     expect(substr_count($html, 'width: '.$categoryWidth))->toBe(6)
         ->and(substr_count($html, 'width: '.$cashCategoryWidth))->toBe(6)
+        ->and($html)->toContain('.col-date { width: 4%; font-weight: bold; }')
+        ->and($html)->toContain('.col-bank { width: 9%; word-wrap: break-word; }')
+        ->and($html)->toContain('.col-total { width: 5.5%;')
+        ->and($html)->toContain('.col-daily-total { width: 5.5%;')
+        ->and($html)->toContain('.cash-date { width: 5%; font-weight: bold; }')
+        ->and($html)->toContain('.cash-total { width: 5.5%;')
         ->and(substr_count($html, '<table class="report-table'))->toBe(2)
         ->and($html)->not->toContain('page-break-before: always')
         ->and($html)->toContain('@page { size: 330mm 216mm; margin: 6mm 6mm 8mm; }')

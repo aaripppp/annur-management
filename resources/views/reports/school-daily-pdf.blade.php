@@ -34,6 +34,7 @@
         .report-group { page-break-inside: avoid; }
         .total-row { page-break-inside: avoid; font-weight: bold; }
         .total-label { text-align: center; }
+        .empty-state { text-align: center; font-style: italic; padding: 10px 5px; }
         .signature-table { width: 100%; margin-top: 22px; border-collapse: collapse; page-break-inside: avoid; }
         .signature-table td { width: 33.333%; padding: 0 12px; text-align: center; vertical-align: top; }
         .signature-role { min-height: 28px; }
@@ -68,7 +69,7 @@
                 <th class="col-amount">Saldo</th>
             </tr>
         </thead>
-        @foreach($report['form_sections'] as $section)
+        @forelse($report['form_sections'] as $section)
             <tbody class="report-group">
                 <tr class="group-row">
                     <td class="col-number">{{ $loop->iteration }}</td>
@@ -81,13 +82,19 @@
                     <tr>
                         <td></td>
                         <td class="category-name">{{ $category['name'] }}</td>
-                        <td class="col-amount">@if($category['amount'] !== null)Rp {{ number_format($category['amount'], 0, ',', '.') }}@endif</td>
+                        <td class="col-amount">Rp {{ number_format($category['amount'], 0, ',', '.') }}</td>
                         <td></td>
                         <td></td>
                     </tr>
                 @endforeach
             </tbody>
-        @endforeach
+        @empty
+            <tbody>
+                <tr>
+                    <td colspan="5" class="empty-state">Tidak ada transaksi pada periode/filter ini.</td>
+                </tr>
+            </tbody>
+        @endforelse
         <tfoot>
             <tr class="total-row">
                 <td colspan="2" class="total-label">TOTAL PENERIMAAN (DEBET/TRANSFER)</td>

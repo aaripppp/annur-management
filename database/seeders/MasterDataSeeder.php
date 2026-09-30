@@ -142,7 +142,7 @@ class MasterDataSeeder extends Seeder
             'Ekskul' => ['amount' => 60000, 'frequency' => BillFrequency::Monthly, 'levels' => $allLevels],
             'OSIS' => ['amount' => 5000, 'frequency' => BillFrequency::Monthly, 'levels' => [7, 8, 9]],
             'Jemputan' => ['amount' => 500000, 'frequency' => BillFrequency::Monthly, 'levels' => $allLevels],
-            'Adm Jemputan' => ['amount' => 50000, 'frequency' => BillFrequency::Monthly, 'levels' => $allLevels],
+            'Adm Jemputan' => ['amount' => 50000, 'frequency' => BillFrequency::OneTime, 'levels' => $allLevels],
             'Uang Pangkal' => ['amount' => 10000000, 'frequency' => BillFrequency::OneTime, 'levels' => $allLevels],
             'Uang Buku' => ['amount' => 1000000, 'frequency' => BillFrequency::Yearly, 'levels' => $allLevels],
             'Uang Kegiatan' => ['amount' => 2500000, 'frequency' => BillFrequency::Yearly, 'levels' => $allLevels],

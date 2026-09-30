@@ -693,8 +693,8 @@
                                             @if($row->isActive && $row->editUrl)
                                                 <a href="{{ $row->editUrl }}" class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Edit Pembayaran"><span class="material-symbols-outlined text-[20px]">edit</span></a>
                                             @endif
-                                            @if($row->source === 'student')
-                                                <button type="button" wire:click="confirmDelete({{ $row->id }})" class="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" title="Hapus Transaksi"><span class="material-symbols-outlined text-[20px]">delete</span></button>
+                                            @if(in_array($row->source, ['student', 'prospective'], true))
+                                                <button type="button" wire:click="confirmDelete('{{ $row->id }}', '{{ $row->source }}')" class="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-colors" title="Hapus Transaksi"><span class="material-symbols-outlined text-[20px]">delete</span></button>
                                             @endif
                                         </div>
                                     </td>
@@ -727,7 +727,7 @@
                             </div>
                             <div>
                                 <h3 class="text-headline-sm font-headline-sm text-on-surface" id="delete-payment-title">Hapus transaksi ini secara permanen?</h3>
-                                <p class="text-body-sm text-on-surface-variant mt-1">Pembayaran <strong class="font-numeric-data">{{ $deletingPayment->receipt_number }}</strong> untuk <strong>{{ $deletingPayment->student->nama_lengkap ?? '—' }}</strong> beserta detail transaksinya akan dihapus. {{ $deletingPayment->isManualPayment() ? 'Tindakan ini tidak mengubah tagihan siswa.' : 'Nilai pembayaran pada tagihan siswa akan dikembalikan.' }}</p>
+                                <p class="text-body-sm text-on-surface-variant mt-1">Pembayaran <strong class="font-numeric-data">{{ $deletingPayment->receipt_number }}</strong> untuk <strong>@if($deletingSource === 'prospective'){{ $deletingPayment->prospectiveStudent->nama_lengkap ?? '—' }}@else{{ $deletingPayment->student->nama_lengkap ?? '—' }}@endif</strong> beserta detail transaksinya akan dihapus. @if($deletingSource === 'prospective')Nilai pembayaran pada tagihan pendaftaran calon siswa akan dikembalikan.@else{{ $deletingPayment->isManualPayment() ? 'Tindakan ini tidak mengubah tagihan siswa.' : 'Nilai pembayaran pada tagihan siswa akan dikembalikan.' }}@endif</p>
                             </div>
                         </div>
                         <div class="px-6 py-4 bg-surface-container-low/60 border-t border-outline-variant flex justify-end gap-3">
