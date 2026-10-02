@@ -505,7 +505,7 @@ it('halaman detail pembayaran menampilkan identitas pendaftaran calon siswa', fu
 });
 
 it('kwitansi PDF calon siswa memakai nomor pendaftaran bukan NIS', function () {
-    $creator = User::factory()->create(['name' => 'Admin Kwitansi']);
+    $creator = User::factory()->create(['name' => 'Admin Kwitansi', 'position' => 'Bendahara Pendaftaran']);
 
     [$type, $ps, $bill] = makeProspectivePaymentFixture();
 
@@ -534,15 +534,39 @@ it('kwitansi PDF calon siswa memakai nomor pendaftaran bukan NIS', function () {
 
     expect($receipt['category'])->toBe('Calon Siswa')
         ->and($receipt['identityName'])->toBe($ps->nama_lengkap)
-        ->and($receipt['identityContext'])->toContain('No. Pendaftaran '.$ps->registration_number)
-        ->and($receipt['identityContext'])->toContain('Kelas Tujuan '.$ps->schoolClass->name)
-        ->and($receipt['identityContext'])->toContain('TA '.$ps->academicYear->year)
+        ->and($receipt['creatorPosition'])->toBe('Bendahara Pendaftaran')
+        ->and($receipt['identityContext'])->toBe($ps->registration_number.' • Calon Siswa')
+        ->and($receipt['identityContext'])->not->toContain('Kelas Tujuan')
+        ->and($receipt['identityContext'])->not->toContain($ps->schoolClass->name)
+        ->and($receipt['identityContext'])->not->toContain('TA '.$ps->academicYear->year)
         ->and($receipt['identityContext'])->not->toContain('NIS');
 
     $html = view('receipts.pdf', ['receipt' => $receipt])->render();
 
-    expect($html)->toContain('Calon Siswa')
+    expect($html)->toContain($ps->registration_number.' • Calon Siswa')
+        ->and($html)->toContain('Bendahara Pendaftaran')
+        ->and($html)->not->toContain('Admin Keuangan')
+        ->and($html)->not->toContain('Kelas Tujuan')
+        ->and($html)->not->toContain($ps->schoolClass->name)
         ->and($html)->not->toContain('NIS');
+});
+
+it('kwitansi PDF calon siswa tanpa nomor pendaftaran menampilkan konteks calon siswa saja', function () {
+    [$type, $ps, $bill] = makeProspectivePaymentFixture();
+    $ps->forceFill(['registration_number' => ''])->save();
+
+    $payment = ProspectiveStudentPayment::factory()->create([
+        'prospective_student_id' => $ps->id,
+        'total_amount' => 350000,
+    ]);
+
+    $renderer = fakeProspectiveReceiptPrintRenderer();
+
+    $this->actingAs(User::factory()->create())
+        ->get(route('pembayaran.prospective.print', $payment))
+        ->assertOk();
+
+    expect($renderer->receipts[0]['identityContext'])->toBe('Calon Siswa');
 });
 
 it('halaman detail calon siswa menampilkan riwayat pembayaran', function () {

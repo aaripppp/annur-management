@@ -40,10 +40,12 @@
         .summary-table td { padding: 2px 4px; border: .5px solid #000; }
         .summary-table .amount { text-align: right; white-space: nowrap; font-weight: bold; }
         .summary-table .grand { background: #f2f2f2; font-weight: bold; }
-        .signature-table { margin-top: 12px; page-break-inside: avoid; }
+        .signature-table { margin-top: 12px; table-layout: fixed; page-break-inside: avoid; }
         .signature-table td { width: 50%; padding: 0 8px; text-align: center; vertical-align: top; }
-        .signature-space { height: 34px; }
-        .signature-name { display: inline-block; min-width: 130px; padding-top: 2px; border-top: .6px dotted #000; font-weight: bold; }
+        .signature-heading-row td { line-height: 1.2; word-wrap: break-word; }
+        .signature-spacer-row td { height: 34px; }
+        .signature-name-row td { vertical-align: top; }
+        .signature-name { display: inline-block; width: 130px; max-width: 80%; padding-top: 2px; border-top: .6px dotted #000; font-weight: bold; line-height: 1.2; word-wrap: break-word; }
     </style>
 </head>
 <body>
@@ -80,10 +82,20 @@
             <tr class="grand"><td>GRAND TOTAL</td><td class="amount">Rp {{ number_format($report['grand_total'], 0, ',', '.') }}</td></tr>
         </table>
 
-        <table class="signature-table"><tr>
-            <td>Menyetujui,<br>{{ $document['approval']['approver_title'] }}<div class="signature-space"></div><div class="signature-name">{{ $document['approval']['approver_name'] }}</div></td>
-            <td>{{ $document['approval']['city_and_date'] }}<br>Mengetahui,<br>{{ $document['approval']['report_creator_title'] }}<div class="signature-space"></div><div class="signature-name">{{ $document['approval']['report_creator_name'] }}</div></td>
-        </tr></table>
+        <table class="signature-table">
+            <tr class="signature-heading-row">
+                <td>Menyetujui,<br>{{ $document['approval']['approver_title'] }}</td>
+                <td>{{ $document['approval']['city_and_date'] }}<br>Mengetahui,<br>{{ $document['approval']['report_creator_title'] }}</td>
+            </tr>
+            <tr class="signature-spacer-row">
+                <td></td>
+                <td></td>
+            </tr>
+            <tr class="signature-name-row">
+                <td><span class="signature-name">{{ $document['approval']['approver_name'] }}</span></td>
+                <td><span class="signature-name">{{ $document['approval']['report_creator_name'] }}</span></td>
+            </tr>
+        </table>
     @endif
 </body>
 </html>

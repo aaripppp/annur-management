@@ -12,7 +12,9 @@ use App\Models\User;
 
 function createSinglePageStudentReceipt(int $detailCount): Payment
 {
-    $user = User::factory()->create();
+    $user = User::factory()->create([
+        'position' => 'Koordinator Administrasi dan Keuangan Yayasan An-Nur Nurrahim',
+    ]);
     $payment = Payment::create([
         'receipt_number' => 'KWT-ST-PAGE-'.str_pad((string) $detailCount, 2, '0', STR_PAD_LEFT),
         'student_id' => Student::factory()->create()->id,
@@ -84,13 +86,15 @@ it('merender PDF Student satu halaman di atas kertas F4B portrait untuk setiap j
     [$widthPt, $heightPt] = receiptPdfPageSize($response->getContent());
 
     expect(receiptPdfPageCount($response->getContent()))->toBe(1)
+        ->and($response->getContent())->toContain(mb_convert_encoding('Kwitansi Pembayaran - YPI An-Nur Nurrahim', 'UTF-16BE'))
+        ->and($response->getContent())->not->toContain(mb_convert_encoding('ANNUR MANAGEMENT', 'UTF-16BE'))
         ->and(abs($widthPt - 612.28))->toBeLessThan(0.01)
         ->and(abs($heightPt - 935.43))->toBeLessThan(0.01)
         ->and($payment->refresh()->receipt_number)->toBe($receiptNumber)
         ->and($payment->total_amount)->toBe($total)
         ->and($payment->details()->orderBy('id')->get(['description', 'amount'])->toArray())->toBe($details)
         ->and($payment->details()->count())->toBe($detailCount);
-})->with([1, 3, 10, 25]);
+})->with([1, 3, 5, 10, 25]);
 
 it('memakai kertas F4B portrait dan bukan tinggi halaman dinamis pada PDF kwitansi', function () {
     $payment = createSinglePageStudentReceipt(1);

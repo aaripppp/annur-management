@@ -59,7 +59,10 @@ it('exports an all-units workbook with dynamic numeric bank and cash values', fu
 });
 
 it('renders the official all-units PDF with dynamic matrices and creator', function () {
-    $user = User::factory()->create(['name' => 'Petugas Seluruh Unit']);
+    $user = User::factory()->create([
+        'name' => 'Petugas Seluruh Unit Dengan Nama Panjang',
+        'position' => 'TU SD IT An-Nur',
+    ]);
     $student = Student::factory()->create();
     $bank = Bank::factory()->create(['name' => 'BCA PDF Seluruh Unit', 'account_number' => '111111']);
     $zeroBank = Bank::factory()->create(['name' => 'BRI PDF Seluruh Unit', 'account_number' => '222222']);
@@ -79,7 +82,7 @@ it('renders the official all-units PDF with dynamic matrices and creator', funct
         'month_label' => $report['month_label_upper'],
         'approval' => [
             'approver_title' => 'Direktur Keuangan',
-            'approver_name' => "Nova Rabi'ah Nurrohmah, SE",
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
             'city_and_date' => 'Bekasi, 30 September 2026',
             'report_creator_title' => $user->position ?: $user->roleLabel(),
             'report_creator_name' => $user->name,
@@ -99,7 +102,17 @@ it('renders the official all-units PDF with dynamic matrices and creator', funct
         ->toContain('.row-total { width: 8%; font-weight: bold; }')
         ->toContain('<th class="money" style="width: 8%;">Total</th>')
         ->toContain($user->name)
-        ->toContain('Nova Rabi&#039;ah Nurrohmah, SE');
+        ->toContain('Nova Rabi&#039;ah Nurrohmah, SE, MM');
+
+    $signatureCellCounts = collect(['heading', 'spacer', 'name'])->map(function (string $row) use ($html): int {
+        preg_match('/<tr class="signature-'.$row.'-row">(.*?)<\/tr>/s', $html, $matches);
+
+        return substr_count($matches[1] ?? '', '<td');
+    })->all();
+
+    expect($html)->toContain('TU SD IT An-Nur')
+        ->not->toContain('class="signature-space"')
+        ->and($signatureCellCounts)->toBe([2, 2, 2]);
 });
 
 it('protects validates and downloads the all-units workbook', function () {

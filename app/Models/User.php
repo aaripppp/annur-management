@@ -36,6 +36,8 @@ class User extends Authenticatable
 
     public const POSITION_DIRECTOR = 'Direktur Keuangan';
 
+    public const POSITION_HEAD_TU_FOUNDATION = 'Kepala TU Yayasan';
+
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 

@@ -472,6 +472,30 @@ it('exports the same canonical target totals to xlsx and pdf', function () {
         2026,
         '2026/2027',
     );
+    $document = [
+        'unit' => $report['unit_name'],
+        'approval' => [
+            'approver_title' => 'Direktur Keuangan',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
+            'reviewer_name' => 'Windiarti, SE',
+            'city_and_date' => 'Bekasi, 30 September 2026',
+            'report_creator_title' => 'TU SD IT An-Nur',
+            'report_creator_name' => 'Petugas Target Dengan Nama Panjang',
+        ],
+    ];
+    $pdfHtml = view('reports.student-target-arrears-pdf', compact('report', 'document'))->render();
+    $signatureCellCounts = collect(['heading', 'spacer', 'name'])->map(function (string $row) use ($pdfHtml): int {
+        preg_match('/<tr class="signature-'.$row.'-row">(.*?)<\/tr>/s', $pdfHtml, $matches);
+
+        return substr_count($matches[1] ?? '', '<td');
+    })->all();
+
+    expect($pdfHtml)
+        ->toContain('Bekasi, 30 September 2026', 'TU SD IT An-Nur', 'Petugas Target Dengan Nama Panjang')
+        ->not->toContain('class="signature-space"')
+        ->and($signatureCellCounts)->toBe([3, 3, 3]);
+
     $path = app(StudentTargetArrearsReportSpreadsheet::class)->create($report);
     $reader = new Reader;
 

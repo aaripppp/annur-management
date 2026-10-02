@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>Kwitansi Pembayaran - Annur Management</title>
+    <title>Kwitansi Pembayaran - YPI An-Nur Nurrahim</title>
     <style>
         @page { size: 216mm 330mm; margin: 0; }
         * { box-sizing: border-box; }
@@ -16,7 +16,7 @@
         .brand-logo-cell { width: 58px !important; }
         .brand-logo { width: auto; height: 52px; }
         .brand-copy { padding-left: 12px !important; }
-        .eyebrow { color: #1d4ed8; font-size: 11px; font-weight: bold; letter-spacing: 1.5px; text-transform: uppercase; }
+        .eyebrow { color: #1d4ed8; font-size: 11px; font-weight: bold; letter-spacing: 1.5px; }
         .title { margin-top: 4px; color: #172033; font-size: 23px; font-weight: bold; }
         .muted { margin-top: 4px; color: #64748b; font-size: 13px; }
         .align-right { text-align: right; }
@@ -45,11 +45,11 @@
         .footer-layout { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .thank-you-cell { width: 58%; padding: 0 0 10px; vertical-align: bottom; color: #64748b; font-size: 13px; line-height: 1.5; }
         .authorization-cell { width: 42%; padding: 0; vertical-align: top; text-align: center; }
-        .authorization-block { position: relative; right: 40px; height: 158px; }
+        .authorization-block { position: relative; right: 40px; height: 140px; }
         .authorization-heading { width: 240px; margin-left: auto; }
         .authorization-date { white-space: nowrap; font-size: 14px; }
         .authorization-label { margin-top: 5px; font-size: 15px; font-weight: bold; }
-        .authorization-stamp { position: absolute; top: 16px; left: 148px; width: 118px; height: auto; }
+        .authorization-stamp { position: absolute; top: 16px; left: 68px; width: 118px; height: auto; }
         .authorization-identity { position: absolute; right: 8px; bottom: 6px; width: 152px; text-align: left; }
         .authorization-name { position: relative; z-index: 2; padding-bottom: 5px; border-bottom: 1px solid #94a3b8; font-size: 16px; font-weight: bold; }
         .authorization-role { position: relative; z-index: 2; margin-top: 4px; color: #64748b; font-size: 13px; }
@@ -63,7 +63,7 @@
                     <table class="brand-table">
                         <tr>
                             <td class="brand-logo-cell"><img src="{{ public_path('images/annur_logo2.png') }}" alt="Annur" class="brand-logo"></td>
-                            <td class="brand-copy"><div class="eyebrow">Annur Management</div><div class="title">KWITANSI PEMBAYARAN</div><div class="muted">Kategori: {{ $receipt['category'] }}</div></td>
+                            <td class="brand-copy"><div class="eyebrow">YPI An-Nur Nurrahim</div><div class="title">KWITANSI PEMBAYARAN</div><div class="muted">Kategori: {{ $receipt['category'] }}</div></td>
                         </tr>
                     </table>
                 </td>
@@ -71,7 +71,6 @@
                     <div class="info-label">No. Kwitansi</div>
                     <div class="receipt-number">{{ $receipt['receiptNumber'] }}</div>
                     <div class="badge">{{ $receipt['badge'] }}</div>
-                    <div class="muted">{{ $receipt['paymentDate'] }}</div>
                 </td>
             </tr>
         </table>
@@ -85,8 +84,8 @@
                 </td>
                 <td class="align-right">
                     <div class="info-label">Metode Pembayaran</div>
-                    <div class="info-title">{{ $receipt['bankName'] }}</div>
-                    @if($receipt['bankAccountNumber'])<div class="info-copy">{{ $receipt['bankAccountNumber'] }}</div>@endif
+                    <div class="info-title">{{ $receipt['bankName'] }}@if(filled($receipt['bankAccountNumber'])) - {{ $receipt['bankAccountNumber'] }}@endif</div>
+                    <div class="info-copy payment-date">{{ $receipt['paymentDate'] }}</div>
                     @if($receipt['bankAccountName'])<div class="info-copy">{{ $receipt['bankAccountName'] }}</div>@endif
                 </td>
             </tr>
@@ -125,7 +124,7 @@
                             <img src="{{ public_path('images/stample.png') }}" alt="Stempel resmi Annur" class="authorization-stamp">
                             <div class="authorization-identity">
                                 <div class="authorization-name">{{ $receipt['creatorName'] }}</div>
-                                <div class="authorization-role">Admin Keuangan</div>
+                                <div class="authorization-role">{{ $receipt['creatorPosition'] }}</div>
                             </div>
                         </div>
                     </td>

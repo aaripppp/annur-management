@@ -1,19 +1,23 @@
-<table class="signature-table">
-    <tr>
+<table class="signature-table" style="table-layout: fixed;">
+    <tr class="signature-heading-row">
         <td>
-            <div class="signature-role">Menyetujui,<br>Direktur Keuangan</div>
-            <div class="signature-space"></div>
-            <div class="signature-name">Nova Rabi'ah Nurrohmah, SE</div>
+            <div class="signature-role" style="line-height: 1.2; word-wrap: break-word;">Menyetujui,<br>{{ $approval['approver_title'] }}</div>
         </td>
         <td>
-            <div class="signature-role">Mengetahui,<br>Kepala Tata Usaha</div>
-            <div class="signature-space"></div>
-            <div class="signature-name">Windiarti, SE</div>
+            <div class="signature-role" style="line-height: 1.2; word-wrap: break-word;">Mengetahui,<br>{{ $approval['reviewer_title'] }}</div>
         </td>
         <td>
-            <div class="signature-role">{{ $approval['city_and_date'] }}<br>TU An-Nur</div>
-            <div class="signature-space"></div>
-            <div class="signature-name">{{ $approval['report_creator_name'] }}</div>
+            <div class="signature-role" style="line-height: 1.2; word-wrap: break-word;">{{ $approval['city_and_date'] }}<br>{{ $approval['report_creator_title'] }}</div>
         </td>
+    </tr>
+    <tr class="signature-spacer-row">
+        <td><div class="signature-space"></div></td>
+        <td><div class="signature-space"></div></td>
+        <td><div class="signature-space"></div></td>
+    </tr>
+    <tr class="signature-name-row">
+        <td><div class="signature-name" style="width: 80%; max-width: 130px; line-height: 1.2; word-wrap: break-word;">{{ $approval['approver_name'] }}</div></td>
+        <td><div class="signature-name" style="width: 80%; max-width: 130px; line-height: 1.2; word-wrap: break-word;">{{ $approval['reviewer_name'] }}</div></td>
+        <td><div class="signature-name" style="width: 80%; max-width: 130px; line-height: 1.2; word-wrap: break-word;">{{ $approval['report_creator_name'] }}</div></td>
     </tr>
 </table>

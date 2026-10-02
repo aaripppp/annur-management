@@ -45,10 +45,12 @@
         .bank-total td { border: .6px solid #000; padding: 3px 5px; font-weight: bold; vertical-align: middle; }
         .grand-total { width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 10px; font-weight: bold; }
         .grand-total td { border: .8px solid #000; padding: 5px; }
-        .signature { width: 100%; margin-top: 24px; border-collapse: collapse; page-break-inside: avoid; }
-        .signature td { width: 50%; text-align: center; vertical-align: top; }
-        .signature-space { height: 55px; }
-        .signature-name { display: inline-block; min-width: 140px; border-top: .6px dotted #000; font-weight: bold; }
+        .signature-table { width: 100%; margin-top: 24px; border-collapse: collapse; table-layout: fixed; page-break-inside: avoid; }
+        .signature-table td { width: 50%; text-align: center; vertical-align: top; }
+        .signature-heading-row td { line-height: 1.2; word-wrap: break-word; }
+        .signature-spacer-row td { height: 55px; }
+        .signature-name-row td { vertical-align: top; }
+        .signature-name { display: inline-block; width: 140px; max-width: 80%; padding-top: 2px; border-top: .6px dotted #000; font-weight: bold; line-height: 1.2; word-wrap: break-word; }
     </style>
 </head>
 <body>
@@ -130,10 +132,18 @@
     @endforeach
 
     <table class="grand-total"><tr><td>GRAND TOTAL</td><td class="amount">Rp {{ number_format($report['grand_total'], 0, ',', '.') }}</td></tr></table>
-    <table class="signature">
-        <tr>
-            <td><div>Mengetahui,<br>Kepala Tata Usaha</div><div class="signature-space"></div><div class="signature-name">Windiarti, SE</div></td>
-            <td><div>{{ $document['city_and_date'] }}<br>Admin</div><div class="signature-space"></div><div class="signature-name">{{ $document['creator_name'] }}</div></td>
+    <table class="signature-table">
+        <tr class="signature-heading-row">
+            <td>Mengetahui,<br>{{ $document['approval']['reviewer_title'] }}</td>
+            <td>{{ $document['approval']['city_and_date'] }}<br>{{ $document['approval']['report_creator_title'] }}</td>
+        </tr>
+        <tr class="signature-spacer-row">
+            <td></td>
+            <td></td>
+        </tr>
+        <tr class="signature-name-row">
+            <td><span class="signature-name">{{ $document['approval']['reviewer_name'] }}</span></td>
+            <td><span class="signature-name">{{ $document['approval']['report_creator_name'] }}</span></td>
         </tr>
     </table>
 </body>

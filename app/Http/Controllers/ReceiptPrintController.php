@@ -7,6 +7,7 @@ use App\Models\DaycarePaymentDetail;
 use App\Models\Payment;
 use App\Models\ProspectiveStudentPayment;
 use App\Models\ProspectiveStudentPaymentDetail;
+use App\Models\User;
 use App\Support\PaymentReceiptDisplay;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Response;
@@ -85,6 +86,7 @@ class ReceiptPrintController extends Controller
      *     bankAccountNumber: string|null,
      *     bankAccountName: string|null,
      *     creatorName: string|null,
+     *     creatorPosition: string,
      *     authorizationDate: string|null,
      *     notes: string|null,
      *     details: array<int, array{name: string, description: string|null, amount: float}>,
@@ -113,6 +115,11 @@ class ReceiptPrintController extends Controller
             ->locale('id')
             ->translatedFormat('d F Y');
         $bank = $payment->bank;
+        $student = $payment->student;
+        $creator = $payment->user;
+        $identityContext = $student->academicStatus() === 'calon_siswa'
+            ? (filled($student->nis) ? 'NIS '.$student->nis.' • Calon Siswa' : 'Calon Siswa')
+            : 'NIS '.$student->nis.' • Kelas '.($student->schoolClass->name ?? '—');
 
         return [
             'category' => $payment->isManualPayment() ? 'Siswa • Manual' : 'Siswa',
@@ -120,12 +127,13 @@ class ReceiptPrintController extends Controller
             'badge' => $payment->status_label,
             'paymentDate' => $paymentDate->translatedFormat('d F Y'),
             'identityLabel' => 'Informasi Siswa',
-            'identityName' => $payment->student->nama_lengkap,
-            'identityContext' => 'NIS '.$payment->student->nis.' • Kelas '.($payment->student->schoolClass->name ?? '—'),
+            'identityName' => $student->nama_lengkap,
+            'identityContext' => $identityContext,
             'bankName' => $bank->paymentLabel(),
             'bankAccountNumber' => $bank->isBank() ? $bank->account_number : null,
             'bankAccountName' => $bank->isBank() ? $bank->account_name : null,
-            'creatorName' => $payment->user?->name ?? 'Administrator',
+            'creatorName' => $creator?->name ?? 'Administrator',
+            'creatorPosition' => $this->creatorPosition($creator),
             'authorizationDate' => $authorizationDate,
             'notes' => $payment->isManualPayment() ? $payment->description : null,
             'details' => $details,
@@ -146,6 +154,7 @@ class ReceiptPrintController extends Controller
      *     bankAccountNumber: string|null,
      *     bankAccountName: string|null,
      *     creatorName: string|null,
+     *     creatorPosition: string,
      *     authorizationDate: string|null,
      *     notes: string|null,
      *     details: array<int, array{name: string, description: string|null, amount: float}>,
@@ -170,6 +179,7 @@ class ReceiptPrintController extends Controller
             ->locale('id')
             ->translatedFormat('d F Y');
         $bank = $payment->bank;
+        $creator = $payment->creator;
 
         return [
             'category' => 'Daycare',
@@ -182,7 +192,8 @@ class ReceiptPrintController extends Controller
             'bankName' => $bank->paymentLabel(),
             'bankAccountNumber' => $bank->isBank() ? $bank->account_number : null,
             'bankAccountName' => $bank->isBank() ? $bank->account_name : null,
-            'creatorName' => $payment->creator?->name ?? 'Administrator',
+            'creatorName' => $creator?->name ?? 'Administrator',
+            'creatorPosition' => $this->creatorPosition($creator),
             'authorizationDate' => $authorizationDate,
             'notes' => null,
             'details' => $details,
@@ -203,6 +214,7 @@ class ReceiptPrintController extends Controller
      *     bankAccountNumber: string|null,
      *     bankAccountName: string|null,
      *     creatorName: string|null,
+     *     creatorPosition: string,
      *     authorizationDate: string|null,
      *     notes: string|null,
      *     details: array<int, array{name: string, description: string|null, amount: float}>,
@@ -242,6 +254,7 @@ class ReceiptPrintController extends Controller
             ?->translatedFormat('d F Y');
         $bank = $payment->bank;
         $prospectiveStudent = $payment->prospectiveStudent;
+        $creator = $payment->creator;
 
         return [
             'category' => 'Calon Siswa',
@@ -250,16 +263,28 @@ class ReceiptPrintController extends Controller
             'paymentDate' => $paymentDate->translatedFormat('d F Y'),
             'identityLabel' => 'Informasi Calon Siswa',
             'identityName' => $prospectiveStudent->nama_lengkap ?? '—',
-            'identityContext' => 'No. Pendaftaran '.($prospectiveStudent->registration_number ?? '—').' • Kelas Tujuan '.($prospectiveStudent->schoolClass->name ?? '—').' • TA '.($prospectiveStudent->academicYear->year ?? '—'),
+            'identityContext' => filled($prospectiveStudent->registration_number)
+                ? $prospectiveStudent->registration_number.' • Calon Siswa'
+                : 'Calon Siswa',
             'bankName' => $bank->paymentLabel(),
             'bankAccountNumber' => $bank->isBank() ? $bank->account_number : null,
             'bankAccountName' => $bank->isBank() ? $bank->account_name : null,
-            'creatorName' => $payment->creator?->name ?? 'Administrator',
+            'creatorName' => $creator?->name ?? 'Administrator',
+            'creatorPosition' => $this->creatorPosition($creator),
             'authorizationDate' => $authorizationDate,
             'notes' => $payment->description,
             'details' => $details,
             'total' => (float) $payment->total_amount,
         ];
+    }
+
+    private function creatorPosition(?User $creator): string
+    {
+        if ($creator === null) {
+            return 'Administrator';
+        }
+
+        return filled($creator->position) ? $creator->position : $creator->roleLabel();
     }
 
     /**
@@ -275,6 +300,7 @@ class ReceiptPrintController extends Controller
      *     bankAccountNumber: string|null,
      *     bankAccountName: string|null,
      *     creatorName: string|null,
+     *     creatorPosition: string,
      *     authorizationDate: string|null,
      *     notes: string|null,
      *     details: array<int, array{name: string, description: string|null, amount: float}>,

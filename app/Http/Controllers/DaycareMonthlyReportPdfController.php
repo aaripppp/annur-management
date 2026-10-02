@@ -5,16 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Services\DaycareMonthlyReportService;
 use App\Support\DaycareReportDocument;
+use App\Support\SchoolReportDocument;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 class DaycareMonthlyReportPdfController extends Controller
 {
-    private const REVIEWER_TITLE = 'Kepala Tata Usaha';
-
-    private const REVIEWER_NAME = 'Windiarti, SE';
-
     public function __invoke(Request $request, DaycareMonthlyReportService $reportService): Response
     {
         $validated = $request->validate([
@@ -29,13 +26,10 @@ class DaycareMonthlyReportPdfController extends Controller
         $document = [
             'unit' => DaycareReportDocument::UNIT_NAME,
             'month_label' => $report['month_label_upper'],
-            'approval' => [
-                'admin_name' => $user->name,
-                'reviewer_title' => self::REVIEWER_TITLE,
-                'reviewer_name' => self::REVIEWER_NAME,
-                'city_and_date' => DaycareReportDocument::CITY.', '.$footerDate,
-                'report_creator_name' => $user->name,
-            ],
+            'approval' => SchoolReportDocument::approvalFor(
+                $user,
+                DaycareReportDocument::CITY.', '.$footerDate
+            ),
         ];
         $filename = 'laporan-bulanan-daycare-'
             .$report['year'].'-'

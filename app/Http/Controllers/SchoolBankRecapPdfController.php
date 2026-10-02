@@ -25,8 +25,10 @@ class SchoolBankRecapPdfController extends Controller
 
         $report = $reportService->generate($validated['start_date'], $validated['end_date'], $validated['bank'] ?? 'all');
         $document = [
-            'city_and_date' => SchoolReportDocument::CITY.', '.$report['end_date']->locale('id')->translatedFormat('d F Y'),
-            'creator_name' => $user->name,
+            'approval' => SchoolReportDocument::approvalFor(
+                $user,
+                SchoolReportDocument::CITY.', '.$report['end_date']->locale('id')->translatedFormat('d F Y')
+            ),
         ];
         $period = $report['is_single_day']
             ? $report['start_date']->format('Y-m-d')

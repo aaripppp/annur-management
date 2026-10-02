@@ -86,6 +86,22 @@ function readBankRecapWorkbookValues(string $path): array
     return $values;
 }
 
+/** @return array{approval: array<string, string>} */
+function bankRecapPdfDocument(User $user): array
+{
+    return [
+        'approval' => [
+            'approver_title' => User::POSITION_DIRECTOR,
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => User::POSITION_HEAD_TU_FOUNDATION,
+            'reviewer_name' => 'Windiarti, SE',
+            'city_and_date' => 'Bekasi, 1 September 2026',
+            'report_creator_title' => $user->position ?: $user->roleLabel(),
+            'report_creator_name' => $user->name,
+        ],
+    ];
+}
+
 it('stores an actual payment date independently from its recorded timestamp', function () {
     $payment = createBankRecapPayment(
         Student::factory()->create(),
@@ -432,18 +448,32 @@ it('renders source badges inside the aligned recapkan detail rows without adding
 });
 
 it('renders the recapkan pdf with daycare and student totals reconciled', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->create([
+        'name' => 'Petugas Rekap Bank Dengan Nama Panjang',
+        'position' => 'TU SD IT An-Nur',
+    ]);
     $bank = Bank::factory()->create(['name' => 'BSI', 'account_number' => '111111']);
     createBankRecapPayment(Student::factory()->create(), $bank, $user, '2026-09-01', '2026-09-02 08:00:00', 400_000);
     createBankRecapDaycarePayment(DaycareChild::factory()->create(), $bank, $user, '2026-09-01', '2026-09-02 09:00:00', 600_000);
 
     $report = app(SchoolBankRecapService::class)->generate('2026-09-01');
-    $document = ['city_and_date' => 'Bekasi, 1 September 2026', 'creator_name' => $user->name];
+    $document = bankRecapPdfDocument($user);
     $pdfHtml = view('reports.school-bank-recap-pdf', compact('report', 'document'))->render();
 
     expect($pdfHtml)
         ->toContain('Rp 1.000.000')
-        ->toContain('GRAND TOTAL');
+        ->toContain('GRAND TOTAL')
+        ->toContain('TU SD IT An-Nur')
+        ->toContain('padding-top: 2px;');
+
+    $signatureCellCounts = collect(['heading', 'spacer', 'name'])->map(function (string $row) use ($pdfHtml): int {
+        preg_match('/<tr class="signature-'.$row.'-row">(.*?)<\/tr>/s', $pdfHtml, $matches);
+
+        return substr_count($matches[1] ?? '', '<td');
+    })->all();
+
+    expect($pdfHtml)->not->toContain('class="signature-space"')
+        ->and($signatureCellCounts)->toBe([2, 2, 2]);
 });
 
 it('lists each bank recap transaction with source badges and aligned detail columns in the pdf', function () {
@@ -467,7 +497,7 @@ it('lists each bank recap transaction with source badges and aligned detail colu
     );
 
     $report = app(SchoolBankRecapService::class)->generate('2026-09-01');
-    $document = ['city_and_date' => 'Bekasi, 1 September 2026', 'creator_name' => $user->name];
+    $document = bankRecapPdfDocument($user);
     $pdfHtml = view('reports.school-bank-recap-pdf', compact('report', 'document'))->render();
 
     expect($pdfHtml)
@@ -509,7 +539,7 @@ it('groups pdf transactions by transfer date inside each bank section rather tha
     createBankRecapDaycarePayment(DaycareChild::factory()->create(['nama_lengkap' => 'Anak Hari Kedua']), $bank, $user, '2026-09-02', '2026-09-02 10:00:00', 600_000);
 
     $report = app(SchoolBankRecapService::class)->generate('2026-09-01', '2026-09-02');
-    $document = ['city_and_date' => 'Bekasi, 1 September 2026', 'creator_name' => $user->name];
+    $document = bankRecapPdfDocument($user);
     $pdfHtml = view('reports.school-bank-recap-pdf', compact('report', 'document'))->render();
 
     expect($pdfHtml)
@@ -530,7 +560,7 @@ it('keeps pdf sections separate for identically named banks by their actual acco
     createBankRecapDaycarePayment(DaycareChild::factory()->create(), $secondBank, $user, '2026-09-01', '2026-09-02 10:00:00', 200_000);
 
     $report = app(SchoolBankRecapService::class)->generate('2026-09-01');
-    $document = ['city_and_date' => 'Bekasi, 1 September 2026', 'creator_name' => $user->name];
+    $document = bankRecapPdfDocument($user);
     $pdfHtml = view('reports.school-bank-recap-pdf', compact('report', 'document'))->render();
 
     expect($pdfHtml)
@@ -568,7 +598,7 @@ it('omits cancelled student transactions from the pdf while keeping daycare rows
     );
 
     $report = app(SchoolBankRecapService::class)->generate('2026-09-01');
-    $document = ['city_and_date' => 'Bekasi, 1 September 2026', 'creator_name' => $user->name];
+    $document = bankRecapPdfDocument($user);
     $pdfHtml = view('reports.school-bank-recap-pdf', compact('report', 'document'))->render();
 
     expect($pdfHtml)
@@ -588,7 +618,7 @@ it('applies the range filter to pdf details and keeps the cash section', functio
     createBankRecapDaycarePayment(DaycareChild::factory()->create(['nama_lengkap' => 'Anak Tunai']), $cash, $user, '2026-09-01', '2026-09-02 10:00:00', 300_000);
 
     $report = app(SchoolBankRecapService::class)->generate('2026-09-01');
-    $document = ['city_and_date' => 'Bekasi, 1 September 2026', 'creator_name' => $user->name];
+    $document = bankRecapPdfDocument($user);
     $pdfHtml = view('reports.school-bank-recap-pdf', compact('report', 'document'))->render();
 
     expect($pdfHtml)
@@ -617,7 +647,7 @@ it('keeps long rupiah amounts on one line with every header centered in the pdf'
     );
 
     $report = app(SchoolBankRecapService::class)->generate('2026-09-01');
-    $document = ['city_and_date' => 'Bekasi, 1 September 2026', 'creator_name' => $user->name];
+    $document = bankRecapPdfDocument($user);
     $pdfHtml = view('reports.school-bank-recap-pdf', compact('report', 'document'))->render();
 
     expect($pdfHtml)
@@ -699,7 +729,7 @@ it('exports the canonical bank recap as xlsx and pdf', function () {
         ->and($summaryXml)->toMatch('/<c r="D7" s="\d+"[^>]*><v>425000<\/v><\/c>/')
         ->and($detailXml)->toMatch('/<c r="G5" s="\d+"[^>]*><v>425000<\/v><\/c>/');
 
-    $document = ['city_and_date' => 'Bekasi, 1 September 2026', 'creator_name' => $user->name];
+    $document = bankRecapPdfDocument($user);
     $pdfHtml = view('reports.school-bank-recap-pdf', compact('report', 'document'))->render();
 
     expect($pdfHtml)
@@ -1224,7 +1254,7 @@ it('applies the cash channel to the exported pdf', function () {
     createBankRecapPayment(Student::factory()->create(['nama_lengkap' => 'Siswa Transfer']), $bank, $user, '2026-09-01', '2026-09-02 09:00:00', 200_000);
 
     $report = app(SchoolBankRecapService::class)->generate('2026-09-01', '2026-09-01', 'cash');
-    $document = ['city_and_date' => 'Bekasi, 1 September 2026', 'creator_name' => $user->name];
+    $document = bankRecapPdfDocument($user);
     $pdfHtml = view('reports.school-bank-recap-pdf', compact('report', 'document'))->render();
 
     expect($pdfHtml)
@@ -1248,7 +1278,7 @@ it('applies a selected bank to the exported pdf', function () {
     createBankRecapPayment(Student::factory()->create(['nama_lengkap' => 'Siswa Pdf Lain']), $bankB, $user, '2026-09-01', '2026-09-02 09:00:00', 900_000);
 
     $report = app(SchoolBankRecapService::class)->generate('2026-09-01', '2026-09-01', (string) $bankA->id);
-    $document = ['city_and_date' => 'Bekasi, 1 September 2026', 'creator_name' => $user->name];
+    $document = bankRecapPdfDocument($user);
     $pdfHtml = view('reports.school-bank-recap-pdf', compact('report', 'document'))->render();
 
     expect($pdfHtml)
@@ -1270,7 +1300,7 @@ it('keeps ui pdf and excel totals consistent for a filtered bank', function () {
     createBankRecapPayment(Student::factory()->create(), $bankB, $user, '2026-09-01', '2026-09-02 09:00:00', 900_000);
 
     $report = app(SchoolBankRecapService::class)->generate('2026-09-01', '2026-09-01', (string) $bankA->id);
-    $document = ['city_and_date' => 'Bekasi, 1 September 2026', 'creator_name' => $user->name];
+    $document = bankRecapPdfDocument($user);
     $pdfHtml = view('reports.school-bank-recap-pdf', compact('report', 'document'))->render();
     $path = app(SchoolBankRecapSpreadsheet::class)->create($report);
 

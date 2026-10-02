@@ -56,11 +56,12 @@
         .target-summary-table { width: 48%; float: left; margin: 0; }
         .target-summary-table .outstanding { font-weight: bold; background: #f2f2f2; }
         .clearfix { clear: both; }
-        .signature-table { width: 100%; margin-top: 12px; border-collapse: collapse; page-break-inside: avoid; }
+        .signature-table { width: 100%; margin-top: 12px; border-collapse: collapse; table-layout: fixed; page-break-inside: avoid; }
         .signature-table td { width: 33.333%; padding: 0 8px; text-align: center; vertical-align: top; }
-        .signature-role { min-height: 20px; font-size: 8px; }
-        .signature-space { height: 34px; }
-        .signature-name { display: inline-block; min-width: 130px; padding-top: 2px; border-top: .6px dotted #000; font-weight: bold; }
+        .signature-heading-row td { height: 20px; font-size: 8px; line-height: 1.2; word-wrap: break-word; }
+        .signature-spacer-row td { height: 34px; }
+        .signature-name-row td { vertical-align: top; }
+        .signature-name { display: inline-block; width: 130px; max-width: 80%; padding-top: 2px; border-top: .6px dotted #000; font-weight: bold; line-height: 1.2; word-wrap: break-word; }
     </style>
 </head>
 <body>
@@ -196,10 +197,20 @@
     <div class="clearfix"></div>
 
     <table class="signature-table">
-        <tr>
-            <td><div class="signature-role">Menyetujui,<br>{{ $document['approval']['approver_title'] }}</div><div class="signature-space"></div><div class="signature-name">{{ $document['approval']['approver_name'] }}</div></td>
-            <td><div class="signature-role">Mengetahui,<br>{{ $document['approval']['reviewer_title'] }}</div><div class="signature-space"></div><div class="signature-name">{{ $document['approval']['reviewer_name'] }}</div></td>
-            <td><div class="signature-role">{{ $document['approval']['city_and_date'] }}<br>{{ $document['approval']['footer_unit'] }}</div><div class="signature-space"></div><div class="signature-name">{{ $document['approval']['report_creator_name'] }}</div></td>
+        <tr class="signature-heading-row">
+            <td>Menyetujui,<br>{{ $document['approval']['approver_title'] }}</td>
+            <td>Mengetahui,<br>{{ $document['approval']['reviewer_title'] }}</td>
+            <td>{{ $document['approval']['city_and_date'] }}<br>{{ $document['approval']['report_creator_title'] }}</td>
+        </tr>
+        <tr class="signature-spacer-row">
+            <td></td>
+            <td></td>
+            <td></td>
+        </tr>
+        <tr class="signature-name-row">
+            <td><span class="signature-name">{{ $document['approval']['approver_name'] }}</span></td>
+            <td><span class="signature-name">{{ $document['approval']['reviewer_name'] }}</span></td>
+            <td><span class="signature-name">{{ $document['approval']['report_creator_name'] }}</span></td>
         </tr>
     </table>
 </body>

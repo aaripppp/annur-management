@@ -329,10 +329,12 @@ it('renders the same per-tanggal daycare totals in the monthly PDF', function ()
         'unit' => 'DAYCARE ANNUR',
         'month_label' => $report['month_label_upper'],
         'approval' => [
-            'admin_name' => 'Administrator',
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_title' => 'Direktur Keuangan',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, 31 Agustus 2026',
+            'report_creator_title' => 'TU An-Nur',
             'report_creator_name' => 'Arif Hamdani',
         ],
     ];

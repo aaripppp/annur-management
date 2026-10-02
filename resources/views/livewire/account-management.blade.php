@@ -267,7 +267,7 @@
                             </div>
                             <div>
                                 <label for="position" class="block text-label-md font-label-md text-on-surface mb-1">Jabatan</label>
-                                <input type="text" id="position" wire:model="position" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm" placeholder="Contoh: Direktur Keuangan, Kepala Tata Usaha">
+                                <input type="text" id="position" wire:model="position" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm" placeholder="Contoh: Direktur Keuangan, Kepala TU Yayasan">
                                 @error('position') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
                             </div>
                         </div>

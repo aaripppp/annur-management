@@ -328,7 +328,7 @@ it('kwitansi menampilkan semua detail pembayaran multi tagihan', function () {
 
     expect($inlinePdf->headers->get('content-disposition'))->toContain('inline')->toContain($receiptNumber.'.pdf')
         ->and($inlinePdf->getContent())->toStartWith('%PDF')
-        ->and($inlinePdf->getContent())->toContain(mb_convert_encoding('Kwitansi Pembayaran - Annur Management', 'UTF-16BE'))
+        ->and($inlinePdf->getContent())->toContain(mb_convert_encoding('Kwitansi Pembayaran - YPI An-Nur Nurrahim', 'UTF-16BE'))
         ->and($inlinePdf->getContent())->toContain('/Subtype /Image')
         ->and($firstPdf->headers->get('content-disposition'))->toContain('attachment')->toContain($receiptNumber.'.pdf')
         ->and($firstPdf->getContent())->toStartWith('%PDF')

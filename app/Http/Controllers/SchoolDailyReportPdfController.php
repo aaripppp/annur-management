@@ -13,10 +13,6 @@ use Illuminate\Validation\Rule;
 
 class SchoolDailyReportPdfController extends Controller
 {
-    private const REVIEWER_TITLE = 'Kepala Tata Usaha';
-
-    private const REVIEWER_NAME = 'Windiarti, SE';
-
     public function __invoke(Request $request, SchoolDailyReportService $reportService): Response
     {
         $validated = $request->validate([
@@ -40,13 +36,10 @@ class SchoolDailyReportPdfController extends Controller
             'unit' => $report['unit_name'],
             'period_title' => $report['period_title'],
             'period_label' => $report['period_label'],
-            'approval' => [
-                'admin_name' => $user->name,
-                'reviewer_title' => self::REVIEWER_TITLE,
-                'reviewer_name' => self::REVIEWER_NAME,
-                'city_and_date' => SchoolReportDocument::CITY.', '.$localizedDate->translatedFormat('d F Y'),
-                'report_creator_name' => $user->name,
-            ],
+            'approval' => SchoolReportDocument::approvalFor(
+                $user,
+                SchoolReportDocument::CITY.', '.$localizedDate->translatedFormat('d F Y')
+            ),
         ];
         $period = $report['is_single_day']
             ? $report['start_date']->format('Y-m-d')

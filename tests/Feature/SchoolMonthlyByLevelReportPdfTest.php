@@ -9,7 +9,10 @@ use App\Services\SchoolMonthlyByLevelReportService;
 use Barryvdh\DomPDF\PDF as DomPdf;
 
 it('renders the level bank and cash matrices with blank zero amounts and reconciled totals', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->create([
+        'name' => 'Petugas Jenjang Dengan Nama Panjang',
+        'position' => 'TU SD IT An-Nur',
+    ]);
     [$student] = makeEnrolledStudent(SchoolLevel::SD);
     $bank = Bank::factory()->create(['name' => 'BSI PDF Jenjang', 'account_number' => '111111']);
     $zeroBank = Bank::factory()->create(['name' => 'BRI PDF Jenjang', 'account_number' => '222222']);
@@ -29,7 +32,7 @@ it('renders the level bank and cash matrices with blank zero amounts and reconci
         'month_label' => $report['month_label_upper'],
         'approval' => [
             'approver_title' => 'Direktur Keuangan',
-            'approver_name' => "Nova Rabi'ah Nurrohmah, SE",
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
             'city_and_date' => 'Bekasi, 30 September 2026',
             'report_creator_title' => $user->position ?: $user->roleLabel(),
             'report_creator_name' => $user->name,
@@ -52,7 +55,17 @@ it('renders the level bank and cash matrices with blank zero amounts and reconci
         ->toContain('<th class="money" style="width: 5%;">Total</th>')
         ->toContain('GRAND TOTAL', $user->name)
         ->toContain('<tfoot><tr class="total-row"><td>TOTAL</td>')
-        ->toContain('Nova Rabi&#039;ah Nurrohmah, SE');
+        ->toContain('Nova Rabi&#039;ah Nurrohmah, SE, MM');
+
+    $signatureCellCounts = collect(['heading', 'spacer', 'name'])->map(function (string $row) use ($html): int {
+        preg_match('/<tr class="signature-'.$row.'-row">(.*?)<\/tr>/s', $html, $matches);
+
+        return substr_count($matches[1] ?? '', '<td');
+    })->all();
+
+    expect($html)->toContain('TU SD IT An-Nur')
+        ->not->toContain('class="signature-space"')
+        ->and($signatureCellCounts)->toBe([2, 2, 2]);
 });
 
 it('classifies candidate calon payments into the correct level in the PDF', function () {
@@ -155,7 +168,7 @@ it('falls back to the fixed Direktur Keuangan name when no user holds the positi
         ->once()
         ->withArgs(function (string $view, array $data) use ($creator): bool {
             expect($view)->toBe('reports.school-monthly-by-level-pdf')
-                ->and($data['document']['approval']['approver_name'])->toBe("Nova Rabi'ah Nurrohmah, SE")
+                ->and($data['document']['approval']['approver_name'])->toBe("Nova Rabi'ah Nurrohmah, SE, MM")
                 ->and($data['document']['approval']['report_creator_name'])->toBe($creator->name);
 
             return true;

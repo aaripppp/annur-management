@@ -39,15 +39,10 @@ class StudentTargetArrearsReportPdfController extends Controller
         );
         $document = [
             'unit' => $report['unit_name'],
-            'approval' => [
-                'approver_title' => 'Direktur Keuangan',
-                'approver_name' => 'Nova Rabi\'ah Nurrohmah, SE',
-                'reviewer_title' => 'Kepala Tata Usaha',
-                'reviewer_name' => 'Windiarti, SE',
-                'city_and_date' => SchoolReportDocument::CITY.', '.now()->settings(['locale' => 'id'])->translatedFormat('d F Y'),
-                'footer_unit' => 'TU '.$report['unit_name'],
-                'report_creator_name' => $user->name,
-            ],
+            'approval' => SchoolReportDocument::approvalFor(
+                $user,
+                SchoolReportDocument::CITY.', '.now()->settings(['locale' => 'id'])->translatedFormat('d F Y')
+            ),
         ];
         $filename = 'target-tunggakan-'.$report['mode'].'-'.str_replace('/', '-', $report['period_label']).'.pdf';
 

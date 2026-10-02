@@ -25,10 +25,12 @@
         .money, .percentage { text-align: right; white-space: nowrap; }
         .total { font-weight: bold; background: #f2f2f2; }
         .empty { padding: 12px !important; text-align: center; }
-        .signature { width: 100%; margin-top: 24px; border-collapse: collapse; page-break-inside: avoid; }
-        .signature td { width: 33.333%; text-align: center; vertical-align: top; }
-        .signature-space { height: 48px; }
-        .signature-name { display: inline-block; min-width: 140px; padding-top: 2px; border-top: .6px dotted #000; font-weight: bold; }
+        .signature-table { width: 100%; margin-top: 24px; border-collapse: collapse; table-layout: fixed; page-break-inside: avoid; }
+        .signature-table td { width: 33.333%; text-align: center; vertical-align: top; }
+        .signature-heading-row td { line-height: 1.2; word-wrap: break-word; }
+        .signature-spacer-row td { height: 48px; }
+        .signature-name-row td { vertical-align: top; }
+        .signature-name { display: inline-block; width: 140px; max-width: 80%; padding-top: 2px; border-top: .6px dotted #000; font-weight: bold; line-height: 1.2; word-wrap: break-word; }
     </style>
 </head>
 <body>
@@ -69,10 +71,22 @@
         </table>
     @endforeach
 
-    <table class="signature"><tr>
-        <td>{{ $document['approval']['approver_title'] }}<div class="signature-space"></div><div class="signature-name">{{ $document['approval']['approver_name'] }}</div></td>
-        <td>{{ $document['approval']['reviewer_title'] }}<div class="signature-space"></div><div class="signature-name">{{ $document['approval']['reviewer_name'] }}</div></td>
-        <td>{{ $document['approval']['city_and_date'] }}<br>{{ $document['approval']['footer_unit'] }}<div class="signature-space"></div><div class="signature-name">{{ $document['approval']['report_creator_name'] }}</div></td>
-    </tr></table>
+    <table class="signature-table">
+        <tr class="signature-heading-row">
+            <td>{{ $document['approval']['approver_title'] }}</td>
+            <td>{{ $document['approval']['reviewer_title'] }}</td>
+            <td>{{ $document['approval']['city_and_date'] }}<br>{{ $document['approval']['report_creator_title'] }}</td>
+        </tr>
+        <tr class="signature-spacer-row">
+            <td></td>
+            <td></td>
+            <td></td>
+        </tr>
+        <tr class="signature-name-row">
+            <td><span class="signature-name">{{ $document['approval']['approver_name'] }}</span></td>
+            <td><span class="signature-name">{{ $document['approval']['reviewer_name'] }}</span></td>
+            <td><span class="signature-name">{{ $document['approval']['report_creator_name'] }}</span></td>
+        </tr>
+    </table>
 </body>
 </html>

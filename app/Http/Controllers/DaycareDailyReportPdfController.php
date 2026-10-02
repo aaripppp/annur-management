@@ -5,16 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Services\DaycareDailyReportService;
 use App\Support\DaycareReportDocument;
+use App\Support\SchoolReportDocument;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 class DaycareDailyReportPdfController extends Controller
 {
-    private const REVIEWER_TITLE = 'Kepala Tata Usaha';
-
-    private const REVIEWER_NAME = 'Windiarti, SE';
-
     public function __invoke(Request $request, DaycareDailyReportService $reportService): Response
     {
         $validated = $request->validate([
@@ -32,13 +29,10 @@ class DaycareDailyReportPdfController extends Controller
             'unit' => DaycareReportDocument::UNIT_NAME,
             'period_title' => $report['period_title'],
             'period_label' => $report['period_label'],
-            'approval' => [
-                'admin_name' => $user->name,
-                'reviewer_title' => self::REVIEWER_TITLE,
-                'reviewer_name' => self::REVIEWER_NAME,
-                'city_and_date' => DaycareReportDocument::CITY.', '.$localizedDate->translatedFormat('d F Y'),
-                'report_creator_name' => $user->name,
-            ],
+            'approval' => SchoolReportDocument::approvalFor(
+                $user,
+                DaycareReportDocument::CITY.', '.$localizedDate->translatedFormat('d F Y')
+            ),
         ];
         $period = $report['is_single_day']
             ? $report['start_date']->format('Y-m-d')

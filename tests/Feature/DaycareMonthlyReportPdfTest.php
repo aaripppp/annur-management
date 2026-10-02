@@ -52,11 +52,13 @@ it('renders the service monthly bank and cash sections, totals and formal signat
         'unit' => 'DAYCARE ANNUR',
         'month_label' => $report['month_label_upper'],
         'approval' => [
-            'admin_name' => $user->name,
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_title' => 'Direktur Keuangan',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, 31 Agustus 2026',
-            'report_creator_name' => 'Arif Hamdani',
+            'report_creator_title' => 'TU SD IT An-Nur',
+            'report_creator_name' => 'Arif Hamdani Pembuat Laporan Daycare',
         ],
     ];
     $html = view('reports.daycare-monthly-pdf', compact('report', 'document'))->render();
@@ -87,14 +89,22 @@ it('renders the service monthly bank and cash sections, totals and formal signat
         ->toContain('.report-table th.col-category, .report-table th.col-total, .report-table th.col-daily-total, .report-table th.cash-total { text-align: center; }')
         ->toContain('Menyetujui,')
         ->toContain('Direktur Keuangan')
-        ->toContain('Nova Rabi\'ah Nurrohmah, SE')
+        ->toContain('Nova Rabi&#039;ah Nurrohmah, SE, MM')
         ->toContain('Mengetahui,')
-        ->toContain('Kepala Tata Usaha')
-        ->toContain('TU An-Nur')
+        ->toContain('Kepala TU Yayasan')
+        ->toContain('TU SD IT An-Nur')
         ->toContain('Windiarti, SE')
         ->toContain('Bekasi, 31 Agustus 2026')
-        ->toContain('Arif Hamdani')
+        ->toContain('Arif Hamdani Pembuat Laporan Daycare')
         ->not->toContain('Anak Rahasia PDF Bulanan');
+
+    $signatureCellCounts = collect(['heading', 'spacer', 'name'])->map(function (string $row) use ($html): int {
+        preg_match('/<tr class="signature-'.$row.'-row">(.*?)<\/tr>/s', $html, $matches);
+
+        return substr_count($matches[1] ?? '', '<td');
+    })->all();
+
+    expect($signatureCellCounts)->toBe([3, 3, 3]);
 });
 
 it('renders the report-ending September date in the monthly right signature', function () {
@@ -103,10 +113,12 @@ it('renders the report-ending September date in the monthly right signature', fu
         'unit' => 'DAYCARE ANNUR',
         'month_label' => $report['month_label_upper'],
         'approval' => [
-            'admin_name' => 'Administrator',
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_title' => 'Direktur Keuangan',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => DaycareReportDocument::CITY.', '.$report['last_day']->locale('id')->translatedFormat('d F Y'),
+            'report_creator_title' => 'TU An-Nur',
             'report_creator_name' => 'Sekretaris September',
         ],
     ];
@@ -116,7 +128,7 @@ it('renders the report-ending September date in the monthly right signature', fu
         ->toContain('Bekasi, 30 September 2026')
         ->toContain('TU An-Nur')
         ->toContain('Direktur Keuangan')
-        ->toContain('Nova Rabi\'ah Nurrohmah, SE')
+        ->toContain('Nova Rabi&#039;ah Nurrohmah, SE, MM')
         ->toContain('Sekretaris September');
 });
 
@@ -126,10 +138,12 @@ it('renders a safe empty monthly daycare PDF', function () {
         'unit' => 'DAYCARE ANNUR',
         'month_label' => $report['month_label_upper'],
         'approval' => [
-            'admin_name' => 'Administrator',
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_title' => 'Direktur Keuangan',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, 31 Agustus 2026',
+            'report_creator_title' => 'TU An-Nur',
             'report_creator_name' => 'Arif Hamdani',
         ],
     ];

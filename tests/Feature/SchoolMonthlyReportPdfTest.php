@@ -199,12 +199,12 @@ it('renders the formal monthly heading with month label and fixed signatures', f
         'month_label' => $report['month_label_upper'],
         'approval' => [
             'approver_title' => 'Direktur Keuangan',
-            'approver_name' => "Nova Rabi'ah Nurrohmah, SE",
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, 31 Agustus 2026',
-            'footer_unit' => 'TU '.$report['unit_name'],
-            'report_creator_name' => 'Arif Hamdani',
+            'report_creator_title' => 'TU SD IT An-Nur',
+            'report_creator_name' => 'Arif Hamdani Pembuat Laporan Sekolah',
         ],
     ];
     $monthlyComparison = monthlyPdfComparison($report);
@@ -216,11 +216,19 @@ it('renders the formal monthly heading with month label and fixed signatures', f
         ->toContain('An-Nur')
         ->toContain('AGUSTUS 2026')
         ->toContain('Menyetujui')
-        ->toContain('Nova Rabi&#039;ah Nurrohmah, SE')
+        ->toContain('Nova Rabi&#039;ah Nurrohmah, SE, MM')
         ->toContain('Windiarti, SE')
         ->toContain('Bekasi, 31 Agustus 2026')
-        ->toContain('TU An-Nur')
-        ->toContain('Arif Hamdani');
+        ->toContain('TU SD IT An-Nur')
+        ->toContain('Arif Hamdani Pembuat Laporan Sekolah');
+
+    $signatureCellCounts = collect(['heading', 'spacer', 'name'])->map(function (string $row) use ($html): int {
+        preg_match('/<tr class="signature-'.$row.'-row">(.*?)<\/tr>/s', $html, $matches);
+
+        return substr_count($matches[1] ?? '', '<td');
+    })->all();
+
+    expect($signatureCellCounts)->toBe([3, 3, 3]);
 });
 
 it('keeps every dynamic category in one compact table', function () {
@@ -234,11 +242,11 @@ it('keeps every dynamic category in one compact table', function () {
         'month_label' => $report['month_label_upper'],
         'approval' => [
             'approver_title' => 'Direktur Keuangan',
-            'approver_name' => "Nova Rabi'ah Nurrohmah, SE",
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, 31 Agustus 2026',
-            'footer_unit' => 'TU '.$report['unit_name'],
+            'report_creator_title' => 'TU '.$report['unit_name'],
             'report_creator_name' => 'Arif Hamdani',
         ],
     ];
@@ -303,12 +311,12 @@ it('keeps a representative monthly matrix within two PDF pages', function () {
         'month_label' => $report['month_label_upper'],
         'approval' => [
             'approver_title' => 'Direktur Keuangan',
-            'approver_name' => "Nova Rabi'ah Nurrohmah, SE",
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, 31 Agustus 2026',
-            'footer_unit' => 'TU '.$report['unit_name'],
-            'report_creator_name' => 'Arif Hamdani',
+            'report_creator_title' => 'TU SD IT An-Nur',
+            'report_creator_name' => 'Arif Hamdani Pembuat Laporan Sekolah',
         ],
     ];
     $monthlyComparison = monthlyPdfComparison($report);
@@ -348,11 +356,11 @@ it('renders cash and transfer sections with totals and a reconciled grand total'
         'month_label' => $report['month_label_upper'],
         'approval' => [
             'approver_title' => 'Direktur Keuangan',
-            'approver_name' => "Nova Rabi'ah Nurrohmah, SE",
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, 31 Agustus 2026',
-            'footer_unit' => 'TU '.$report['unit_name'],
+            'report_creator_title' => 'TU '.$report['unit_name'],
             'report_creator_name' => 'Arif Hamdani',
         ],
     ];
@@ -394,11 +402,11 @@ it('renders a valid empty report with zero totals for an empty month', function 
         'month_label' => $report['month_label_upper'],
         'approval' => [
             'approver_title' => 'Direktur Keuangan',
-            'approver_name' => "Nova Rabi'ah Nurrohmah, SE",
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, 31 Agustus 2026',
-            'footer_unit' => 'TU '.$report['unit_name'],
+            'report_creator_title' => 'TU '.$report['unit_name'],
             'report_creator_name' => 'Arif Hamdani',
         ],
     ];
@@ -428,11 +436,11 @@ it('renders the supplied report creator in the right monthly signature', functio
         'month_label' => $report['month_label_upper'],
         'approval' => [
             'approver_title' => 'Direktur Keuangan',
-            'approver_name' => "Nova Rabi'ah Nurrohmah, SE",
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, '.$localizedDate->translatedFormat('d F Y'),
-            'footer_unit' => 'TU '.$report['unit_name'],
+            'report_creator_title' => 'TU '.$report['unit_name'],
             'report_creator_name' => $user->name,
         ],
     ];
@@ -462,11 +470,11 @@ it('renders the unit meta on the monthly PDF for a scoped report', function () {
         'month_label' => $report['month_label_upper'],
         'approval' => [
             'approver_title' => 'Direktur Keuangan',
-            'approver_name' => "Nova Rabi'ah Nurrohmah, SE",
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, 31 Agustus 2026',
-            'footer_unit' => 'TU '.$report['unit_name'],
+            'report_creator_title' => 'TU '.$report['unit_name'],
             'report_creator_name' => 'Arif Hamdani',
         ],
     ];

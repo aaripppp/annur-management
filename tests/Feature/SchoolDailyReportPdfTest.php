@@ -82,11 +82,13 @@ it('renders the accounting form sections, per-section categories, totals and sig
         'period_title' => $report['period_title'],
         'period_label' => $report['period_label'],
         'approval' => [
-            'admin_name' => $user->name,
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_title' => 'Direktur Keuangan',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, '.$localizedDate->translatedFormat('d F Y'),
-            'report_creator_name' => 'Arif Hamdani',
+            'report_creator_title' => 'TU SD IT An-Nur',
+            'report_creator_name' => 'Arif Hamdani Pembuat Laporan Sekolah',
         ],
     ];
     $html = view('reports.school-daily-pdf', compact('report', 'document'))->render();
@@ -107,13 +109,21 @@ it('renders the accounting form sections, per-section categories, totals and sig
         ->toContain('.report-table th.col-amount { text-align: center; }')
         ->toContain('Menyetujui,')
         ->toContain('Direktur Keuangan')
-        ->toContain('Nova Rabi\'ah Nurrohmah, SE')
+        ->toContain('Nova Rabi&#039;ah Nurrohmah, SE, MM')
         ->toContain('Mengetahui,')
-        ->toContain('Kepala Tata Usaha')
-        ->toContain('TU An-Nur')
+        ->toContain('Kepala TU Yayasan')
+        ->toContain('TU SD IT An-Nur')
         ->toContain('Windiarti, SE')
         ->toContain('Bekasi, 28 Agustus 2026')
-        ->toContain('Arif Hamdani');
+        ->toContain('Arif Hamdani Pembuat Laporan Sekolah');
+
+    $signatureCellCounts = collect(['heading', 'spacer', 'name'])->map(function (string $row) use ($html): int {
+        preg_match('/<tr class="signature-'.$row.'-row">(.*?)<\/tr>/s', $html, $matches);
+
+        return substr_count($matches[1] ?? '', '<td');
+    })->all();
+
+    expect($signatureCellCounts)->toBe([3, 3, 3]);
 
     $this->actingAs($user)
         ->get(route('laporan.harian.pdf', [
@@ -142,10 +152,12 @@ it('renders the unit meta on the daily PDF for a scoped report', function () {
         'period_title' => $report['period_title'],
         'period_label' => $report['period_label'],
         'approval' => [
-            'admin_name' => $user->name,
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_title' => 'Direktur Keuangan',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, '.$localizedDate->translatedFormat('d F Y'),
+            'report_creator_title' => 'TU An-Nur',
             'report_creator_name' => 'Arif Hamdani',
         ],
     ];
@@ -173,10 +185,12 @@ function dailyPdfDocument(array $report, User $user): array
         'period_title' => $report['period_title'],
         'period_label' => $report['period_label'],
         'approval' => [
-            'admin_name' => $user->name,
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_title' => 'Direktur Keuangan',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, '.$localizedDate->translatedFormat('d F Y'),
+            'report_creator_title' => 'TU An-Nur',
             'report_creator_name' => 'Arif Hamdani',
         ],
     ];

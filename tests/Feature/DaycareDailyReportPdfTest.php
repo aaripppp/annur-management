@@ -26,11 +26,13 @@ function renderDaycareDailyPdfHtml(User $user, string $start, string $end): stri
         'period_title' => $report['period_title'],
         'period_label' => $report['period_label'],
         'approval' => [
-            'admin_name' => $user->name,
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_title' => 'Direktur Keuangan',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, '.$localizedDate->translatedFormat('d F Y'),
-            'report_creator_name' => 'Arif Hamdani',
+            'report_creator_title' => 'TU SD IT An-Nur',
+            'report_creator_name' => 'Arif Hamdani Pembuat Laporan Daycare',
         ],
     ];
 
@@ -74,11 +76,13 @@ it('renders grouped cash and bank sections with the student report accounting st
         'period_title' => $report['period_title'],
         'period_label' => $report['period_label'],
         'approval' => [
-            'admin_name' => $user->name,
-            'reviewer_title' => 'Kepala Tata Usaha',
+            'approver_title' => 'Direktur Keuangan',
+            'approver_name' => "Nova Rabi'ah Nurrohmah, SE, MM",
+            'reviewer_title' => 'Kepala TU Yayasan',
             'reviewer_name' => 'Windiarti, SE',
             'city_and_date' => 'Bekasi, '.$localizedDate->translatedFormat('d F Y'),
-            'report_creator_name' => 'Arif Hamdani',
+            'report_creator_title' => 'TU SD IT An-Nur',
+            'report_creator_name' => 'Arif Hamdani Pembuat Laporan Daycare',
         ],
     ];
     $html = view('reports.daycare-daily-pdf', compact('report', 'document'))->render();
@@ -102,16 +106,23 @@ it('renders grouped cash and bank sections with the student report accounting st
         ->toContain('.report-table th.col-amount { text-align: center; }')
         ->toContain('Menyetujui,')
         ->toContain('Direktur Keuangan')
-        ->toContain('Nova Rabi\'ah Nurrohmah, SE')
+        ->toContain('Nova Rabi&#039;ah Nurrohmah, SE, MM')
         ->toContain('Mengetahui,')
-        ->toContain('Kepala Tata Usaha')
-        ->toContain('TU An-Nur')
+        ->toContain('Kepala TU Yayasan')
+        ->toContain('TU SD IT An-Nur')
         ->toContain('Windiarti, SE')
         ->toContain('Bekasi, 28 Agustus 2026')
-        ->toContain('Arif Hamdani')
+        ->toContain('Arif Hamdani Pembuat Laporan Daycare')
         ->not->toContain('Anak Rahasia PDF');
 
-    expect(substr_count($html, 'SPP Daycare'))->toBe(2);
+    $signatureCellCounts = collect(['heading', 'spacer', 'name'])->map(function (string $row) use ($html): int {
+        preg_match('/<tr class="signature-'.$row.'-row">(.*?)<\/tr>/s', $html, $matches);
+
+        return substr_count($matches[1] ?? '', '<td');
+    })->all();
+
+    expect(substr_count($html, 'SPP Daycare'))->toBe(2)
+        ->and($signatureCellCounts)->toBe([3, 3, 3]);
 
     $this->actingAs($user)
         ->get(route('daycare.report.daily.pdf', [

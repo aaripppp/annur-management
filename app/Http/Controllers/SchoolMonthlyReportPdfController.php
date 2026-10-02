@@ -14,14 +14,6 @@ use Illuminate\Validation\Rule;
 
 class SchoolMonthlyReportPdfController extends Controller
 {
-    private const APPROVER_TITLE = 'Direktur Keuangan';
-
-    private const APPROVER_NAME = 'Nova Rabi\'ah Nurrohmah, SE';
-
-    private const REVIEWER_TITLE = 'Kepala Tata Usaha';
-
-    private const REVIEWER_NAME = 'Windiarti, SE';
-
     public function __invoke(
         Request $request,
         SchoolMonthlyReportService $reportService,
@@ -58,15 +50,10 @@ class SchoolMonthlyReportPdfController extends Controller
         $document = [
             'unit' => $report['unit_name'],
             'month_label' => $report['month_label_upper'],
-            'approval' => [
-                'approver_title' => self::APPROVER_TITLE,
-                'approver_name' => self::APPROVER_NAME,
-                'reviewer_title' => self::REVIEWER_TITLE,
-                'reviewer_name' => self::REVIEWER_NAME,
-                'city_and_date' => SchoolReportDocument::CITY.', '.$footerDate,
-                'footer_unit' => 'TU '.$report['unit_name'],
-                'report_creator_name' => $user->name,
-            ],
+            'approval' => SchoolReportDocument::approvalFor(
+                $user,
+                SchoolReportDocument::CITY.', '.$footerDate
+            ),
         ];
         $filename = 'laporan-bulanan-sekolah-'
             .$report['year'].'-'
