@@ -89,6 +89,9 @@ it('bounds promotion decision class reload and target enrollment queries by invo
     createPromotionRule($manySourceClass, 'promote', $manyTargetClass);
     promotionPerformanceRoster($manySourceYear, $manySourceClass, 10);
 
+    AcademicYear::query()->update(['is_active' => false]);
+    AcademicYear::query()->whereKey($oneSourceYear->id)->update(['is_active' => true]);
+
     $queries = [];
     DB::listen(function (QueryExecuted $query) use (&$queries): void {
         $queries[] = ['sql' => strtolower($query->sql), 'bindings' => $query->bindings];
@@ -97,6 +100,8 @@ it('bounds promotion decision class reload and target enrollment queries by invo
     app(ClassPromotionService::class)->processPromotion($oneSourceYear, $oneTargetYear);
     $oneStudentQueries = $queries;
 
+    AcademicYear::query()->update(['is_active' => false]);
+    AcademicYear::query()->whereKey($manySourceYear->id)->update(['is_active' => true]);
     $queries = [];
     app(ClassPromotionService::class)->processPromotion($manySourceYear, $manyTargetYear);
     $manyStudentQueries = $queries;
@@ -153,6 +158,9 @@ it('bounds billing configuration rate applicability and duplicate lookup queries
     createPromotionRule($manySourceClass, 'promote', $manyTargetClass);
     promotionPerformanceRoster($manySourceYear, $manySourceClass, 10);
 
+    AcademicYear::query()->update(['is_active' => false]);
+    AcademicYear::query()->whereKey($oneSourceYear->id)->update(['is_active' => true]);
+
     $queries = [];
     DB::listen(function (QueryExecuted $query) use (&$queries): void {
         $queries[] = ['sql' => strtolower($query->sql), 'bindings' => $query->bindings];
@@ -161,6 +169,8 @@ it('bounds billing configuration rate applicability and duplicate lookup queries
     app(ClassPromotionService::class)->processPromotion($oneSourceYear, $oneTargetYear);
     $oneStudentQueries = $queries;
 
+    AcademicYear::query()->update(['is_active' => false]);
+    AcademicYear::query()->whereKey($manySourceYear->id)->update(['is_active' => true]);
     $queries = [];
     app(ClassPromotionService::class)->processPromotion($manySourceYear, $manyTargetYear);
     $manyStudentQueries = $queries;

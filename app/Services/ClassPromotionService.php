@@ -10,10 +10,15 @@ use App\Models\Student;
 use App\Models\StudentAcademicEnrollment;
 use App\Support\ClassPromotionMapping;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class ClassPromotionService
 {
+    private const PROCESSING_LOCK_KEY = 'class-promotion-processing';
+
+    private const PROCESSING_LOCK_SECONDS = 300;
+
     public function __construct(
         protected BillGenerationService $billGenerationService,
     ) {}
@@ -97,6 +102,59 @@ class ClassPromotionService
      * @return array{promoted: int, graduated: int, blocked: int}
      */
     public function processPromotion(AcademicYear $fromYear, AcademicYear $toYear): array
+    {
+        return $this->processPromotionWithLock($fromYear, $toYear, rejectStale: false)
+            ?? ['promoted' => 0, 'graduated' => 0, 'blocked' => 0];
+    }
+
+    /**
+     * Process a promotion confirmed through the UI, rejecting a stale preview
+     * instead of treating it as an ordinary idempotent retry.
+     *
+     * @return array{promoted: int, graduated: int, blocked: int}|null
+     */
+    public function processConfirmedPromotion(AcademicYear $fromYear, AcademicYear $toYear): ?array
+    {
+        return $this->processPromotionWithLock($fromYear, $toYear, rejectStale: true);
+    }
+
+    /**
+     * @return array{promoted: int, graduated: int, blocked: int}|null
+     */
+    private function processPromotionWithLock(AcademicYear $fromYear, AcademicYear $toYear, bool $rejectStale): ?array
+    {
+        $fromYearId = $fromYear->getKey();
+        $toYearId = $toYear->getKey();
+
+        return Cache::lock(self::PROCESSING_LOCK_KEY, self::PROCESSING_LOCK_SECONDS)
+            ->block(0, function () use ($fromYearId, $toYearId, $rejectStale): ?array {
+                $authoritativeFromYear = AcademicYear::query()->find($fromYearId);
+                $authoritativeToYear = AcademicYear::query()->find($toYearId);
+                $activeYear = AcademicYear::active();
+                $expectedNextYear = $activeYear ? AcademicYear::next($activeYear) : null;
+
+                $isStale = ! $authoritativeFromYear
+                    || ! $authoritativeToYear
+                    || ! $activeYear?->is($authoritativeFromYear)
+                    || ! $expectedNextYear?->is($authoritativeToYear)
+                    || $authoritativeToYear->promotion_processed_at !== null;
+
+                if ($isStale) {
+                    if ($rejectStale) {
+                        return null;
+                    }
+
+                    return ['promoted' => 0, 'graduated' => 0, 'blocked' => 0];
+                }
+
+                return $this->processPromotionWithinLock($authoritativeFromYear, $authoritativeToYear);
+            });
+    }
+
+    /**
+     * @return array{promoted: int, graduated: int, blocked: int}
+     */
+    private function processPromotionWithinLock(AcademicYear $fromYear, AcademicYear $toYear): array
     {
         if ($this->isAlreadyProcessed($toYear)) {
             return ['promoted' => 0, 'graduated' => 0, 'blocked' => 0];

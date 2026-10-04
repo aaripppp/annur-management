@@ -30,6 +30,10 @@ class AcademicYearManagement extends Component
 
     public bool $isConfirmOpen = false;
 
+    public ?int $confirmedPromotionSourceYearId = null;
+
+    public ?int $confirmedPromotionTargetYearId = null;
+
     public array $previewGrouped = [];
 
     public int $previewTotalPromoted = 0;
@@ -146,6 +150,8 @@ class AcademicYearManagement extends Component
 
     public function openPreview(): void
     {
+        $this->clearPromotionConfirmation();
+
         if (! $this->activeYearId || ! $this->newYearId) {
             return;
         }
@@ -193,28 +199,41 @@ class AcademicYearManagement extends Component
     {
         $this->isPreviewOpen = false;
         $this->isConfirmOpen = true;
+        $this->confirmedPromotionSourceYearId = $this->activeYearId;
+        $this->confirmedPromotionTargetYearId = $this->newYearId;
     }
 
     public function closeConfirm(): void
     {
-        $this->isConfirmOpen = false;
+        $this->clearPromotionConfirmation();
     }
 
     public function executePromotion(): void
     {
-        if (! $this->activeYearId || ! $this->newYearId) {
+        if (! $this->isConfirmOpen || ! $this->confirmedPromotionSourceYearId || ! $this->confirmedPromotionTargetYearId) {
             return;
         }
 
-        $active = AcademicYear::findOrFail($this->activeYearId);
-        $newYear = AcademicYear::findOrFail($this->newYearId);
+        $active = AcademicYear::find($this->confirmedPromotionSourceYearId);
+        $newYear = AcademicYear::find($this->confirmedPromotionTargetYearId);
+
+        $this->clearPromotionConfirmation();
+
+        if (! $active || ! $newYear) {
+            $this->rejectStalePromotion();
+
+            return;
+        }
 
         $service = app(ClassPromotionService::class);
 
         try {
-            $result = $service->processPromotion($active, $newYear);
+            $result = $service->processConfirmedPromotion($active, $newYear);
+        } catch (LockTimeoutException) {
+            session()->flash('error', 'Proses kenaikan kelas sedang dijalankan. Silakan tunggu sampai proses sebelumnya selesai.');
+
+            return;
         } catch (BlockedPromotionException $exception) {
-            $this->isConfirmOpen = false;
             $this->isBlockedOpen = true;
             $this->blockedMessage = 'Promosi belum dapat diproses karena terdapat kelas sumber tanpa aturan aktif yang valid.';
             $this->blockedTerms = collect($exception->blockedMappings())
@@ -229,7 +248,12 @@ class AcademicYearManagement extends Component
             return;
         }
 
-        $this->isConfirmOpen = false;
+        if ($result === null) {
+            $this->rejectStalePromotion();
+
+            return;
+        }
+
         $this->loadActiveYear();
         $this->loadNewYear();
         $this->previewGrouped = [];
@@ -240,6 +264,21 @@ class AcademicYearManagement extends Component
 
         $msg = "Proses kenaikan kelas selesai. {$result['promoted']} siswa naik kelas, {$result['graduated']} siswa lulus.";
         session()->flash('success', $msg);
+    }
+
+    private function clearPromotionConfirmation(): void
+    {
+        $this->isConfirmOpen = false;
+        $this->confirmedPromotionSourceYearId = null;
+        $this->confirmedPromotionTargetYearId = null;
+    }
+
+    private function rejectStalePromotion(): void
+    {
+        $this->clearPromotionConfirmation();
+        $this->loadActiveYear();
+        $this->loadNewYear();
+        session()->flash('error', 'Data kenaikan kelas sudah berubah atau sudah diproses. Silakan buka preview kembali.');
     }
 
     public function closeBlocked(): void
