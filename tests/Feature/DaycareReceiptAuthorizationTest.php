@@ -136,7 +136,8 @@ afterEach(function () {
 
 it('menampilkan blok otorisasi pembuat kwitansi yang sama dengan Student pada PDF Daycare', function () {
     $creator = User::factory()->create(['name' => 'Arif Hamdani', 'position' => 'Bendahara Daycare']);
-    $payment = daycareAuthorizationPayment($creator);
+    $child = DaycareChild::factory()->create(['kelas' => 'B']);
+    $payment = daycareAuthorizationPayment($creator, ['daycare_child_id' => $child->id]);
     $renderer = fakeReceiptPrintRenderer();
 
     $this->actingAs(User::factory()->create(['name' => 'Admin Lain']))
@@ -150,13 +151,15 @@ it('menampilkan blok otorisasi pembuat kwitansi yang sama dengan Student pada PD
         'creatorName' => 'Arif Hamdani',
         'creatorPosition' => 'Bendahara Daycare',
         'authorizationDate' => '08 September 2026',
+        'identityContext' => 'Daycare • Kelas B',
     ]);
 
     $html = view('receipts.pdf', ['receipt' => $receipt])->render();
 
     expect($html)
-        ->toContain('Pembuat Kwitansi')
-        ->toContain('Bendahara Daycare')
+        ->toContain('<div class="authorization-label">Bendahara Daycare</div>')
+        ->not->toContain('Pembuat Kwitansi')
+        ->not->toContain('authorization-role')
         ->not->toContain('Admin Keuangan')
         ->toContain('Arif Hamdani')
         ->toContain('Bekasi, 08 September 2026')
@@ -200,7 +203,10 @@ it('memakai Administrator ketika pembuat kwitansi Daycare tidak tersedia', funct
 
     $html = view('receipts.pdf', ['receipt' => $renderer->receipts[0]])->render();
 
-    expect($html)->toContain('<div class="authorization-role">Administrator</div>');
+    expect($html)
+        ->toContain('<div class="authorization-label">Administrator</div>')
+        ->toContain('<div class="authorization-name">Administrator</div>')
+        ->not->toContain('authorization-role');
 });
 
 it('memakai created_at WIB sebagai tanggal otorisasi Daycare, bukan payment_date', function () {

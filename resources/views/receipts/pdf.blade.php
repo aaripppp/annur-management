@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>Kwitansi Pembayaran - YPI An-Nur Nurrahim</title>
+    <title>Kwitansi Pembayaran - YPI Nurrahim An-Nur</title>
     <style>
         @page { size: 216mm 330mm; margin: 0; }
         * { box-sizing: border-box; }
@@ -51,8 +51,7 @@
         .authorization-label { margin-top: 5px; font-size: 15px; font-weight: bold; }
         .authorization-stamp { position: absolute; top: 16px; left: 68px; width: 118px; height: auto; }
         .authorization-identity { position: absolute; right: 8px; bottom: 6px; width: 152px; text-align: left; }
-        .authorization-name { position: relative; z-index: 2; padding-bottom: 5px; border-bottom: 1px solid #94a3b8; font-size: 16px; font-weight: bold; }
-        .authorization-role { position: relative; z-index: 2; margin-top: 4px; color: #64748b; font-size: 13px; }
+        .authorization-name { position: relative; z-index: 2; padding-top: 5px; border-top: 1px solid #94a3b8; font-size: 16px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -63,7 +62,7 @@
                     <table class="brand-table">
                         <tr>
                             <td class="brand-logo-cell"><img src="{{ public_path('images/annur_logo2.png') }}" alt="Annur" class="brand-logo"></td>
-                            <td class="brand-copy"><div class="eyebrow">YPI An-Nur Nurrahim</div><div class="title">KWITANSI PEMBAYARAN</div><div class="muted">Kategori: {{ $receipt['category'] }}</div></td>
+                            <td class="brand-copy"><div class="eyebrow">YPI Nurrahim An-Nur</div><div class="title">KWITANSI PEMBAYARAN</div><div class="muted">Kategori: {{ $receipt['category'] }}</div></td>
                         </tr>
                     </table>
                 </td>
@@ -119,12 +118,11 @@
                         <div class="authorization-block">
                             <div class="authorization-heading">
                                 <div class="authorization-date">Bekasi, {{ $receipt['authorizationDate'] }}</div>
-                                <div class="authorization-label">Pembuat Kwitansi</div>
+                                <div class="authorization-label">{{ $receipt['creatorPosition'] }}</div>
                             </div>
                             <img src="{{ public_path('images/stample.png') }}" alt="Stempel resmi Annur" class="authorization-stamp">
                             <div class="authorization-identity">
                                 <div class="authorization-name">{{ $receipt['creatorName'] }}</div>
-                                <div class="authorization-role">{{ $receipt['creatorPosition'] }}</div>
                             </div>
                         </div>
                     </td>

@@ -579,8 +579,14 @@
                     </p>
                 </div>
                 <div class="flex gap-3 px-6 pb-6 pt-2">
-                    <button wire:click="closeMonthlyConfirm" class="flex-1 px-4 py-2.5 text-on-surface-variant font-label-lg border border-outline-variant rounded-xl hover:bg-surface-container transition-colors">Batal</button>
-                    <button wire:click="executeMonthlyGeneration" class="flex-1 px-4 py-2.5 bg-primary hover:bg-primary/90 text-on-primary font-label-lg rounded-xl transition-colors shadow-sm">Ya, Generate</button>
+                    <button wire:click="closeMonthlyConfirm" wire:loading.attr="disabled" wire:target="executeMonthlyGeneration" class="flex-1 px-4 py-2.5 text-on-surface-variant font-label-lg border border-outline-variant rounded-xl hover:bg-surface-container transition-colors disabled:opacity-60 disabled:cursor-not-allowed">Batal</button>
+                    <button wire:click="executeMonthlyGeneration" wire:loading.attr="disabled" wire:target="executeMonthlyGeneration" class="flex-1 px-4 py-2.5 bg-primary hover:bg-primary/90 text-on-primary font-label-lg rounded-xl transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
+                        <span wire:loading.remove wire:target="executeMonthlyGeneration">Ya, Generate</span>
+                        <span wire:loading.flex wire:target="executeMonthlyGeneration" class="items-center justify-center gap-2">
+                            <span class="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>
+                            Sedang memproses...
+                        </span>
+                    </button>
                 </div>
             </div>
         </div>

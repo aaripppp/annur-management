@@ -32,8 +32,7 @@
         </div>
         </div>
 
-        <!-- Toast Success if redirected from create -->
-        @if (session()->has('success'))
+        @if (session()->has('local_success'))
             <div x-data="{ show: true }"
              x-init="setTimeout(() => show = false, 3000)"
              x-show="show"
@@ -43,9 +42,9 @@
              x-transition:leave="transition ease-in duration-200"
              x-transition:leave-start="opacity-100 translate-x-0"
              x-transition:leave-end="opacity-0 translate-x-8"
-             class="fixed top-24 right-8 z-50 bg-secondary-container border border-secondary text-on-secondary-container px-5 py-4 rounded-xl shadow-lg flex items-center gap-3 min-w-[300px] print:hidden">
-            <span class="material-symbols-outlined text-secondary">check_circle</span>
-            <p class="font-body-md">{{ session('success') }}</p>
+             class="fixed top-4 right-4 z-[9999] max-w-sm bg-green-50 border border-green-200 text-green-800 rounded-xl px-4 py-3 shadow-lg flex items-center gap-3 print:hidden">
+            <span class="material-symbols-outlined text-green-600 text-[20px]">check_circle</span>
+            <p class="text-body-sm font-label-md flex-1">{{ session('local_success') }}</p>
             </div>
         @endif
     @endunless
@@ -58,9 +57,9 @@
             <div class="flex items-center gap-3">
                 <img src="{{ asset('images/annur_logo2.png') }}" alt="Annur" class="receipt-brand-logo h-11 w-auto max-w-12 object-contain shrink-0">
                 <div>
-                    <div class="receipt-brand-name text-label-md font-bold uppercase tracking-[0.18em] text-primary">Annur Management</div>
+                    <div class="receipt-brand-name text-label-md font-bold tracking-[0.18em] text-primary">YPI Nurrahim An-Nur</div>
                     <div class="receipt-title text-display-sm font-bold text-on-surface mt-1">KWITANSI PEMBAYARAN</div>
-                    <div class="text-body-sm text-on-surface-variant mt-1">Kategori: Siswa @if($payment->isManualPayment())<span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-800">Pembayaran Manual</span>@endif</div>
+                    <div class="text-body-sm text-on-surface-variant mt-1">Kategori: {{ $payment->isManualPayment() ? 'Siswa • Manual' : 'Siswa' }}</div>
                 </div>
             </div>
             <div class="flex flex-col sm:items-end gap-1 sm:text-right">
@@ -87,7 +86,7 @@
                 @endif
                 <span class="text-body-sm text-on-surface-variant mt-1 flex items-center gap-1">
                     <x-receipt-icon name="calendar" class="w-4 h-4" />
-                    {{ $payment->payment_date ? $payment->payment_date->locale('id')->translatedFormat('d F Y') : '—' }}, {{ $payment->created_at->format('H:i') }}
+                    {{ $payment->payment_date ? $payment->payment_date->locale('id')->translatedFormat('d F Y') : '—' }}
                 </span>
             </div>
         </div>
@@ -104,7 +103,7 @@
                     <div class="text-label-md font-semibold text-on-surface-variant uppercase tracking-wider">Informasi Siswa</div>
                     <div class="receipt-meta-title text-headline-sm font-bold text-on-surface mt-1">{{ $payment->student->nama_lengkap ?? '—' }}</div>
                     <div class="receipt-meta-copy text-body-md text-on-surface-variant mt-0.5">
-                        NIS {{ $payment->student->nis ?? '—' }} &bull; Kelas {{ $payment->student->schoolClass->name ?? '—' }}
+                        {{ \App\Support\PaymentReceiptDisplay::studentIdentityContext($payment->student) }}
                     </div>
                 </div>
             </div>
@@ -115,9 +114,8 @@
                 </div>
                 <div>
                     <div class="text-label-md font-semibold text-on-surface-variant uppercase tracking-wider">Metode Pembayaran</div>
-                    <div class="receipt-meta-title text-headline-sm font-bold text-on-surface mt-1">{{ $payment->bank->paymentLabel() }}</div>
-                    @if($payment->bank->isBank())
-                        <div class="receipt-meta-copy text-body-md text-on-surface-variant mt-0.5">{{ $payment->bank->account_number }}</div>
+                    <div class="receipt-meta-title text-headline-sm font-bold text-on-surface mt-1">{{ $payment->bank->paymentLabel().($payment->bank->isBank() && filled($payment->bank->account_number) ? ' - '.$payment->bank->account_number : '') }}</div>
+                    @if($payment->bank->isBank() && filled($payment->bank->account_name))
                         <div class="receipt-meta-copy text-body-md text-on-surface-variant mt-0.5">{{ $payment->bank->account_name }}</div>
                     @endif
                 </div>
@@ -134,8 +132,8 @@
                 <thead>
                     <tr class="border-b border-outline-variant text-label-md text-on-surface-variant">
                         <th class="py-3 px-2 w-14 text-center">No.</th>
-                        <th class="py-3 px-2">Deskripsi Item</th>
-                        <th class="py-3 px-2 text-right">Jumlah (Rp)</th>
+                        <th class="py-3 px-2">Jenis Pembayaran</th>
+                        <th class="py-3 px-2 text-right">Nominal</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-outline-variant/60">
@@ -149,17 +147,17 @@
                                 @endif
                             </td>
                             <td class="py-3.5 px-2 text-right text-body-md font-bold text-on-surface font-numeric-data">
-                                {{ number_format($row['amount'], 0, ',', '.') }}
+                                Rp {{ number_format($row['amount'], 0, ',', '.') }}
                             </td>
                         </tr>
                     @empty
                         <tr>
                             <td class="py-3.5 px-2 text-center text-body-md text-on-surface-variant font-numeric-data">1</td>
                             <td class="py-3.5 px-2 text-body-md text-on-surface font-medium">
-                                {{ $payment->description ?: 'Pembayaran SPP' }}
+                                {{ $payment->description ?: ($payment->isManualPayment() ? 'Pembayaran Manual' : 'Pembayaran SPP') }}
                             </td>
                             <td class="py-3.5 px-2 text-right text-body-md font-bold text-on-surface font-numeric-data">
-                                {{ number_format($payment->total_amount, 0, ',', '.') }}
+                                Rp {{ number_format($payment->total_amount, 0, ',', '.') }}
                             </td>
                         </tr>
                     @endforelse

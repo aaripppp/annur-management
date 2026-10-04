@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
 use App\Models\PaymentType;
+use App\Models\Student;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -24,6 +25,13 @@ final class PaymentReceiptDisplay
         'ekskul' => true,
         'osis' => true,
     ];
+
+    public static function studentIdentityContext(Student $student): string
+    {
+        return $student->academicStatus() === 'calon_siswa'
+            ? 'Calon Siswa'
+            : 'Kelas '.($student->schoolClass->name ?? '—');
+    }
 
     /**
      * Baris rincian kwitansi siswa untuk ditampilkan.

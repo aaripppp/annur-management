@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\BillFrequency;
 use App\Enums\PaymentTypeAudience;
 use App\Enums\SchoolLevel;
+use App\Enums\StudentStatus;
 use App\Models\AcademicYear as AcademicYearModel;
 use App\Models\PaymentRate;
 use App\Models\PaymentType;
@@ -18,9 +19,74 @@ use App\Support\BillbookPeriod;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class BillGenerationService
 {
+    /** Successful calls release immediately; one hour recovers an abandoned process lock. */
+    private const MONTHLY_GENERATION_LOCK_SECONDS = 3600;
+
+    private bool $batchGenerationActive = false;
+
+    /** @var array<string, Collection<int, int>> */
+    private array $defaultTypeIdsCache = [];
+
+    /** @var array<string, Collection<int, int>> */
+    private array $defaultTypeIdsWithRatesCache = [];
+
+    /** @var array<string, PaymentRate|null> */
+    private array $rateCache = [];
+
+    /** @var array<string, bool> */
+    private array $billbookTypeCache = [];
+
+    /** @var array<int, array{monthly: array<string, true>, yearly: array<string, true>, one_time: array<string, true>}> */
+    private array $existingBillKeys = [];
+
+    public function beginBatchGeneration(): void
+    {
+        $this->resetGenerationCaches();
+        $this->batchGenerationActive = true;
+    }
+
+    public function endBatchGeneration(): void
+    {
+        $this->resetGenerationCaches();
+        $this->batchGenerationActive = false;
+    }
+
+    /** @param iterable<int> $studentIds */
+    public function prefetchExistingBillsForStudents(iterable $studentIds): void
+    {
+        if (! $this->batchGenerationActive) {
+            return;
+        }
+
+        $ids = collect($studentIds)
+            ->map(fn ($studentId): int => (int) $studentId)
+            ->unique()
+            ->values();
+
+        foreach ($ids as $studentId) {
+            $this->existingBillKeys[$studentId] = $this->emptyBillKeySet();
+        }
+
+        foreach ($ids->chunk(500) as $chunk) {
+            StudentBill::query()
+                ->whereIntegerInRaw('student_id', $chunk->all())
+                ->get([
+                    'student_id',
+                    'payment_type_id',
+                    'period_month',
+                    'period_year',
+                    'academic_year',
+                    'billing_frequency',
+                ])
+                ->each(fn (StudentBill $bill) => $this->rememberExistingBill($bill));
+        }
+    }
+
     /**
      * Generate buku tagihan siswa untuk satu siklus penagihan.
      *
@@ -41,92 +107,112 @@ class BillGenerationService
         CarbonInterface $startDate,
         ?CarbonInterface $monthlyStartDate = null,
     ): array {
-        $level = $student->schoolClass?->level;
+        $ownsGenerationBatch = ! $this->batchGenerationActive;
 
-        if ($level === null) {
-            return [];
+        if ($ownsGenerationBatch) {
+            $this->beginBatchGeneration();
         }
 
-        $start = Carbon::parse($startDate->toDateString())->startOfMonth();
-        $monthlyStart = Carbon::parse(($monthlyStartDate ?? $startDate)->toDateString())->startOfMonth();
+        try {
+            if (! $this->isEligibleForAutomaticBilling($student)) {
+                return [];
+            }
 
-        $this->ensureLevelDefaultSettings($student, $start);
+            $level = $student->schoolClass?->level;
 
-        $settings = $student->paymentSettings()
-            ->where('is_active', true)
-            ->with('paymentType')
-            ->get();
+            if ($level === null) {
+                return [];
+            }
 
-        $defaultTypeIds = $this->levelDefaultTypeIds($student);
+            $start = Carbon::parse($startDate->toDateString())->startOfMonth();
+            $monthlyStart = Carbon::parse(($monthlyStartDate ?? $startDate)->toDateString())->startOfMonth();
 
-        $created = [];
+            if (! array_key_exists($student->id, $this->existingBillKeys)) {
+                $this->prefetchExistingBillsForStudents([$student->id]);
+            }
 
-        foreach (BillbookPeriod::months($monthlyStart) as $month) {
+            $this->ensureLevelDefaultSettings($student, $start);
+
+            $settings = $student->paymentSettings()
+                ->where('is_active', true)
+                ->with('paymentType')
+                ->get();
+
+            $defaultTypeIds = $this->levelDefaultTypeIds($student);
+
+            $created = [];
+
+            foreach (BillbookPeriod::months($monthlyStart) as $month) {
+                foreach ($settings as $setting) {
+                    $type = $setting->paymentType;
+
+                    if (! $defaultTypeIds->contains($type->id)) {
+                        continue;
+                    }
+
+                    $rate = $this->resolveRate($type, $level, $month);
+
+                    if (! $rate || $rate->billing_frequency !== BillFrequency::Monthly) {
+                        continue;
+                    }
+
+                    if (! $this->isPeriodWithinWindow($student, $setting, $month)) {
+                        continue;
+                    }
+
+                    $bill = $this->createBill($student, $type, $rate, $month, $this->resolvedAmountFor($setting, $rate));
+
+                    if ($bill) {
+                        $created[] = $bill;
+                    }
+                }
+            }
+
+            $academicYear = AcademicYear::fromDate($start);
+            $representative = $academicYear->startDate()->addMonth();
+
             foreach ($settings as $setting) {
                 $type = $setting->paymentType;
 
-                if (! $defaultTypeIds->contains($type->id)) {
+                $rate = $this->resolveRate($type, $level, $representative);
+
+                if (! $rate || $rate->billing_frequency !== BillFrequency::Yearly) {
                     continue;
                 }
 
-                $rate = $this->resolveRate($type, $level, $month);
-
-                if (! $rate || $rate->billing_frequency !== BillFrequency::Monthly) {
+                if (! $this->isYearlyPeriodWithinWindow($setting, $representative)) {
                     continue;
                 }
 
-                if (! $this->isPeriodWithinWindow($student, $setting, $month)) {
-                    continue;
-                }
-
-                $bill = $this->createBill($student, $type, $rate, $month, $this->resolvedAmountFor($setting, $rate));
+                $bill = $this->createBill($student, $type, $rate, $representative, $this->resolvedAmountFor($setting, $rate));
 
                 if ($bill) {
                     $created[] = $bill;
                 }
             }
-        }
 
-        $academicYear = AcademicYear::fromDate($start);
-        $representative = $academicYear->startDate()->addMonth();
+            foreach ($settings as $setting) {
+                $type = $setting->paymentType;
 
-        foreach ($settings as $setting) {
-            $type = $setting->paymentType;
+                $rate = $this->resolveRate($type, $level, $start);
 
-            $rate = $this->resolveRate($type, $level, $representative);
+                if (! $rate || $rate->billing_frequency !== BillFrequency::OneTime) {
+                    continue;
+                }
 
-            if (! $rate || $rate->billing_frequency !== BillFrequency::Yearly) {
-                continue;
+                $bill = $this->createBill($student, $type, $rate, $start, $this->resolvedAmountFor($setting, $rate));
+
+                if ($bill) {
+                    $created[] = $bill;
+                }
             }
 
-            if (! $this->isYearlyPeriodWithinWindow($setting, $representative)) {
-                continue;
-            }
-
-            $bill = $this->createBill($student, $type, $rate, $representative, $this->resolvedAmountFor($setting, $rate));
-
-            if ($bill) {
-                $created[] = $bill;
-            }
-        }
-
-        foreach ($settings as $setting) {
-            $type = $setting->paymentType;
-
-            $rate = $this->resolveRate($type, $level, $start);
-
-            if (! $rate || $rate->billing_frequency !== BillFrequency::OneTime) {
-                continue;
-            }
-
-            $bill = $this->createBill($student, $type, $rate, $start, $this->resolvedAmountFor($setting, $rate));
-
-            if ($bill) {
-                $created[] = $bill;
+            return $created;
+        } finally {
+            if ($ownsGenerationBatch) {
+                $this->endBatchGeneration();
             }
         }
-
-        return $created;
     }
 
     /**
@@ -153,22 +239,31 @@ class BillGenerationService
         $startDate = Carbon::parse($start->toDateString())->startOfDay();
         $endDate = BillbookPeriod::endDateFor($startDate)->endOfMonth();
 
-        $defaultTypeIds = PaymentTypeSchoolLevel::query()
-            ->where('school_level', $level)
-            ->where('is_active', true)
-            ->whereHas('paymentType', fn ($query) => $query
-                ->where('is_active', true)
-                ->where('audience', PaymentTypeAudience::Student)
-                ->whereHas('rates', fn ($rateQuery) => $rateQuery
-                    ->where('class_level', $classLevel)
-                    ->whereDate('effective_from', '<=', $endDate->toDateString())
-                    ->where(function ($effectiveQuery) use ($startDate): void {
-                        $effectiveQuery->whereNull('effective_until')
-                            ->orWhereDate('effective_until', '>=', $startDate->toDateString());
-                    })))
-            ->pluck('payment_type_id');
+        $cacheKey = implode('|', [
+            $level->value,
+            $classLevel,
+            $startDate->toDateString(),
+            $endDate->toDateString(),
+        ]);
 
-        foreach ($defaultTypeIds as $typeId) {
+        if (! isset($this->defaultTypeIdsWithRatesCache[$cacheKey])) {
+            $this->defaultTypeIdsWithRatesCache[$cacheKey] = PaymentTypeSchoolLevel::query()
+                ->where('school_level', $level)
+                ->where('is_active', true)
+                ->whereHas('paymentType', fn ($query) => $query
+                    ->where('is_active', true)
+                    ->where('audience', PaymentTypeAudience::Student)
+                    ->whereHas('rates', fn ($rateQuery) => $rateQuery
+                        ->where('class_level', $classLevel)
+                        ->whereDate('effective_from', '<=', $endDate->toDateString())
+                        ->where(function ($effectiveQuery) use ($startDate): void {
+                            $effectiveQuery->whereNull('effective_until')
+                                ->orWhereDate('effective_until', '>=', $startDate->toDateString());
+                        })))
+                ->pluck('payment_type_id');
+        }
+
+        foreach ($this->defaultTypeIdsWithRatesCache[$cacheKey] as $typeId) {
             $student->paymentSettings()->firstOrCreate(
                 ['payment_type_id' => $typeId],
                 ['is_active' => true, 'started_at' => $start->toDateString()]
@@ -199,13 +294,19 @@ class BillGenerationService
      */
     protected function levelDefaultTypeIdsForLevel(SchoolLevel $level): Collection
     {
-        return PaymentTypeSchoolLevel::query()
-            ->where('school_level', $level)
-            ->where('is_active', true)
-            ->whereHas('paymentType', fn ($query) => $query
+        $cacheKey = $level->value;
+
+        if (! isset($this->defaultTypeIdsCache[$cacheKey])) {
+            $this->defaultTypeIdsCache[$cacheKey] = PaymentTypeSchoolLevel::query()
+                ->where('school_level', $level)
                 ->where('is_active', true)
-                ->where('audience', PaymentTypeAudience::Student))
-            ->pluck('payment_type_id');
+                ->whereHas('paymentType', fn ($query) => $query
+                    ->where('is_active', true)
+                    ->where('audience', PaymentTypeAudience::Student))
+                ->pluck('payment_type_id');
+        }
+
+        return $this->defaultTypeIdsCache[$cacheKey];
     }
 
     /**
@@ -403,115 +504,116 @@ class BillGenerationService
      */
     public function getMonthlyGenerationPreview(AcademicYearModel $academicYear): array
     {
-        $enrollments = $this->getEligibleEnrollmentsForGeneration($academicYear);
-        $months = $this->getMonthlyPeriods($academicYear);
+        $this->beginBatchGeneration();
 
-        $billsToCreate = [];
-        $billsExisting = [];
-        $tariffs = [];
-        $tariffKeyed = [];
+        try {
+            $enrollments = $this->getEligibleEnrollmentsForGeneration($academicYear);
+            $months = $this->getMonthlyPeriods($academicYear);
+            $context = $this->monthlyGenerationContext($enrollments);
 
-        foreach ($enrollments as $enrollment) {
-            $student = $enrollment->student;
-            $enrollmentLevel = $enrollment->schoolClass?->level;
+            $this->prefetchExistingBillsForStudents($context['student_ids']);
 
-            if ($enrollmentLevel === null) {
-                continue;
-            }
+            $billsToCreate = [];
+            $billsExisting = [];
+            $tariffs = [];
+            $tariffKeyed = [];
 
-            $schoolLevel = $enrollment->schoolClass->school_level;
+            foreach ($enrollments as $enrollment) {
+                $student = $enrollment->student;
+                $enrollmentLevel = $enrollment->schoolClass?->level;
 
-            if ($schoolLevel === null) {
-                continue;
-            }
-
-            $defaultTypeIds = $this->levelDefaultTypeIdsForLevel($schoolLevel);
-
-            foreach ($defaultTypeIds as $typeId) {
-                $type = PaymentType::find($typeId);
-
-                if (! $type) {
+                if ($enrollmentLevel === null) {
                     continue;
                 }
 
-                $rate = $this->resolveRate($type, $enrollmentLevel, $academicYear->start_date);
+                $schoolLevel = $enrollment->schoolClass->school_level;
 
-                if (! $rate || $rate->billing_frequency !== BillFrequency::Monthly) {
+                if ($schoolLevel === null) {
                     continue;
                 }
 
-                $rateKey = $type->id.'_'.$enrollmentLevel;
+                $defaultTypeIds = $context['default_type_ids_by_level'][$schoolLevel->value] ?? collect();
 
-                if (! isset($tariffKeyed[$rateKey])) {
-                    $tariffKeyed[$rateKey] = true;
-                    $tariffs[] = [
-                        'payment_type' => $type->name,
-                        'class_level' => $enrollmentLevel,
-                        'amount' => (float) $rate->amount,
-                    ];
-                }
+                foreach ($defaultTypeIds as $typeId) {
+                    $type = $context['payment_types']->get($typeId);
 
-                $setting = $student->paymentSettings()
-                    ->where('payment_type_id', $typeId)
-                    ->first();
-
-                if ($setting && ! $setting->is_active) {
-                    continue;
-                }
-
-                $setting ??= new StudentPaymentSetting([
-                    'student_id' => $student->id,
-                    'payment_type_id' => $typeId,
-                    'is_active' => true,
-                    'started_at' => $academicYear->start_date,
-                ]);
-
-                foreach ($months as $month) {
-                    if (! $this->isPeriodWithinWindow($student, $setting, $month)) {
+                    if (! $type) {
                         continue;
                     }
 
-                    $exists = StudentBill::query()
-                        ->where('student_id', $student->id)
-                        ->where('payment_type_id', $typeId)
-                        ->where('period_month', $month->month)
-                        ->where('period_year', $month->year)
-                        ->exists();
+                    $rate = $this->resolveRate($type, $enrollmentLevel, $academicYear->start_date);
 
-                    $amount = $this->resolvedAmountFor($setting, $rate);
+                    if (! $rate || $rate->billing_frequency !== BillFrequency::Monthly) {
+                        continue;
+                    }
 
-                    if ($exists) {
-                        $billsExisting[] = [
-                            'student_id' => $student->id,
-                            'student_name' => $student->nama_lengkap,
-                            'payment_type' => $type->name,
-                            'period_month' => $month->month,
-                            'period_year' => $month->year,
-                        ];
-                    } else {
-                        $billsToCreate[] = [
-                            'student_id' => $student->id,
-                            'student_name' => $student->nama_lengkap,
+                    $rateKey = $type->id.'_'.$enrollmentLevel;
+
+                    if (! isset($tariffKeyed[$rateKey])) {
+                        $tariffKeyed[$rateKey] = true;
+                        $tariffs[] = [
                             'payment_type' => $type->name,
                             'class_level' => $enrollmentLevel,
-                            'amount' => $amount,
-                            'period_month' => $month->month,
-                            'period_year' => $month->year,
+                            'amount' => (float) $rate->amount,
                         ];
+                    }
+
+                    $setting = $context['settings'][$student->id][$typeId] ?? null;
+
+                    if ($setting && ! $setting->is_active) {
+                        continue;
+                    }
+
+                    $setting ??= new StudentPaymentSetting([
+                        'student_id' => $student->id,
+                        'payment_type_id' => $typeId,
+                        'is_active' => true,
+                        'started_at' => $academicYear->start_date,
+                    ]);
+
+                    foreach ($months as $month) {
+                        if (! $this->isPeriodWithinWindow($student, $setting, $month)) {
+                            continue;
+                        }
+
+                        $exists = $this->monthlyBillExists($student->id, $typeId, $month);
+                        $amount = $this->resolvedAmountFor($setting, $rate);
+
+                        if ($exists) {
+                            $billsExisting[] = [
+                                'student_id' => $student->id,
+                                'student_name' => $student->nama_lengkap,
+                                'payment_type' => $type->name,
+                                'period_month' => $month->month,
+                                'period_year' => $month->year,
+                            ];
+                        } else {
+                            $billsToCreate[] = [
+                                'student_id' => $student->id,
+                                'student_name' => $student->nama_lengkap,
+                                'payment_type' => $type->name,
+                                'class_level' => $enrollmentLevel,
+                                'amount' => $amount,
+                                'period_month' => $month->month,
+                                'period_year' => $month->year,
+                            ];
+                        }
                     }
                 }
             }
-        }
 
-        return [
-            'academic_year' => $academicYear->year,
-            'eligible_students' => $enrollments->count(),
-            'will_create' => count($billsToCreate),
-            'already_existing' => count($billsExisting),
-            'monthly_bills_to_create' => $billsToCreate,
-            'monthly_bills_existing' => $billsExisting,
-            'tariffs' => $tariffs,
-        ];
+            return [
+                'academic_year' => $academicYear->year,
+                'eligible_students' => $enrollments->count(),
+                'will_create' => count($billsToCreate),
+                'already_existing' => count($billsExisting),
+                'monthly_bills_to_create' => $billsToCreate,
+                'monthly_bills_existing' => $billsExisting,
+                'tariffs' => $tariffs,
+            ];
+        } finally {
+            $this->endBatchGeneration();
+        }
     }
 
     /**
@@ -521,84 +623,152 @@ class BillGenerationService
      * master (PaymentRate) terkini sebagai snapshot ke StudentBill.amount.
      * Tagihan yang sudah ada TIDAK ditimpa.
      *
-     * @return array{created: int, skipped: int}
+     * @return array{created: int, skipped: int}|array{
+     *     created: int,
+     *     skipped: int,
+     *     breakdown: array{
+     *         already_existing: int,
+     *         outside_period: int,
+     *         rejected_during_creation: int,
+     *         inactive_setting: int,
+     *         invalid_configuration: int
+     *     }
+     * }
      */
-    public function generateMonthlyForAcademicYear(AcademicYearModel $academicYear): array
+    public function generateMonthlyForAcademicYear(AcademicYearModel $academicYear, bool $includeBreakdown = false): array
     {
-        $enrollments = $this->getEligibleEnrollmentsForGeneration($academicYear);
-        $months = $this->getMonthlyPeriods($academicYear);
+        return Cache::lock('academic-year-monthly-generation', self::MONTHLY_GENERATION_LOCK_SECONDS)
+            ->block(0, function () use ($academicYear, $includeBreakdown): array {
+                $this->beginBatchGeneration();
 
-        $created = 0;
-        $skipped = 0;
+                try {
+                    return DB::transaction(function () use ($academicYear, $includeBreakdown): array {
+                        $enrollments = $this->getEligibleEnrollmentsForGeneration($academicYear);
+                        $months = $this->getMonthlyPeriods($academicYear);
+                        $context = $this->monthlyGenerationContext($enrollments);
 
-        foreach ($enrollments as $enrollment) {
-            $student = $enrollment->student;
-            $enrollmentLevel = $enrollment->schoolClass?->level;
+                        $this->prefetchExistingBillsForStudents($context['student_ids']);
 
-            if ($enrollmentLevel === null) {
-                continue;
-            }
+                        $created = 0;
+                        $breakdown = [
+                            'already_existing' => 0,
+                            'outside_period' => 0,
+                            'rejected_during_creation' => 0,
+                            'inactive_setting' => 0,
+                            'invalid_configuration' => 0,
+                        ];
 
-            $schoolLevel = $enrollment->schoolClass->school_level;
+                        foreach ($enrollments as $enrollment) {
+                            $student = $enrollment->student;
+                            $enrollmentLevel = $enrollment->schoolClass?->level;
 
-            if ($schoolLevel === null) {
-                continue;
-            }
+                            if ($enrollmentLevel === null) {
+                                $breakdown['invalid_configuration']++;
 
-            $defaultTypeIds = $this->levelDefaultTypeIdsForLevel($schoolLevel);
+                                continue;
+                            }
 
-            foreach ($defaultTypeIds as $typeId) {
-                $type = PaymentType::find($typeId);
+                            $schoolLevel = $enrollment->schoolClass->school_level;
 
-                if (! $type) {
-                    continue;
+                            if ($schoolLevel === null) {
+                                $breakdown['invalid_configuration']++;
+
+                                continue;
+                            }
+
+                            $defaultTypeIds = $context['default_type_ids_by_level'][$schoolLevel->value] ?? collect();
+
+                            foreach ($defaultTypeIds as $typeId) {
+                                $type = $context['payment_types']->get($typeId);
+
+                                if (! $type) {
+                                    $breakdown['invalid_configuration']++;
+
+                                    continue;
+                                }
+
+                                $rate = $this->resolveRate($type, $enrollmentLevel, $academicYear->start_date);
+
+                                if (! $rate) {
+                                    $breakdown['invalid_configuration']++;
+
+                                    continue;
+                                }
+
+                                if ($rate->billing_frequency !== BillFrequency::Monthly) {
+                                    continue;
+                                }
+
+                                $setting = $context['settings'][$student->id][$typeId] ?? null;
+
+                                if ($setting && ! $setting->is_active) {
+                                    $breakdown['inactive_setting']++;
+
+                                    continue;
+                                }
+
+                                if (! $setting) {
+                                    $setting = $student->paymentSettings()->firstOrCreate(
+                                        ['payment_type_id' => $typeId],
+                                        ['is_active' => true, 'started_at' => $academicYear->start_date->toDateString()]
+                                    );
+                                    $context['settings'][$student->id][$typeId] = $setting;
+                                }
+
+                                if (! $setting->is_active) {
+                                    $breakdown['inactive_setting']++;
+
+                                    continue;
+                                }
+
+                                foreach ($months as $month) {
+                                    if (! $this->isPeriodWithinWindow($student, $setting, $month)) {
+                                        $breakdown['outside_period']++;
+
+                                        continue;
+                                    }
+
+                                    if ($this->monthlyBillExists($student->id, $type->id, $month)) {
+                                        $breakdown['already_existing']++;
+
+                                        continue;
+                                    }
+
+                                    $bill = $this->createBill(
+                                        $student,
+                                        $type,
+                                        $rate,
+                                        $month,
+                                        $this->resolvedAmountFor($setting, $rate),
+                                        $schoolLevel,
+                                    );
+
+                                    if ($bill) {
+                                        $created++;
+                                    } else {
+                                        $breakdown['rejected_during_creation']++;
+                                    }
+                                }
+                            }
+                        }
+
+                        $result = [
+                            'created' => $created,
+                            'skipped' => $breakdown['already_existing']
+                                + $breakdown['outside_period']
+                                + $breakdown['rejected_during_creation'],
+                        ];
+
+                        if ($includeBreakdown) {
+                            $result['breakdown'] = $breakdown;
+                        }
+
+                        return $result;
+                    });
+                } finally {
+                    $this->endBatchGeneration();
                 }
-
-                $rate = $this->resolveRate($type, $enrollmentLevel, $academicYear->start_date);
-
-                if (! $rate || $rate->billing_frequency !== BillFrequency::Monthly) {
-                    continue;
-                }
-
-                $setting = $student->paymentSettings()
-                    ->where('payment_type_id', $typeId)
-                    ->first();
-
-                if ($setting && ! $setting->is_active) {
-                    continue;
-                }
-
-                $setting ??= $student->paymentSettings()->firstOrCreate(
-                    ['payment_type_id' => $typeId],
-                    ['is_active' => true, 'started_at' => $academicYear->start_date->toDateString()]
-                );
-
-                foreach ($months as $month) {
-                    if (! $this->isPeriodWithinWindow($student, $setting, $month)) {
-                        $skipped++;
-
-                        continue;
-                    }
-
-                    $bill = $this->createBill(
-                        $student,
-                        $type,
-                        $rate,
-                        $month,
-                        $this->resolvedAmountFor($setting, $rate),
-                        $schoolLevel,
-                    );
-
-                    if ($bill) {
-                        $created++;
-                    } else {
-                        $skipped++;
-                    }
-                }
-            }
-        }
-
-        return ['created' => $created, 'skipped' => $skipped];
+            });
     }
 
     /**
@@ -612,6 +782,10 @@ class BillGenerationService
      */
     public function generateYearlyAndOneTimeOnly(Student $student, CarbonInterface $startDate): array
     {
+        if (! $this->isEligibleForAutomaticBilling($student)) {
+            return [];
+        }
+
         $level = $student->schoolClass?->level;
 
         if ($level === null) {
@@ -685,6 +859,10 @@ class BillGenerationService
      */
     public function generateInitialAcademicYearBills(Student $student, AcademicYearModel $academicYear): array
     {
+        if (! $this->isEligibleForAutomaticBilling($student)) {
+            return [];
+        }
+
         $created = $this->generateYearlyAndOneTimeOnly($student, $academicYear->start_date);
         $enrollment = StudentAcademicEnrollment::query()
             ->where('student_id', $student->id)
@@ -746,10 +924,72 @@ class BillGenerationService
         return StudentAcademicEnrollment::query()
             ->where('academic_year_id', $academicYear->id)
             ->where('status', 'active')
+            ->whereHas('student', fn ($query) => $query
+                ->where('status', StudentStatus::Active->value))
             ->with(['student.schoolClass', 'schoolClass'])
             ->get()
             ->filter(fn (StudentAcademicEnrollment $e) => $e->student !== null)
             ->values();
+    }
+
+    /**
+     * @param  Collection<int, StudentAcademicEnrollment>  $enrollments
+     * @return array{
+     *     student_ids: Collection<int, int>,
+     *     default_type_ids_by_level: array<string, Collection<int, int>>,
+     *     payment_types: Collection<int, PaymentType>,
+     *     settings: array<int, array<int, StudentPaymentSetting>>
+     * }
+     */
+    protected function monthlyGenerationContext(Collection $enrollments): array
+    {
+        $studentIds = $enrollments
+            ->pluck('student_id')
+            ->map(fn ($studentId): int => (int) $studentId)
+            ->unique()
+            ->values();
+        $defaultTypeIdsByLevel = [];
+        $relevantTypeIds = collect();
+
+        foreach ($enrollments as $enrollment) {
+            $schoolLevel = $enrollment->schoolClass?->school_level;
+
+            if ($schoolLevel === null || isset($defaultTypeIdsByLevel[$schoolLevel->value])) {
+                continue;
+            }
+
+            $defaultTypeIdsByLevel[$schoolLevel->value] = $this->levelDefaultTypeIdsForLevel($schoolLevel);
+            $relevantTypeIds = $relevantTypeIds->merge($defaultTypeIdsByLevel[$schoolLevel->value]);
+        }
+
+        $relevantTypeIds = $relevantTypeIds
+            ->map(fn ($typeId): int => (int) $typeId)
+            ->unique()
+            ->values();
+        $paymentTypes = $relevantTypeIds->isEmpty()
+            ? collect()
+            : PaymentType::query()
+                ->whereIntegerInRaw('id', $relevantTypeIds->all())
+                ->get()
+                ->keyBy('id');
+        $settings = [];
+
+        if ($studentIds->isNotEmpty() && $relevantTypeIds->isNotEmpty()) {
+            StudentPaymentSetting::query()
+                ->whereIntegerInRaw('student_id', $studentIds->all())
+                ->whereIntegerInRaw('payment_type_id', $relevantTypeIds->all())
+                ->get()
+                ->each(function (StudentPaymentSetting $setting) use (&$settings): void {
+                    $settings[$setting->student_id][$setting->payment_type_id] = $setting;
+                });
+        }
+
+        return [
+            'student_ids' => $studentIds,
+            'default_type_ids_by_level' => $defaultTypeIdsByLevel,
+            'payment_types' => $paymentTypes,
+            'settings' => $settings,
+        ];
     }
 
     /**
@@ -842,7 +1082,13 @@ class BillGenerationService
      */
     public function resolveRate(PaymentType $type, int $level, CarbonInterface $targetDate): ?PaymentRate
     {
-        return PaymentRate::query()
+        $cacheKey = implode('|', [$type->id, $level, $targetDate->toDateString()]);
+
+        if ($this->batchGenerationActive && array_key_exists($cacheKey, $this->rateCache)) {
+            return $this->rateCache[$cacheKey];
+        }
+
+        $rate = PaymentRate::query()
             ->where('payment_type_id', $type->id)
             ->where('class_level', $level)
             ->whereDate('effective_from', '<=', $targetDate->toDateString())
@@ -853,6 +1099,12 @@ class BillGenerationService
             ->orderByDesc('effective_from')
             ->orderByDesc('id')
             ->first();
+
+        if ($this->batchGenerationActive) {
+            $this->rateCache[$cacheKey] = $rate;
+        }
+
+        return $rate;
     }
 
     /**
@@ -876,12 +1128,27 @@ class BillGenerationService
 
         $schoolLevel = $targetSchoolLevel ?? $student->schoolLevel;
 
-        return $schoolLevel !== null
-            && PaymentTypeSchoolLevel::query()
-                ->where('payment_type_id', $type->id)
-                ->where('school_level', $schoolLevel)
-                ->where('is_active', true)
-                ->exists();
+        if ($schoolLevel === null) {
+            return false;
+        }
+
+        $cacheKey = $type->id.'|'.$schoolLevel->value;
+
+        if ($this->batchGenerationActive && array_key_exists($cacheKey, $this->billbookTypeCache)) {
+            return $this->billbookTypeCache[$cacheKey];
+        }
+
+        $isApplicable = PaymentTypeSchoolLevel::query()
+            ->where('payment_type_id', $type->id)
+            ->where('school_level', $schoolLevel)
+            ->where('is_active', true)
+            ->exists();
+
+        if ($this->batchGenerationActive) {
+            $this->billbookTypeCache[$cacheKey] = $isApplicable;
+        }
+
+        return $isApplicable;
     }
 
     /**
@@ -906,6 +1173,10 @@ class BillGenerationService
         float $amount,
         ?SchoolLevel $targetSchoolLevel = null,
     ): ?StudentBill {
+        if (! $this->isEligibleForAutomaticBilling($student)) {
+            return null;
+        }
+
         // Guard tunggal: semua jalur pembuatan bill (bulanan, tahunan, sekali
         // bayar) melewati metode ini. Tipe opsional tidak pernah dibuat
         // otomatis — hanya tipe yang dikonfigurasi untuk jenjang target.
@@ -916,17 +1187,19 @@ class BillGenerationService
         if ($rate->billing_frequency === BillFrequency::Yearly) {
             $academicYear = AcademicYear::fromDate($targetDate)->label();
 
-            $exists = StudentBill::query()
-                ->where('student_id', $student->id)
-                ->where('payment_type_id', $type->id)
-                ->where('academic_year', $academicYear)
-                ->exists();
+            $exists = array_key_exists($student->id, $this->existingBillKeys)
+                ? isset($this->existingBillKeys[$student->id]['yearly'][$this->yearlyBillKey($type->id, $academicYear)])
+                : StudentBill::query()
+                    ->where('student_id', $student->id)
+                    ->where('payment_type_id', $type->id)
+                    ->where('academic_year', $academicYear)
+                    ->exists();
 
             if ($exists) {
                 return null;
             }
 
-            return StudentBill::create([
+            $bill = StudentBill::create([
                 'student_id' => $student->id,
                 'payment_type_id' => $type->id,
                 'amount' => $amount,
@@ -936,21 +1209,20 @@ class BillGenerationService
                 'billing_frequency' => BillFrequency::Yearly->value,
                 'due_date' => null,
             ]);
+
+            $this->rememberExistingBill($bill);
+
+            return $bill;
         }
 
         if ($rate->is_monthly) {
-            $exists = StudentBill::query()
-                ->where('student_id', $student->id)
-                ->where('payment_type_id', $type->id)
-                ->where('period_month', $targetDate->month)
-                ->where('period_year', $targetDate->year)
-                ->exists();
+            $exists = $this->monthlyBillExists($student->id, $type->id, $targetDate);
 
             if ($exists) {
                 return null;
             }
 
-            return StudentBill::create([
+            $bill = StudentBill::create([
                 'student_id' => $student->id,
                 'payment_type_id' => $type->id,
                 'amount' => $amount,
@@ -959,23 +1231,29 @@ class BillGenerationService
                 'billing_frequency' => BillFrequency::Monthly->value,
                 'due_date' => null,
             ]);
+
+            $this->rememberExistingBill($bill);
+
+            return $bill;
         }
 
         // One-time bill: lifetime dedup by student + type. A single bill per
         // student + payment_type is enough forever — settled or not.
         $academicYear = AcademicYear::fromDate($targetDate)->label();
 
-        $exists = StudentBill::query()
-            ->where('student_id', $student->id)
-            ->where('payment_type_id', $type->id)
-            ->where('billing_frequency', BillFrequency::OneTime->value)
-            ->exists();
+        $exists = array_key_exists($student->id, $this->existingBillKeys)
+            ? isset($this->existingBillKeys[$student->id]['one_time'][$this->oneTimeBillKey($type->id)])
+            : StudentBill::query()
+                ->where('student_id', $student->id)
+                ->where('payment_type_id', $type->id)
+                ->where('billing_frequency', BillFrequency::OneTime->value)
+                ->exists();
 
         if ($exists) {
             return null;
         }
 
-        return StudentBill::create([
+        $bill = StudentBill::create([
             'student_id' => $student->id,
             'payment_type_id' => $type->id,
             'amount' => $amount,
@@ -985,5 +1263,88 @@ class BillGenerationService
             'billing_frequency' => BillFrequency::OneTime->value,
             'due_date' => null,
         ]);
+
+        $this->rememberExistingBill($bill);
+
+        return $bill;
+    }
+
+    private function monthlyBillExists(int $studentId, int $paymentTypeId, CarbonInterface $targetDate): bool
+    {
+        if (array_key_exists($studentId, $this->existingBillKeys)) {
+            return isset($this->existingBillKeys[$studentId]['monthly'][
+                $this->monthlyBillKey($paymentTypeId, $targetDate->month, $targetDate->year)
+            ]);
+        }
+
+        return StudentBill::query()
+            ->where('student_id', $studentId)
+            ->where('payment_type_id', $paymentTypeId)
+            ->where('period_month', $targetDate->month)
+            ->where('period_year', $targetDate->year)
+            ->exists();
+    }
+
+    /** @return array{monthly: array<string, true>, yearly: array<string, true>, one_time: array<string, true>} */
+    private function emptyBillKeySet(): array
+    {
+        return ['monthly' => [], 'yearly' => [], 'one_time' => []];
+    }
+
+    private function rememberExistingBill(StudentBill $bill): void
+    {
+        if (! array_key_exists($bill->student_id, $this->existingBillKeys)) {
+            return;
+        }
+
+        if ($bill->period_month !== null && $bill->period_year !== null) {
+            $key = $this->monthlyBillKey($bill->payment_type_id, $bill->period_month, $bill->period_year);
+            $this->existingBillKeys[$bill->student_id]['monthly'][$key] = true;
+        }
+
+        if ($bill->academic_year !== null) {
+            $key = $this->yearlyBillKey($bill->payment_type_id, $bill->academic_year);
+            $this->existingBillKeys[$bill->student_id]['yearly'][$key] = true;
+        }
+
+        if ($bill->billing_frequency === BillFrequency::OneTime->value) {
+            $key = $this->oneTimeBillKey($bill->payment_type_id);
+            $this->existingBillKeys[$bill->student_id]['one_time'][$key] = true;
+        }
+    }
+
+    private function monthlyBillKey(int $paymentTypeId, int $month, int $year): string
+    {
+        return $paymentTypeId.'|'.$month.'|'.$year;
+    }
+
+    private function yearlyBillKey(int $paymentTypeId, string $academicYear): string
+    {
+        return $paymentTypeId.'|'.$academicYear;
+    }
+
+    private function oneTimeBillKey(int $paymentTypeId): string
+    {
+        return (string) $paymentTypeId;
+    }
+
+    private function resetGenerationCaches(): void
+    {
+        $this->defaultTypeIdsCache = [];
+        $this->defaultTypeIdsWithRatesCache = [];
+        $this->rateCache = [];
+        $this->billbookTypeCache = [];
+        $this->existingBillKeys = [];
+    }
+
+    private function isEligibleForAutomaticBilling(Student $student): bool
+    {
+        $persistedStatus = $student->getRawOriginal('status');
+
+        if ($persistedStatus === null && $student->exists) {
+            $persistedStatus = Student::query()->whereKey($student->getKey())->toBase()->value('status');
+        }
+
+        return StudentStatus::tryFrom((string) $persistedStatus) === StudentStatus::Active;
     }
 }

@@ -1,4 +1,9 @@
 <div>
+    @php
+        $canGenerateBillsAutomatically = App\Enums\StudentStatus::tryFrom((string) $student->getRawOriginal('status')) === App\Enums\StudentStatus::Active;
+        $manualAddBillLabel = $canGenerateBillsAutomatically ? 'Tambah Tagihan' : 'Tambah Tagihan Lama';
+    @endphp
+
     <!-- Top Subtitle / Breadcrumb -->
     <div class="flex items-center gap-2 text-body-md text-on-surface-variant mb-2">
         <a href="{{ route('siswa.index') }}" class="hover:text-primary transition-colors">Siswa</a>
@@ -31,6 +36,11 @@
                             <span class="material-symbols-outlined text-[14px]">school</span>
                             Lulus
                         </span>
+                    @elseif($academicStatus === 'pindah')
+                        <span class="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-error-container text-on-error-container">
+                            <span class="material-symbols-outlined text-[14px]">move_item</span>
+                            Pindah
+                        </span>
                     @elseif($academicStatus === 'calon_siswa')
                         <span class="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-primary-fixed text-on-primary-fixed">
                             <span class="material-symbols-outlined text-[14px]">person_add</span>
@@ -51,7 +61,7 @@
                         Rencana Masuk : {{ $entryYear ?? '-' }} &bull;
                         Kelas Masuk : {{ $student->academicClassLabel() }}
                     </p>
-                @elseif($academicStatus === 'lulus')
+                @elseif(in_array($academicStatus, ['lulus', 'pindah'], true))
                     <p class="text-body-sm text-on-surface-variant mt-1">
                         Kelas Terakhir : {{ $student->academicClassLabel() }}
                     </p>
@@ -63,19 +73,27 @@
             </div>
         </div>
         <div class="flex items-center gap-2">
+            @if(!$canGenerateBillsAutomatically)
+                <button wire:click="openAddBill" class="flex items-center gap-1.5 text-primary font-label-md border border-primary rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors">
+                    <span class="material-symbols-outlined text-[18px]">add_box</span>
+                    {{ $manualAddBillLabel }}
+                </button>
+            @endif
             <a href="{{ route('siswa.bills.pdf', ['student' => $student->id, 'academic_year' => $selectedAcademicYear]) }}" target="_blank" class="flex items-center gap-1.5 text-primary font-label-md border border-primary rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors" title="Cetak daftar tagihan siswa ke PDF.">
                 <span class="material-symbols-outlined text-[18px]">print</span>
                 Cetak Tagihan
             </a>
-            <button wire:click="openBillbook" class="flex items-center gap-1.5 text-on-surface-variant font-label-md border border-outline-variant rounded-xl px-3.5 py-2 hover:bg-surface-container transition-colors" title="Lengkapi tagihan yang belum ada untuk siswa lama.">
-                <span class="material-symbols-outlined text-[18px]">menu_book</span>
-                Lengkapi Tagihan
-            </button>
+            @if($canGenerateBillsAutomatically)
+                <button wire:click="openBillbook" class="flex items-center gap-1.5 text-on-surface-variant font-label-md border border-outline-variant rounded-xl px-3.5 py-2 hover:bg-surface-container transition-colors" title="Lengkapi tagihan yang belum ada untuk siswa lama.">
+                    <span class="material-symbols-outlined text-[18px]">menu_book</span>
+                    Lengkapi Tagihan
+                </button>
+            @endif
         </div>
     </div>
 
-    <!-- Toast Success -->
-    @if (session()->has('success'))
+    <!-- Local success feedback for same-page actions -->
+    @if (session()->has('local_success'))
         <div x-data="{ show: true }"
              x-init="setTimeout(() => show = false, 4000)"
              x-show="show"
@@ -85,9 +103,9 @@
              x-transition:leave="transition ease-in duration-200"
              x-transition:leave-start="opacity-100 translate-x-0"
              x-transition:leave-end="opacity-0 translate-x-8"
-             class="fixed top-24 right-8 z-50 bg-secondary-container border border-secondary text-on-secondary-container px-5 py-4 rounded-xl shadow-lg flex items-center gap-3 min-w-[300px]">
-            <span class="material-symbols-outlined text-on-secondary-container">check_circle</span>
-            <p class="font-body-md">{{ session('success') }}</p>
+             class="fixed top-4 right-4 z-[9999] max-w-sm bg-green-50 border border-green-200 text-green-800 rounded-xl px-4 py-3 shadow-lg flex items-center gap-3">
+            <span class="material-symbols-outlined text-green-600 text-[20px]">check_circle</span>
+            <p class="text-body-sm font-label-md flex-1">{{ session('local_success') }}</p>
         </div>
     @endif
 
@@ -184,7 +202,15 @@
             <div class="p-8 text-center text-on-surface-variant">
                 <span class="material-symbols-outlined text-4xl mb-2 block">receipt_long</span>
                 <p>Belum ada tagihan untuk siswa ini.</p>
-                <p class="text-body-sm mt-1">Buku tagihan dibuat otomatis saat siswa ditambahkan. Gunakan "Lengkapi Tagihan" untuk membuat tagihan bagi siswa lama.</p>
+                @if($canGenerateBillsAutomatically)
+                    <p class="text-body-sm mt-1">Buku tagihan dibuat otomatis saat siswa ditambahkan. Gunakan "Lengkapi Tagihan" untuk membuat tagihan bagi siswa lama.</p>
+                    <button wire:click="openAddBill" class="mt-4 inline-flex items-center gap-1.5 text-primary font-label-lg border border-primary/40 rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors">
+                        <span class="material-symbols-outlined text-[18px]">add_box</span>
+                        {{ $manualAddBillLabel }}
+                    </button>
+                @else
+                    <p class="text-body-sm mt-1">Gunakan "Tambah Tagihan Lama" untuk mencatat kewajiban historis siswa.</p>
+                @endif
             </div>
         </div>
     @else
@@ -200,7 +226,7 @@
                 </div>
                 <button wire:click="openAddBillForMonth({{ $group['period_month'] }}, {{ $group['period_year'] }})" class="flex items-center gap-1.5 text-primary font-label-lg border border-primary/40 rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors">
                     <span class="material-symbols-outlined text-[18px]">add_box</span>
-                    Tambah Tagihan
+                    {{ $manualAddBillLabel }}
                 </button>
             </div>
 
@@ -230,7 +256,7 @@
                     </div>
                     <button wire:click="openAddBillForAcademicYear('{{ $group['academic_year'] }}')" class="flex items-center gap-1.5 text-primary font-label-lg border border-primary/40 rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors">
                         <span class="material-symbols-outlined text-[18px]">add_box</span>
-                        Tambah Tagihan
+                        {{ $manualAddBillLabel }}
                     </button>
                 </div>
 
@@ -250,7 +276,7 @@
                     </div>
                     <button wire:click="openAddBillForOneTime" class="flex items-center gap-1.5 text-primary font-label-lg border border-primary/40 rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors">
                         <span class="material-symbols-outlined text-[18px]">add_box</span>
-                        Tambah Tagihan
+                        {{ $manualAddBillLabel }}
                     </button>
                 </div>
 
@@ -260,7 +286,7 @@
     @endif
 
     <!-- Modal Generate Tagihan Sampai -->
-    @if($isGenerateUntilOpen)
+    @if($canGenerateBillsAutomatically && $isGenerateUntilOpen)
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-sm" role="dialog" aria-modal="true">
             <div class="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
                 <div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0">
@@ -291,7 +317,7 @@
     @endif
 
     <!-- Modal Generate Buku Tagihan -->
-    @if($isBillbookOpen)
+    @if($canGenerateBillsAutomatically && $isBillbookOpen)
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-sm" role="dialog" aria-modal="true">
             <div class="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
                 <div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0">
@@ -385,7 +411,7 @@
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-sm" role="dialog" aria-modal="true">
             <div class="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
                 <div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0">
-                    <h3 class="text-headline-sm font-headline-sm text-on-surface">Tambah Tagihan Manual</h3>
+                    <h3 class="text-headline-sm font-headline-sm text-on-surface">{{ $manualBillIsHistorical ? 'Tambah Tagihan Lama' : 'Tambah Tagihan Manual' }}</h3>
                     <button wire:click="closeAddBill" class="text-on-surface-variant hover:text-error rounded-lg p-1 transition-colors">
                         <span class="material-symbols-outlined">close</span>
                     </button>
@@ -396,13 +422,30 @@
                         <select id="add_payment_type_id" wire:model.live="addPaymentTypeId" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm">
                             <option value="">Pilih jenis pembayaran</option>
                             @foreach ($manualAddPaymentTypes as $ptype)
-                                <option value="{{ $ptype->id }}">{{ $ptype->name }}</option>
+                                <option value="{{ $ptype->id }}">{{ $ptype->name }}{{ !$ptype->is_active ? ' (Nonaktif)' : '' }}</option>
                             @endforeach
                         </select>
                         @if ($manualAddPaymentTypes->isEmpty())
                             <p class="text-body-sm text-on-surface-variant mt-1.5">Tidak ada jenis pembayaran yang tersedia.</p>
                         @endif
                         @error('addPaymentTypeId') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label for="add_frequency" class="block text-label-md font-label-md text-on-surface mb-1">Frekuensi <span class="text-error">*</span></label>
+                        @if($addFrequencyLocked)
+                            <div class="w-full border border-outline-variant rounded-lg px-3 py-2 bg-surface-container-low text-on-surface">
+                                {{ match($addFrequency) { 'monthly' => 'Bulanan', 'yearly' => 'Tahunan', 'one_time' => 'Sekali Bayar', default => '-' } }}
+                            </div>
+                        @else
+                            <select id="add_frequency" wire:model.live="addFrequency" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm">
+                                <option value="">Pilih frekuensi</option>
+                                <option value="monthly">Bulanan</option>
+                                <option value="yearly">Tahunan</option>
+                                <option value="one_time">Sekali Bayar</option>
+                            </select>
+                        @endif
+                        @error('addFrequency') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
                     </div>
 
                     <div>
@@ -490,11 +533,24 @@
                                 @error('addAcademicYear') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
                             </div>
                         @endif
-                    @else
-                        <p class="text-body-sm text-on-surface-variant flex items-center gap-1.5">
-                            <span class="material-symbols-outlined text-[16px]">info</span>
-                            Tagihan ini dibuat sebagai tagihan sekali bayar (tanpa periode bulanan/tahunan).
-                        </p>
+                    @elseif ($addFrequency === 'one_time')
+                        @if($manualBillIsHistorical)
+                            <div>
+                                <label for="add_one_time_academic_year" class="block text-label-md font-label-md text-on-surface mb-1">Tahun Ajaran <span class="text-error">*</span></label>
+                                <select id="add_one_time_academic_year" wire:model="addAcademicYear" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm">
+                                    <option value="">Pilih tahun ajaran</option>
+                                    @foreach ($addAcademicYearOptions as $ayOption)
+                                        <option value="{{ $ayOption }}">{{ $ayOption }}</option>
+                                    @endforeach
+                                </select>
+                                @error('addAcademicYear') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
+                            </div>
+                        @else
+                            <p class="text-body-sm text-on-surface-variant flex items-center gap-1.5">
+                                <span class="material-symbols-outlined text-[16px]">info</span>
+                                Tagihan ini dibuat sebagai tagihan sekali bayar (tanpa periode bulanan/tahunan).
+                            </p>
+                        @endif
                     @endif
 
                     @error('addPeriod') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror

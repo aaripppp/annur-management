@@ -28,6 +28,8 @@ class ClassPromotionService
         $activeEnrollments = StudentAcademicEnrollment::query()
             ->where('academic_year_id', $fromYear->id)
             ->where('status', 'active')
+            ->whereHas('student', fn ($query) => $query
+                ->where('status', StudentStatus::Active->value))
             ->with(['student', 'schoolClass'])
             ->get();
 
@@ -109,36 +111,64 @@ class ClassPromotionService
         }
 
         $students = $preview['students'];
+        $decisionsByClassId = $preview['grouped']
+            ->filter(fn (array $group): bool => $group['current_class'] !== null)
+            ->mapWithKeys(fn (array $group): array => [$group['current_class']->id => $group]);
+        $studentIds = $students->pluck('id')->map(fn ($id): int => (int) $id)->all();
+        $promotedStudentIds = $preview['grouped']
+            ->where('is_graduation', false)
+            ->where('is_blocked', false)
+            ->flatMap(fn (array $group): Collection => $group['students'])
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
 
         $promoted = 0;
         $graduated = 0;
         $blocked = 0;
 
-        DB::transaction(function () use ($students, $fromYear, $toYear, &$promoted, &$graduated, &$blocked) {
-            foreach ($students as $student) {
-                $class = $student->schoolClass;
+        $this->billGenerationService->beginBatchGeneration();
 
-                if ($class === null) {
-                    continue;
+        try {
+            DB::transaction(function () use ($students, $decisionsByClassId, $studentIds, $promotedStudentIds, $fromYear, $toYear, &$promoted, &$graduated, &$blocked) {
+                $targetEnrollmentStudentIds = $studentIds === []
+                    ? []
+                    : StudentAcademicEnrollment::query()
+                        ->where('academic_year_id', $toYear->id)
+                        ->whereIntegerInRaw('student_id', $studentIds)
+                        ->pluck('student_id')
+                        ->mapWithKeys(fn ($studentId): array => [(int) $studentId => true])
+                        ->all();
+
+                $this->billGenerationService->prefetchExistingBillsForStudents($promotedStudentIds);
+
+                foreach ($students as $student) {
+                    $class = $student->schoolClass;
+
+                    if ($class === null) {
+                        continue;
+                    }
+
+                    $decision = $decisionsByClassId->get($class->id);
+
+                    if ($decision['is_graduation']) {
+                        $this->graduateStudent($student, $class, $fromYear, $toYear, $targetEnrollmentStudentIds);
+                        $graduated++;
+                    } elseif ($decision['target_class'] !== null && ! $decision['is_blocked']) {
+                        $this->promoteStudent($student, $decision['target_class'], $fromYear, $toYear, $targetEnrollmentStudentIds);
+                        $promoted++;
+                    } else {
+                        $blocked++;
+                    }
                 }
 
-                $decision = ClassPromotionMapping::runtimeDecisionFor($class);
-
-                if ($decision['action'] === 'graduate') {
-                    $this->graduateStudent($student, $class, $fromYear, $toYear);
-                    $graduated++;
-                } elseif ($decision['target'] !== null && $decision['action'] === 'promote') {
-                    $this->promoteStudent($student, $decision['target'], $fromYear, $toYear);
-                    $promoted++;
-                } else {
-                    $blocked++;
-                }
-            }
-
-            AcademicYear::deactivateAll();
-            $toYear->update(['is_active' => true]);
-            $toYear->update(['promotion_processed_at' => now()]);
-        });
+                AcademicYear::deactivateAll();
+                $toYear->update(['is_active' => true]);
+                $toYear->update(['promotion_processed_at' => now()]);
+            });
+        } finally {
+            $this->billGenerationService->endBatchGeneration();
+        }
 
         return compact('promoted', 'graduated', 'blocked');
     }
@@ -162,13 +192,26 @@ class ClassPromotionService
             ->all();
     }
 
-    protected function promoteStudent(Student $student, SchoolClass $targetClass, AcademicYear $fromYear, AcademicYear $toYear): void
-    {
-        $existingTargetEnrollment = StudentAcademicEnrollment::where('student_id', $student->id)
-            ->where('academic_year_id', $toYear->id)
-            ->first();
+    /** @param array<int, true>|null $targetEnrollmentStudentIds */
+    protected function promoteStudent(
+        Student $student,
+        SchoolClass $targetClass,
+        AcademicYear $fromYear,
+        AcademicYear $toYear,
+        ?array &$targetEnrollmentStudentIds = null,
+    ): void {
+        if (StudentStatus::tryFrom((string) $student->getRawOriginal('status')) !== StudentStatus::Active) {
+            return;
+        }
 
-        if ($existingTargetEnrollment) {
+        $hasTargetEnrollment = $targetEnrollmentStudentIds === null
+            ? StudentAcademicEnrollment::query()
+                ->where('student_id', $student->id)
+                ->where('academic_year_id', $toYear->id)
+                ->exists()
+            : isset($targetEnrollmentStudentIds[$student->id]);
+
+        if ($hasTargetEnrollment) {
             return;
         }
 
@@ -177,7 +220,7 @@ class ClassPromotionService
             'status' => StudentStatus::Active,
         ]);
 
-        $student->refresh();
+        $student->setRelation('schoolClass', $targetClass);
 
         StudentAcademicEnrollment::create([
             'student_id' => $student->id,
@@ -185,17 +228,29 @@ class ClassPromotionService
             'school_class_id' => $targetClass->id,
             'status' => 'active',
         ]);
+        if ($targetEnrollmentStudentIds !== null) {
+            $targetEnrollmentStudentIds[$student->id] = true;
+        }
 
         $this->billGenerationService->generateBillbook($student, $toYear->start_date);
     }
 
-    protected function graduateStudent(Student $student, SchoolClass $sourceClass, AcademicYear $fromYear, AcademicYear $toYear): void
-    {
-        $existingTargetEnrollment = StudentAcademicEnrollment::where('student_id', $student->id)
-            ->where('academic_year_id', $toYear->id)
-            ->first();
+    /** @param array<int, true>|null $targetEnrollmentStudentIds */
+    protected function graduateStudent(
+        Student $student,
+        SchoolClass $sourceClass,
+        AcademicYear $fromYear,
+        AcademicYear $toYear,
+        ?array &$targetEnrollmentStudentIds = null,
+    ): void {
+        $hasTargetEnrollment = $targetEnrollmentStudentIds === null
+            ? StudentAcademicEnrollment::query()
+                ->where('student_id', $student->id)
+                ->where('academic_year_id', $toYear->id)
+                ->exists()
+            : isset($targetEnrollmentStudentIds[$student->id]);
 
-        if ($existingTargetEnrollment) {
+        if ($hasTargetEnrollment) {
             return;
         }
 
@@ -207,5 +262,8 @@ class ClassPromotionService
             'school_class_id' => $sourceClass->id,
             'status' => 'lulus',
         ]);
+        if ($targetEnrollmentStudentIds !== null) {
+            $targetEnrollmentStudentIds[$student->id] = true;
+        }
     }
 }

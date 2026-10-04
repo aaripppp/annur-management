@@ -542,13 +542,26 @@ it('kwitansi PDF calon siswa memakai nomor pendaftaran bukan NIS', function () {
         ->and($receipt['identityContext'])->not->toContain('NIS');
 
     $html = view('receipts.pdf', ['receipt' => $receipt])->render();
+    $positionIndex = strpos($html, '<div class="authorization-label">Bendahara Pendaftaran</div>');
+    $stampIndex = strpos($html, 'class="authorization-stamp"');
+    $nameIndex = strpos($html, '<div class="authorization-name">Admin Kwitansi</div>');
 
-    expect($html)->toContain($ps->registration_number.' • Calon Siswa')
-        ->and($html)->toContain('Bendahara Pendaftaran')
+    expect($html)->toContain('<title>Kwitansi Pembayaran - YPI Nurrahim An-Nur</title>')
+        ->and($html)->toContain('<div class="eyebrow">YPI Nurrahim An-Nur</div>')
+        ->and($html)->toContain($ps->registration_number.' • Calon Siswa')
+        ->and($html)->toContain('<div class="authorization-label">Bendahara Pendaftaran</div>')
+        ->and($html)->not->toContain('Pembuat Kwitansi')
+        ->and($html)->not->toContain('authorization-role')
+        ->and(substr_count($html, 'Bendahara Pendaftaran'))->toBe(1)
         ->and($html)->not->toContain('Admin Keuangan')
         ->and($html)->not->toContain('Kelas Tujuan')
         ->and($html)->not->toContain($ps->schoolClass->name)
-        ->and($html)->not->toContain('NIS');
+        ->and($html)->not->toContain('NIS')
+        ->and($positionIndex)->not->toBeFalse()
+        ->and($stampIndex)->not->toBeFalse()
+        ->and($nameIndex)->not->toBeFalse()
+        ->and($positionIndex)->toBeLessThan($stampIndex)
+        ->and($stampIndex)->toBeLessThan($nameIndex);
 });
 
 it('kwitansi PDF calon siswa tanpa nomor pendaftaran menampilkan konteks calon siswa saja', function () {

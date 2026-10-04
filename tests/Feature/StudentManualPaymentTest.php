@@ -64,9 +64,9 @@ it('uses manual detail descriptions in detail display and receipt surfaces', fun
 
     Livewire::actingAs($user)
         ->test(PaymentShow::class, ['id' => $payment->id])
-        ->assertSee('Pembayaran Manual')
+        ->assertSee('Siswa • Manual')
         ->assertSee('Tercatat')
-        ->assertSeeInOrder(['Infaq', 'Rp 600.000'])
+        ->assertSeeInOrder(['Infaq', 'Rp 500.000', 'Donasi Kegiatan', 'Rp 100.000', 'Rp 600.000'])
         ->assertSee('Donasi Kegiatan')
         ->assertDontSee('Pembayaran SPP');
 
@@ -79,6 +79,23 @@ it('uses manual detail descriptions in detail display and receipt surfaces', fun
         ->and($downloadPdf->headers->get('content-disposition'))->toContain('attachment')->toContain($payment->receipt_number.'.pdf')
         ->and(Payment::query()->count())->toBe(1)
         ->and($payment->refresh()->receipt_number)->not->toBeEmpty();
+});
+
+it('uses the manual receipt fallback when no detail rows are available', function () {
+    $user = User::factory()->create();
+    $payment = createStudentManualPayment(
+        Student::factory()->create(),
+        Bank::factory()->create(['is_active' => true]),
+        $user,
+        [],
+    );
+
+    Livewire::actingAs($user)
+        ->test(PaymentShow::class, ['id' => $payment->id])
+        ->assertSee('Siswa • Manual')
+        ->assertSee('Pembayaran Manual')
+        ->assertSee('Rp 0')
+        ->assertDontSee('Pembayaran SPP');
 });
 
 it('shows manual payments in shared history and Dashboard reporting', function () {

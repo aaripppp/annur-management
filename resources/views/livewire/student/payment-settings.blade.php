@@ -21,10 +21,12 @@
                 </p>
             </div>
         </div>
-        <button wire:click="generateBills" class="flex items-center gap-2 bg-primary hover:bg-primary/90 text-on-primary px-4 py-2.5 rounded-xl font-label-lg transition-colors shadow-sm w-fit">
-            <span class="material-symbols-outlined text-[18px]">receipt_long</span>
-            Generate Tagihan
-        </button>
+        @if(App\Enums\StudentStatus::tryFrom((string) $student->getRawOriginal('status')) === App\Enums\StudentStatus::Active)
+            <button wire:click="generateBills" class="flex items-center gap-2 bg-primary hover:bg-primary/90 text-on-primary px-4 py-2.5 rounded-xl font-label-lg transition-colors shadow-sm w-fit">
+                <span class="material-symbols-outlined text-[18px]">receipt_long</span>
+                Generate Tagihan
+            </button>
+        @endif
     </div>
 
     <!-- Toast Success -->

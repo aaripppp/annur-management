@@ -104,7 +104,7 @@ afterEach(function () {
     Pdf::clearResolvedInstances();
 });
 
-it('mempertahankan NIS dan kelas untuk Student aktif pada PDF', function () {
+it('menampilkan kelas tanpa NIS untuk Student aktif pada PDF', function () {
     [$activeYear] = createReceiptAcademicYears();
     $schoolClass = SchoolClass::factory()->create(['name' => '7C']);
     $student = Student::factory()->create([
@@ -124,10 +124,19 @@ it('mempertahankan NIS dan kelas untuk Student aktif pada PDF', function () {
         ->get(route('pembayaran.print', $payment))
         ->assertOk();
 
-    expect($renderer->receipts[0]['identityContext'])->toBe('NIS 20260001 • Kelas '.$schoolClass->name);
+    expect($renderer->receipts[0]['identityContext'])
+        ->toBe('Kelas '.$schoolClass->name)
+        ->not->toContain('NIS')
+        ->not->toContain('•');
+
+    $card = Livewire::test(PaymentShow::class, ['id' => $payment->id]);
+
+    $card->assertSee($renderer->receipts[0]['identityContext'])
+        ->assertDontSee('NIS')
+        ->assertDontSeeHtml('&bull; Kelas');
 });
 
-it('menampilkan NIS dan Calon Siswa tanpa kelas untuk Student dengan enrollment masa depan', function () {
+it('menampilkan Calon Siswa tanpa NIS dan kelas untuk Student dengan enrollment masa depan', function () {
     [, $futureYear] = createReceiptAcademicYears();
     $schoolClass = SchoolClass::factory()->create(['name' => '7C']);
     $student = Student::factory()->create([
@@ -148,9 +157,15 @@ it('menampilkan NIS dan Calon Siswa tanpa kelas untuk Student dengan enrollment 
         ->assertOk();
 
     expect($renderer->receipts[0]['identityContext'])
-        ->toBe('NIS 20270027 • Calon Siswa')
+        ->toBe('Calon Siswa')
+        ->not->toContain('NIS')
         ->not->toContain('Kelas')
         ->not->toContain($schoolClass->name);
+
+    Livewire::test(PaymentShow::class, ['id' => $payment->id])
+        ->assertSee($renderer->receipts[0]['identityContext'])
+        ->assertDontSee('NIS')
+        ->assertDontSee('Kelas '.$schoolClass->name);
 });
 
 it('menampilkan Calon Siswa saja ketika Student enrollment masa depan tidak memiliki NIS', function () {
@@ -176,6 +191,36 @@ it('menampilkan Calon Siswa saja ketika Student enrollment masa depan tidak memi
     expect($renderer->receipts[0]['identityContext'])->toBe('Calon Siswa');
 });
 
+it('menampilkan kelas tanpa NIS untuk Student terminal dan legacy pada PDF', function (string $status) {
+    $schoolClass = SchoolClass::factory()->create(['level' => 6]);
+    $schoolClass->update(['name' => '6A']);
+    $student = Student::factory()->create([
+        'nis' => '20260099',
+        'class_id' => $schoolClass->id,
+        'status' => $status,
+    ]);
+    $payment = createAuthorizationReceipt(User::factory()->create(), ['student_id' => $student->id]);
+    $renderer = fakeStudentReceiptPrintRenderer();
+
+    $this->actingAs(User::factory()->create())
+        ->get(route('pembayaran.print', $payment))
+        ->assertOk();
+
+    expect($renderer->receipts[0]['identityContext'])
+        ->toBe('Kelas 6A')
+        ->not->toContain('NIS')
+        ->not->toContain('•');
+
+    Livewire::test(PaymentShow::class, ['id' => $payment->id])
+        ->assertSee($renderer->receipts[0]['identityContext'])
+        ->assertDontSee('NIS')
+        ->assertDontSeeHtml('&bull; Kelas');
+})->with([
+    'alumni/lulus' => 'lulus',
+    'pindah' => 'pindah',
+    'legacy aktif tanpa enrollment' => 'aktif',
+]);
+
 it('merender brand metode pembayaran dan tanggal pada bagian informasi PDF Student', function () {
     $creator = User::factory()->create(['name' => 'Admin Kwitansi']);
     $bank = Bank::factory()->create([
@@ -198,8 +243,10 @@ it('merender brand metode pembayaran dan tanggal pada bagian informasi PDF Stude
     $student = $payment->student()->with('schoolClass')->firstOrFail();
     $html = view('receipts.pdf', ['receipt' => $receipt])->render();
 
-    expect($receipt['identityContext'])->toBe('NIS '.$student->nis.' • Kelas '.$student->schoolClass->name)
-        ->and($html)->toContain('YPI An-Nur Nurrahim')
+    expect($receipt['identityContext'])->toBe('Kelas '.$student->schoolClass->name)
+        ->and($html)->toContain('<title>Kwitansi Pembayaran - YPI Nurrahim An-Nur</title>')
+        ->and($html)->toContain('<div class="eyebrow">YPI Nurrahim An-Nur</div>')
+        ->and($html)->toContain('<div class="info-copy">YPI An-Nur Nurrahim</div>')
         ->and($html)->not->toContain('ANNUR MANAGEMENT')
         ->and($html)->toMatch('/<div class="info-title">BSI - 7023358276<\/div>\s*<div class="info-copy payment-date">01 Oktober 2026<\/div>\s*<div class="info-copy">YPI An-Nur Nurrahim<\/div>/')
         ->and($html)->toContain('.authorization-block { position: relative; right: 40px; height: 140px; }')
@@ -224,6 +271,12 @@ it('merender metode tunai tanpa separator rekening pada PDF Student', function (
     expect($html)
         ->toMatch('/<div class="info-title">Tunai<\/div>\s*<div class="info-copy payment-date">01 Oktober 2026<\/div>/')
         ->not->toContain('Tunai -');
+
+    $cardHtml = Livewire::test(PaymentShow::class, ['id' => $payment->id])->html();
+
+    expect($cardHtml)
+        ->toContain('<div class="receipt-meta-title text-headline-sm font-bold text-on-surface mt-1">Tunai</div>')
+        ->not->toContain('Tunai -');
 });
 
 it('merender nama bank tanpa separator ketika nomor rekening kosong', function () {
@@ -246,16 +299,25 @@ it('merender nama bank tanpa separator ketika nomor rekening kosong', function (
     expect($html)
         ->toContain('<div class="info-title">BSI</div>')
         ->not->toContain('BSI -');
+
+    $cardHtml = Livewire::test(PaymentShow::class, ['id' => $payment->id])->html();
+
+    expect($cardHtml)
+        ->toContain('<div class="receipt-meta-title text-headline-sm font-bold text-on-surface mt-1">BSI</div>')
+        ->not->toContain('BSI -')
+        ->not->toContain('<div class="receipt-meta-copy text-body-md text-on-surface-variant mt-0.5"></div>');
 });
 
 it('tidak menampilkan blok otorisasi pembuat kwitansi pada detail web Student', function () {
-    $creator = User::factory()->create(['name' => 'Arif Hamdani']);
+    $creator = User::factory()->create(['name' => 'Arif Hamdani', 'position' => 'Bendahara']);
     $payment = createAuthorizationReceipt($creator);
 
     $component = Livewire::actingAs($creator)
         ->test(PaymentShow::class, ['id' => $payment->id])
         ->assertDontSee('Bekasi, 08 September 2026')
         ->assertDontSee('Pembuat Kwitansi')
+        ->assertDontSee('Bendahara')
+        ->assertDontSee('Arif Hamdani')
         ->assertDontSee('Admin Keuangan')
         ->assertDontSee('Terima kasih atas kepercayaannya.')
         ->assertDontSee('Semoga Allah memberikan keberkahan.')
@@ -310,6 +372,12 @@ it('memakai label role ketika jabatan pembuat kwitansi Student kosong', function
         ->assertOk();
 
     expect($renderer->receipts[0]['creatorPosition'])->toBe('Super Admin');
+
+    $html = view('receipts.pdf', ['receipt' => $renderer->receipts[0]])->render();
+
+    expect($html)
+        ->toContain('<div class="authorization-label">Super Admin</div>')
+        ->not->toContain('authorization-role');
 });
 
 it('menampilkan tanggal otorisasi dari created_at dalam WIB pada PDF Student', function () {
@@ -346,7 +414,7 @@ it('tidak memakai payment_date sebagai tanggal otorisasi pada PDF Student', func
         ->toContain('Bekasi, 08 September 2026');
 });
 
-it('mempertahankan blok pembuat kwitansi dan stempel pada PDF Student', function () {
+it('menempatkan jabatan di atas garis dan nama di bawah garis pada PDF Student', function () {
     $creator = User::factory()->create(['name' => 'Arif Hamdani', 'position' => 'Bendahara']);
     $payment = createAuthorizationReceipt($creator);
     $renderer = fakeStudentReceiptPrintRenderer();
@@ -359,26 +427,40 @@ it('mempertahankan blok pembuat kwitansi dan stempel pada PDF Student', function
         ->and($renderer->receipts[0]['creatorPosition'])->toBe('Bendahara');
 
     $html = view('receipts.pdf', ['receipt' => $renderer->receipts[0]])->render();
+    $positionIndex = strpos($html, '<div class="authorization-label">Bendahara</div>');
+    $stampIndex = strpos($html, 'class="authorization-stamp"');
+    $nameIndex = strpos($html, '<div class="authorization-name">Arif Hamdani</div>');
 
     expect($html)
         ->toContain('Bekasi, 08 September 2026')
-        ->toContain('Pembuat Kwitansi')
+        ->toContain('<div class="authorization-label">Bendahara</div>')
         ->toContain('Arif Hamdani')
-        ->toContain('Bendahara')
+        ->not->toContain('Pembuat Kwitansi')
         ->not->toContain('Admin Keuangan')
+        ->not->toContain('authorization-role')
+        ->toContain('.authorization-name { position: relative; z-index: 2; padding-top: 5px; border-top: 1px solid #94a3b8;')
         ->toContain('images/stample.png')
         ->toContain('authorization-stamp')
-        ->toContain('authorization-name');
+        ->toContain('authorization-name')
+        ->and(substr_count($html, 'Bendahara'))->toBe(1)
+        ->and($positionIndex)->not->toBeFalse()
+        ->and($stampIndex)->not->toBeFalse()
+        ->and($nameIndex)->not->toBeFalse()
+        ->and($positionIndex)->toBeLessThan($stampIndex)
+        ->and($stampIndex)->toBeLessThan($nameIndex);
 });
 
-it('tetap merender kwitansi siswa dengan NIS null', function () {
+it('tetap merender identitas kelas tanpa NIS ketika NIS siswa null', function () {
     $creator = User::factory()->create();
     $student = Student::factory()->create(['nis' => null]);
     $payment = createAuthorizationReceipt($creator, ['student_id' => $student->id]);
 
+    $student->load('schoolClass');
+
     Livewire::test(PaymentShow::class, ['id' => $payment->id])
-        ->assertSee('NIS —')
-        ->assertDontSee('NIS null');
+        ->assertSee('Kelas '.$student->schoolClass->name)
+        ->assertDontSee('NIS')
+        ->assertDontSeeHtml('&bull; Kelas');
 });
 
 it('menghapus stempel dari preview web tetapi mempertahankannya di PDF', function () {

@@ -129,6 +129,7 @@
                     <option value="aktif">Aktif</option>
                     <option value="calon_siswa">Calon Siswa</option>
                     <option value="lulus">Lulus</option>
+                    <option value="pindah">Pindah</option>
                 </select>
             </div>
         </div>
@@ -170,6 +171,11 @@
                                 @if($academicStatus === 'lulus')
                                     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-tertiary-fixed text-on-tertiary-fixed">
                                         <span class="material-symbols-outlined text-[14px]">school</span>
+                                        {{ $academicStatusLabel }}
+                                    </span>
+                                @elseif($academicStatus === 'pindah')
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-error-container text-on-error-container">
+                                        <span class="material-symbols-outlined text-[14px]">move_item</span>
                                         {{ $academicStatusLabel }}
                                     </span>
                                 @elseif($academicStatus === 'calon_siswa')
@@ -246,6 +252,19 @@
                 <div class="p-6 overflow-y-auto">
                     <form wire:submit="save" class="flex flex-col gap-5">
                         
+                        @if(!$isEditing)
+                            <div>
+                                <label for="status" class="block text-label-md font-label-md text-on-surface mb-1">Status <span class="text-error">*</span></label>
+                                <select id="status" wire:model.live="status" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm" required>
+                                    <option value="aktif">Aktif</option>
+                                    <option value="lulus">Lulus</option>
+                                    <option value="pindah">Pindah</option>
+                                </select>
+                                <p class="text-body-sm text-on-surface-variant mt-1">Pilih Lulus atau Pindah untuk memasukkan siswa nonaktif beserta riwayat kelas terakhirnya.</p>
+                                @error('status') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
+                            </div>
+                        @endif
+
                         <!-- NIS & Kelas -->
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                             <div>
@@ -254,7 +273,7 @@
                                 @error('nis') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
                             </div>
                             <div>
-                                <label for="class_id" class="block text-label-md font-label-md text-on-surface mb-1">Kelas <span class="text-error">*</span></label>
+                                <label for="class_id" class="block text-label-md font-label-md text-on-surface mb-1">{{ !$isEditing && $status !== 'aktif' ? 'Kelas Terakhir' : 'Kelas' }} <span class="text-error">*</span></label>
                                 <select id="class_id" wire:model="class_id" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm" required>
                                     <option value="">-- Pilih Kelas --</option>
                                     @foreach($classes as $c)
@@ -268,14 +287,19 @@
                         <!-- Tahun Ajaran Masuk -->
                         @if(!$isEditing)
                         <div>
-                            <label for="entry_academic_year_id" class="block text-label-md font-label-md text-on-surface mb-1">Tahun Ajaran Masuk</label>
+                            <label for="entry_academic_year_id" class="block text-label-md font-label-md text-on-surface mb-1">
+                                {{ $status === 'aktif' ? 'Tahun Ajaran Masuk' : 'Tahun Ajaran Terakhir' }}
+                                @if($status !== 'aktif') <span class="text-error">*</span> @endif
+                            </label>
                             <select id="entry_academic_year_id" wire:model="entry_academic_year_id" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm">
-                                <option value="">Tahun Ajaran Aktif Saat Ini</option>
+                                <option value="">{{ $status === 'aktif' ? 'Tahun Ajaran Aktif Saat Ini' : '-- Pilih Tahun Ajaran Terakhir --' }}</option>
                                 @foreach($academicYears as $year)
                                     <option value="{{ $year->id }}">{{ $year->year }}</option>
                                 @endforeach
                             </select>
-                            <p class="text-body-sm text-on-surface-variant mt-1">Kosongkan jika siswa masuk pada tahun ajaran aktif saat ini.</p>
+                            <p class="text-body-sm text-on-surface-variant mt-1">
+                                {{ $status === 'aktif' ? 'Kosongkan jika siswa masuk pada tahun ajaran aktif saat ini.' : 'Pilih tahun ajaran saat siswa terakhir mengikuti kelas tersebut.' }}
+                            </p>
                             @error('entry_academic_year_id') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
                         </div>
                         @endif

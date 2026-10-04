@@ -252,7 +252,12 @@ it('total pembayaran bereaksi terhadap pilihan dan nominal tagihan', function ()
 
 it('kwitansi menampilkan semua detail pembayaran multi tagihan', function () {
     $user = User::factory()->create();
-    $bank = Bank::factory()->create();
+    $bank = Bank::factory()->create([
+        'name' => 'BSI',
+        'type' => Bank::TYPE_BANK,
+        'account_number' => '7023358276',
+        'account_name' => 'YPI An-Nur Nurrahim',
+    ]);
 
     $student = makeBillStudent(8);
 
@@ -284,23 +289,34 @@ it('kwitansi menampilkan semua detail pembayaran multi tagihan', function () {
         ->call('save');
 
     $payment = Payment::where('student_id', $student->id)->first();
+    $payment->forceFill([
+        'created_at' => '2026-08-15 08:21:00',
+        'updated_at' => '2026-08-15 08:21:00',
+    ])->saveQuietly();
 
     expect($payment->details()->count())->toBe(2);
     expect($payment->payment_kind)->toBe(Payment::KIND_BILL);
 
-    Livewire::test(PaymentShow::class, ['id' => $payment->id])
+    $component = Livewire::test(PaymentShow::class, ['id' => $payment->id])
+        ->assertSeeHtml('<div class="receipt-brand-name text-label-md font-bold tracking-[0.18em] text-primary">YPI Nurrahim An-Nur</div>')
         ->assertSee($payment->receipt_number)
         ->assertSee($student->nama_lengkap)
-        ->assertSee($student->nis)
-        ->assertSee($student->schoolClass->name)
-        ->assertSee($bank->name)
-        ->assertSee($bank->account_number)
+        ->assertSee('Kelas '.$student->schoolClass->name)
+        ->assertDontSee('NIS')
+        ->assertDontSeeHtml('&bull; Kelas')
+        ->assertSee('BSI - 7023358276')
+        ->assertSee('YPI An-Nur Nurrahim')
         ->assertSee('15 Agustus 2026')
+        ->assertDontSee('08:21')
         ->assertSee(asset('images/annur_logo2.png'), false)
         ->assertSee(route('pembayaran.print', $payment), false)
         ->assertSee(route('pembayaran.pdf', $payment), false)
+        ->assertSee('Jenis Pembayaran')
+        ->assertSee('Nominal')
         ->assertSee('SPP')
+        ->assertSee('Rp 970.000')
         ->assertSee('Uang Buku')
+        ->assertSee('Rp 500.000')
         ->assertSee('2026/2027')
         ->assertSee('Rp '.number_format((float) $payment->total_amount, 0, ',', '.'))
         ->assertSeeHtml('class="receipt-sheet w-[95%] max-w-none')
@@ -312,6 +328,10 @@ it('kwitansi menampilkan semua detail pembayaran multi tagihan', function () {
         ->assertDontSee('Penerima')
         ->assertDontSee('Mengetahui')
         ->assertDontSeeHtml('receipt-signature');
+
+    expect($component->html())
+        ->not->toContain('Annur Management')
+        ->not->toMatch('/NIS\s+.*(?:&bull;|•)\s+Kelas/');
 
     $paymentCount = Payment::query()->count();
     $detailCount = PaymentDetail::query()->count();
@@ -328,7 +348,7 @@ it('kwitansi menampilkan semua detail pembayaran multi tagihan', function () {
 
     expect($inlinePdf->headers->get('content-disposition'))->toContain('inline')->toContain($receiptNumber.'.pdf')
         ->and($inlinePdf->getContent())->toStartWith('%PDF')
-        ->and($inlinePdf->getContent())->toContain(mb_convert_encoding('Kwitansi Pembayaran - YPI An-Nur Nurrahim', 'UTF-16BE'))
+        ->and($inlinePdf->getContent())->toContain(mb_convert_encoding('Kwitansi Pembayaran - YPI Nurrahim An-Nur', 'UTF-16BE'))
         ->and($inlinePdf->getContent())->toContain('/Subtype /Image')
         ->and($firstPdf->headers->get('content-disposition'))->toContain('attachment')->toContain($receiptNumber.'.pdf')
         ->and($firstPdf->getContent())->toStartWith('%PDF')

@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Enums\StudentStatus;
 use App\Livewire\Concerns\ManagesStudentBills;
 use App\Models\AcademicYear;
 use App\Models\BillAdjustment;
@@ -83,10 +84,14 @@ class StudentDetail extends Component
 
     public function generateBills(): void
     {
+        if (! $this->canGenerateBillsAutomatically()) {
+            return;
+        }
+
         $created = app(BillGenerationService::class)->generateForStudent($this->student);
 
         if (count($created) > 0) {
-            session()->flash('success', count($created).' tagihan berhasil dibuat untuk periode '.now()->translatedFormat('F Y').'.');
+            session()->now('local_success', count($created).' tagihan berhasil dibuat untuk periode '.now()->translatedFormat('F Y').'.');
         } else {
             session()->flash('info', 'Tidak ada tagihan baru — semua tagihan untuk periode '.now()->translatedFormat('F Y').' sudah tersedia.');
         }
@@ -94,6 +99,10 @@ class StudentDetail extends Component
 
     public function openGenerateUntil(): void
     {
+        if (! $this->canGenerateBillsAutomatically()) {
+            return;
+        }
+
         $this->generateUntilMonth = now()->format('Y-m');
         $this->isGenerateUntilOpen = true;
     }
@@ -106,6 +115,10 @@ class StudentDetail extends Component
 
     public function generateUntilBills(): void
     {
+        if (! $this->canGenerateBillsAutomatically()) {
+            return;
+        }
+
         $this->validate([
             'generateUntilMonth' => 'required|date_format:Y-m',
         ], [
@@ -123,7 +136,7 @@ class StudentDetail extends Component
         $monthLabel = $target->locale('id')->translatedFormat('F Y');
 
         if (count($created) > 0) {
-            session()->flash('success', 'Tagihan berhasil dibuat sampai '.$monthLabel.'. ('.count($created).' tagihan baru)');
+            session()->now('local_success', 'Tagihan berhasil dibuat sampai '.$monthLabel.'. ('.count($created).' tagihan baru)');
         } else {
             session()->flash('info', 'Tidak ada tagihan baru — semua tagihan sampai '.$monthLabel.' sudah tersedia.');
         }
@@ -131,6 +144,10 @@ class StudentDetail extends Component
 
     public function openBillbook(): void
     {
+        if (! $this->canGenerateBillsAutomatically()) {
+            return;
+        }
+
         $this->billbookStartMonth = BillbookPeriod::startDate()->format('Y-m');
         $this->isBillbookOpen = true;
     }
@@ -143,6 +160,10 @@ class StudentDetail extends Component
 
     public function generateBillbook(): void
     {
+        if (! $this->canGenerateBillsAutomatically()) {
+            return;
+        }
+
         $this->validate([
             'billbookStartMonth' => 'required|date_format:Y-m',
         ], [
@@ -164,10 +185,15 @@ class StudentDetail extends Component
         $endLabel = $end->locale('id')->translatedFormat('F Y');
 
         if (count($created) > 0) {
-            session()->flash('success', 'Buku tagihan dibuat untuk '.$startLabel.' sampai '.$endLabel.'. ('.count($created).' tagihan baru)');
+            session()->now('local_success', 'Buku tagihan dibuat untuk '.$startLabel.' sampai '.$endLabel.'. ('.count($created).' tagihan baru)');
         } else {
             session()->flash('info', 'Buku tagihan sudah lengkap untuk '.$startLabel.' sampai '.$endLabel.'. Tidak ada tagihan baru.');
         }
+    }
+
+    private function canGenerateBillsAutomatically(): bool
+    {
+        return StudentStatus::tryFrom((string) $this->student->getRawOriginal('status')) === StudentStatus::Active;
     }
 
     public function editAdjustment(int $billId): void
@@ -251,7 +277,7 @@ class StudentDetail extends Component
         $this->closeAdjustment();
         $this->refreshBills();
 
-        session()->flash('success', 'Penyesuaian tagihan berhasil disimpan.');
+        session()->now('local_success', 'Penyesuaian tagihan berhasil disimpan.');
     }
 
     public function removeAdjustment(): void
@@ -267,7 +293,7 @@ class StudentDetail extends Component
         $this->closeAdjustment();
         $this->refreshBills();
 
-        session()->flash('success', 'Penyesuaian tagihan berhasil dihapus.');
+        session()->now('local_success', 'Penyesuaian tagihan berhasil dihapus.');
     }
 
     public function closeAdjustment(): void
@@ -300,6 +326,16 @@ class StudentDetail extends Component
     protected function managedBillStudent(): ?Student
     {
         return $this->student;
+    }
+
+    protected function notifyManagedBillSuccess(string $message): void
+    {
+        session()->now('local_success', $message);
+    }
+
+    public function dehydrate(): void
+    {
+        session()->forget('local_success');
     }
 
     public function render(): View

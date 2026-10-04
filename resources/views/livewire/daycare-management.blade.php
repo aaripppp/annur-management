@@ -20,10 +20,10 @@
         </div>
     </div>
 
-    @if(session()->has('success'))
-        <div x-data="{ show: true }" x-init="setTimeout(() => show = false, 3000)" x-show="show" class="fixed top-24 right-8 z-50 bg-secondary-container border border-secondary text-on-secondary-container px-5 py-4 rounded-xl shadow-lg flex items-center gap-3 min-w-[300px]">
-            <span class="material-symbols-outlined text-secondary">check_circle</span>
-            <p class="font-body-md">{{ session('success') }}</p>
+    @if(session()->has('local_success'))
+        <div x-data="{ show: true }" x-init="setTimeout(() => show = false, 3000)" x-show="show" class="fixed top-4 right-4 z-[9999] max-w-sm bg-green-50 border border-green-200 text-green-800 rounded-xl px-4 py-3 shadow-lg flex items-center gap-3">
+            <span class="material-symbols-outlined text-green-600 text-[20px]">check_circle</span>
+            <p class="text-body-sm font-label-md flex-1">{{ session('local_success') }}</p>
         </div>
     @endif
 

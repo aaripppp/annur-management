@@ -50,7 +50,7 @@
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-sm" role="dialog" aria-modal="true">
         <div class="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
             <div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0">
-                <h3 class="text-headline-sm font-headline-sm text-on-surface">Tambah Tagihan Manual</h3>
+                <h3 class="text-headline-sm font-headline-sm text-on-surface">{{ $manualBillIsHistorical ? 'Tambah Tagihan Lama' : 'Tambah Tagihan Manual' }}</h3>
                 <button wire:click="closeAddBill" class="text-on-surface-variant hover:text-error rounded-lg p-1 transition-colors"><span class="material-symbols-outlined">close</span></button>
             </div>
             <div class="p-6 overflow-y-auto flex flex-col gap-4">
@@ -59,13 +59,29 @@
                     <select id="add_payment_type_id" wire:model.live="addPaymentTypeId" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm">
                         <option value="">Pilih jenis pembayaran</option>
                         @foreach ($manualAddPaymentTypes as $ptype)
-                            <option value="{{ $ptype->id }}">{{ $ptype->name }}</option>
+                            <option value="{{ $ptype->id }}">{{ $ptype->name }}{{ !$ptype->is_active ? ' (Nonaktif)' : '' }}</option>
                         @endforeach
                     </select>
                     @if ($manualAddPaymentTypes->isEmpty())
                         <p class="text-body-sm text-on-surface-variant mt-1.5">Tidak ada jenis pembayaran yang tersedia.</p>
                     @endif
                     @error('addPaymentTypeId') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
+                </div>
+                <div>
+                    <label for="add_frequency" class="block text-label-md font-label-md text-on-surface mb-1">Frekuensi <span class="text-error">*</span></label>
+                    @if($addFrequencyLocked)
+                        <div class="w-full border border-outline-variant rounded-lg px-3 py-2 bg-surface-container-low text-on-surface">
+                            {{ match($addFrequency) { 'monthly' => 'Bulanan', 'yearly' => 'Tahunan', 'one_time' => 'Sekali Bayar', default => '-' } }}
+                        </div>
+                    @else
+                        <select id="add_frequency" wire:model.live="addFrequency" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm">
+                            <option value="">Pilih frekuensi</option>
+                            <option value="monthly">Bulanan</option>
+                            <option value="yearly">Tahunan</option>
+                            <option value="one_time">Sekali Bayar</option>
+                        </select>
+                    @endif
+                    @error('addFrequency') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
                 </div>
                 <div>
                     <label for="add_amount" class="block text-label-md font-label-md text-on-surface mb-1">Nominal Tagihan <span class="text-error">*</span></label>
@@ -138,8 +154,21 @@
                             @error('addAcademicYear') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
                         </div>
                     @endif
-                @else
-                    <p class="text-body-sm text-on-surface-variant flex items-center gap-1.5"><span class="material-symbols-outlined text-[16px]">info</span>Tagihan ini dibuat sebagai tagihan sekali bayar (tanpa periode bulanan/tahunan).</p>
+                @elseif ($addFrequency === 'one_time')
+                    @if($manualBillIsHistorical)
+                        <div>
+                            <label for="add_one_time_academic_year" class="block text-label-md font-label-md text-on-surface mb-1">Tahun Ajaran <span class="text-error">*</span></label>
+                            <select id="add_one_time_academic_year" wire:model="addAcademicYear" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm">
+                                <option value="">Pilih tahun ajaran</option>
+                                @foreach ($addAcademicYearOptions as $ayOption)
+                                    <option value="{{ $ayOption }}">{{ $ayOption }}</option>
+                                @endforeach
+                            </select>
+                            @error('addAcademicYear') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
+                        </div>
+                    @else
+                        <p class="text-body-sm text-on-surface-variant flex items-center gap-1.5"><span class="material-symbols-outlined text-[16px]">info</span>Tagihan ini dibuat sebagai tagihan sekali bayar (tanpa periode bulanan/tahunan).</p>
+                    @endif
                 @endif
 
                 @error('addPeriod') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror

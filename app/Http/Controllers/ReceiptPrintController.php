@@ -117,9 +117,6 @@ class ReceiptPrintController extends Controller
         $bank = $payment->bank;
         $student = $payment->student;
         $creator = $payment->user;
-        $identityContext = $student->academicStatus() === 'calon_siswa'
-            ? (filled($student->nis) ? 'NIS '.$student->nis.' • Calon Siswa' : 'Calon Siswa')
-            : 'NIS '.$student->nis.' • Kelas '.($student->schoolClass->name ?? '—');
 
         return [
             'category' => $payment->isManualPayment() ? 'Siswa • Manual' : 'Siswa',
@@ -128,7 +125,7 @@ class ReceiptPrintController extends Controller
             'paymentDate' => $paymentDate->translatedFormat('d F Y'),
             'identityLabel' => 'Informasi Siswa',
             'identityName' => $student->nama_lengkap,
-            'identityContext' => $identityContext,
+            'identityContext' => PaymentReceiptDisplay::studentIdentityContext($student),
             'bankName' => $bank->paymentLabel(),
             'bankAccountNumber' => $bank->isBank() ? $bank->account_number : null,
             'bankAccountName' => $bank->isBank() ? $bank->account_name : null,

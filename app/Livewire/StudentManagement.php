@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Enums\SchoolLevel;
+use App\Enums\StudentStatus;
 use App\Models\AcademicYear;
 use App\Models\ProspectiveStudent;
 use App\Models\SchoolClass;
@@ -61,6 +62,8 @@ class StudentManagement extends Component
     public $class_id = '';
 
     public $entry_academic_year_id = '';
+
+    public string $status = StudentStatus::Active->value;
 
     public $jenis_kelamin = '';
 
@@ -138,7 +141,7 @@ class StudentManagement extends Component
     public function resetForm()
     {
         $this->reset([
-            'studentId', 'nis', 'nama_lengkap', 'nama_panggilan', 'class_id', 'entry_academic_year_id',
+            'studentId', 'nis', 'nama_lengkap', 'nama_panggilan', 'class_id', 'entry_academic_year_id', 'status',
             'jenis_kelamin', 'alamat', 'nama_ayah', 'no_telp_ayah', 'nama_ibu', 'no_telp_ibu',
             'tempat_lahir', 'tanggal_lahir', 'entry_date', 'foto_upload', 'existing_foto', 'remove_foto', 'isEditing',
         ]);
@@ -209,9 +212,10 @@ class StudentManagement extends Component
             'nama_lengkap' => 'required|string|max:255',
             'nama_panggilan' => 'nullable|string|max:100',
             'class_id' => 'required|exists:school_classes,id',
+            'status' => 'required|in:aktif,lulus,pindah',
             'jenis_kelamin' => 'nullable|in:L,P',
             'alamat' => 'nullable|string',
-            'entry_academic_year_id' => 'nullable|exists:academic_years,id',
+            'entry_academic_year_id' => 'nullable|required_if:status,lulus,pindah|exists:academic_years,id',
             ...app(StudentProfileUpdater::class)->biodataRules(),
         ];
 
@@ -242,7 +246,12 @@ class StudentManagement extends Component
 
             throw $exception;
         }
-        session()->flash('success', 'Siswa baru berhasil ditambahkan; buku tagihan otomatis dibuat.');
+        session()->flash(
+            'success',
+            $this->status === StudentStatus::Active->value
+                ? 'Siswa baru berhasil ditambahkan; buku tagihan otomatis dibuat.'
+                : 'Data siswa nonaktif dan riwayat akademiknya berhasil ditambahkan.'
+        );
 
         $this->closeModal();
     }
@@ -256,6 +265,8 @@ class StudentManagement extends Component
             'nama_panggilan.max' => 'Nama panggilan terlalu panjang.',
             'class_id.required' => 'Kelas wajib dipilih.',
             'class_id.exists' => 'Kelas yang dipilih tidak valid.',
+            'status.in' => 'Status siswa tidak valid.',
+            'entry_academic_year_id.required_if' => 'Tahun ajaran terakhir wajib dipilih untuk siswa nonaktif.',
             'jenis_kelamin.in' => 'Pilihan jenis kelamin tidak valid.',
         ];
     }
@@ -309,6 +320,8 @@ class StudentManagement extends Component
         $activeYear = AcademicYear::active();
 
         if ($this->filterStatus === 'aktif') {
+            $query->where('status', StudentStatus::Active->value);
+
             if ($activeYear) {
                 $query->whereHas('enrollments', function ($q) use ($activeYear) {
                     $q->where('academic_year_id', $activeYear->id)
@@ -316,21 +329,12 @@ class StudentManagement extends Component
                 });
             }
         } elseif ($this->filterStatus === 'lulus') {
-            $query->whereHas('enrollments', function ($q) {
-                $q->where('status', 'lulus');
-            });
-
-            if ($activeYear) {
-                $query->whereDoesntHave('enrollments', function ($q) use ($activeYear) {
-                    $q->where('academic_year_id', $activeYear->id)
-                        ->where('status', 'active');
-                })->whereDoesntHave('enrollments', function ($q) use ($activeYear) {
-                    $q->whereHas('academicYear', function ($yearQuery) use ($activeYear) {
-                        $yearQuery->whereDate('start_date', '>', $activeYear->start_date);
-                    });
-                });
-            }
+            $query->where('status', StudentStatus::Graduated->value);
+        } elseif ($this->filterStatus === 'pindah') {
+            $query->where('status', StudentStatus::Transferred->value);
         } elseif ($this->filterStatus === 'calon_siswa') {
+            $query->where('status', StudentStatus::Active->value);
+
             // Calon Siswa: no active enrollment in active year, has future enrollment.
             if ($activeYear) {
                 $query->whereDoesntHave('enrollments', function ($q) use ($activeYear) {

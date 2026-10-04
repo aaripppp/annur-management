@@ -52,7 +52,12 @@ class PaymentShow extends Component
 
         $this->dispatch('payment-cancelled', paymentId: $payment->id);
 
-        session()->flash('success', 'Pembayaran berhasil dibatalkan.');
+        session()->now('local_success', 'Pembayaran berhasil dibatalkan.');
+    }
+
+    public function dehydrate(): void
+    {
+        session()->forget('local_success');
     }
 
     public function render(): View

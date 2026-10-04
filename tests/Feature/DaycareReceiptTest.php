@@ -160,7 +160,7 @@ it('route detail Daycare terikat ke DaycarePayment bukan Student Payment', funct
 
     expect($inlineResponse->headers->get('content-disposition'))->toContain('inline')->toContain('KWT-DC-2026-000001.pdf')
         ->and($inlineResponse->getContent())->toStartWith('%PDF')
-        ->and($inlineResponse->getContent())->toContain(mb_convert_encoding('Kwitansi Pembayaran - YPI An-Nur Nurrahim', 'UTF-16BE'))
+        ->and($inlineResponse->getContent())->toContain(mb_convert_encoding('Kwitansi Pembayaran - YPI Nurrahim An-Nur', 'UTF-16BE'))
         ->and($inlineResponse->getContent())->toContain('/Subtype /Image');
 });
 

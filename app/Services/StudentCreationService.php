@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\BillFrequency;
+use App\Enums\StudentStatus;
 use App\Models\AcademicYear;
 use App\Models\SchoolClass;
 use App\Models\Student;
@@ -11,6 +12,7 @@ use App\Support\BillbookPeriod;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 /**
  * Membuat siswa baru dan membangun buku tagihan awal secara otomatis.
@@ -46,13 +48,25 @@ class StudentCreationService
         $entryAcademicYearId = $data['entry_academic_year_id'] ?? null;
         unset($data['entry_academic_year_id']);
 
+        $status = StudentStatus::tryFrom((string) ($data['status'] ?? StudentStatus::Active->value));
+
+        if ($status === null) {
+            throw new InvalidArgumentException('Status siswa tidak valid.');
+        }
+
+        if ($status !== StudentStatus::Active && ! $entryAcademicYearId) {
+            throw new InvalidArgumentException('Tahun ajaran terakhir wajib dipilih untuk siswa nonaktif.');
+        }
+
+        $data['status'] = $status->value;
+
         $hasEntryDate = filled($data['entry_date'] ?? null);
 
         if (! $hasEntryDate) {
             $data['entry_date'] = now()->toDateString();
         }
 
-        return DB::transaction(function () use ($data, $entryAcademicYearId, $hasEntryDate): Student {
+        return DB::transaction(function () use ($data, $entryAcademicYearId, $hasEntryDate, $status): Student {
             $entryYear = $entryAcademicYearId
                 ? AcademicYear::query()->findOrFail((int) $entryAcademicYearId)
                 : null;
@@ -69,6 +83,12 @@ class StudentCreationService
             }
 
             $student = Student::create($data);
+
+            if ($status !== StudentStatus::Active) {
+                $this->createEnrollment($student, $entryYear);
+
+                return $student;
+            }
 
             $activeYear = AcademicYear::active();
             $isFutureStudent = $entryYear && $activeYear && $entryYear->id !== $activeYear->id;

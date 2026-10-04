@@ -86,7 +86,7 @@ it('merender PDF Student satu halaman di atas kertas F4B portrait untuk setiap j
     [$widthPt, $heightPt] = receiptPdfPageSize($response->getContent());
 
     expect(receiptPdfPageCount($response->getContent()))->toBe(1)
-        ->and($response->getContent())->toContain(mb_convert_encoding('Kwitansi Pembayaran - YPI An-Nur Nurrahim', 'UTF-16BE'))
+        ->and($response->getContent())->toContain(mb_convert_encoding('Kwitansi Pembayaran - YPI Nurrahim An-Nur', 'UTF-16BE'))
         ->and($response->getContent())->not->toContain(mb_convert_encoding('ANNUR MANAGEMENT', 'UTF-16BE'))
         ->and(abs($widthPt - 612.28))->toBeLessThan(0.01)
         ->and(abs($heightPt - 935.43))->toBeLessThan(0.01)

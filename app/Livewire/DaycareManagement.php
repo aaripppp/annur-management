@@ -104,8 +104,8 @@ class DaycareManagement extends Component
         $deletedPaymentCount = $deletionService->delete($this->deletingChildId);
 
         $this->cancelChildDelete();
-        session()->flash(
-            'success',
+        session()->now(
+            'local_success',
             $deletedPaymentCount > 0
                 ? "Data {$childName} beserta {$deletedPaymentCount} riwayat transaksinya berhasil dihapus."
                 : "Data {$childName} berhasil dihapus."
@@ -133,6 +133,11 @@ class DaycareManagement extends Component
 
         session()->flash('success', 'Data anak Daycare berhasil ditambahkan.');
         $this->redirectRoute('daycare.index');
+    }
+
+    public function dehydrate(): void
+    {
+        session()->forget('local_success');
     }
 
     /** @return array<string, string> */

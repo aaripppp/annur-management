@@ -29,12 +29,6 @@
             </div>
         </div>
 
-        @if(session()->has('success'))
-            <div x-data="{ show: true }" x-init="setTimeout(() => show = false, 3000)" x-show="show" class="fixed top-24 right-8 z-50 bg-secondary-container border border-secondary text-on-secondary-container px-5 py-4 rounded-xl shadow-lg flex items-center gap-3 min-w-[300px] print:hidden">
-                <span class="material-symbols-outlined text-secondary">check_circle</span>
-                <p class="font-body-md">{{ session('success') }}</p>
-            </div>
-        @endif
     @endunless
 
     <article id="daycare-kwitansi-print-area" class="receipt-sheet w-[95%] max-w-none mx-auto bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm overflow-hidden print:border-none print:shadow-none print:m-0 print:w-full">

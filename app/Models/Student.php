@@ -47,6 +47,12 @@ class Student extends Model
     protected static function booted(): void
     {
         static::created(function (Student $student) {
+            $persistedStatus = $student->getAttributes()['status'] ?? null;
+
+            if (StudentStatus::tryFrom((string) $persistedStatus) !== StudentStatus::Active) {
+                return;
+            }
+
             $level = $student->schoolLevel;
 
             if ($level === null) {
@@ -96,18 +102,25 @@ class Student extends Model
     }
 
     /**
-     * Derive academic status from enrollment history.
+     * Resolve terminal stored status before deriving active/future context.
      *
      * Priority:
-     * 1. Aktif — active enrollment in the currently active AcademicYear
-     * 2. Calon Siswa — enrollment exists in a future AcademicYear
-     * 3. Lulus — graduation is the latest available academic context
+     * 1. Lulus/Pindah — authoritative stored terminal status
+     * 2. Aktif — active enrollment in the currently active AcademicYear
+     * 3. Calon Siswa — enrollment exists in a future AcademicYear
+     * 4. Lulus — graduation is the latest available academic context
      *
      * Does NOT add a new column; derives purely from StudentAcademicEnrollment
      * and AcademicYear records.
      */
     public function academicStatus(): string
     {
+        $storedStatus = StudentStatus::tryFrom((string) $this->getRawOriginal('status'));
+
+        if (in_array($storedStatus, [StudentStatus::Graduated, StudentStatus::Transferred], true)) {
+            return $storedStatus->value;
+        }
+
         $activeYear = AcademicYear::active();
 
         if ($activeYear !== null) {
@@ -153,6 +166,7 @@ class Student extends Model
         return match ($this->academicStatus()) {
             StudentStatus::Active->value => 'Aktif',
             StudentStatus::Graduated->value => 'Lulus',
+            StudentStatus::Transferred->value => 'Pindah',
             'calon_siswa' => 'Calon Siswa',
             default => 'Aktif',
         };

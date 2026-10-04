@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Enums\BillFrequency;
 use App\Enums\PaymentTypeAudience;
+use App\Enums\StudentStatus;
 use App\Models\PaymentRate;
 use App\Models\PaymentType;
 use App\Models\PaymentTypeSchoolLevel;
@@ -282,6 +283,10 @@ class StudentPaymentSettings extends Component
 
     public function generateBills(): void
     {
+        if (StudentStatus::tryFrom((string) $this->student->getRawOriginal('status')) !== StudentStatus::Active) {
+            return;
+        }
+
         $created = app(BillGenerationService::class)->generateForStudent($this->student);
 
         if (count($created) > 0) {

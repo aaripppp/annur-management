@@ -6,6 +6,7 @@ use App\Exceptions\BlockedPromotionException;
 use App\Models\AcademicYear;
 use App\Services\BillGenerationService;
 use App\Services\ClassPromotionService;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -313,7 +314,15 @@ class AcademicYearManagement extends Component
 
         $academicYear = AcademicYear::findOrFail($this->monthlyTargetYearId);
         $service = app(BillGenerationService::class);
-        $result = $service->generateMonthlyForAcademicYear($academicYear);
+
+        try {
+            $result = $service->generateMonthlyForAcademicYear($academicYear, includeBreakdown: true);
+        } catch (LockTimeoutException) {
+            $this->isMonthlyConfirmOpen = false;
+            session()->flash('error', 'Generate tagihan bulanan sedang dijalankan. Silakan tunggu sampai proses sebelumnya selesai.');
+
+            return;
+        }
 
         $this->isMonthlyConfirmOpen = false;
 
@@ -323,7 +332,22 @@ class AcademicYearManagement extends Component
         $this->monthlyPreviewTariffs = [];
         $this->monthlyPreviewAcademicYear = '';
 
-        $msg = "Tagihan bulanan untuk tahun ajaran {$academicYear->year} berhasil dibuat. {$result['created']} tagihan baru, {$result['skipped']} tagihan sudah ada (dilewati).";
+        $summary = ["{$result['created']} tagihan dibuat"];
+        $breakdownLabels = [
+            'already_existing' => 'sudah ada',
+            'outside_period' => 'di luar periode',
+            'rejected_during_creation' => 'ditolak saat pembuatan',
+            'inactive_setting' => 'pengaturan tidak aktif',
+            'invalid_configuration' => 'konfigurasi tidak valid',
+        ];
+
+        foreach ($breakdownLabels as $key => $label) {
+            if ($result['breakdown'][$key] > 0) {
+                $summary[] = "{$result['breakdown'][$key]} {$label}";
+            }
+        }
+
+        $msg = 'Generate selesai: '.implode(', ', $summary).'.';
         session()->flash('success', $msg);
     }
 

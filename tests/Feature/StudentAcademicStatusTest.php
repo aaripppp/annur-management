@@ -139,7 +139,7 @@ it('derives Lulus for graduated student', function () {
         ->and($student->academicStatusLabel)->toBe('Lulus');
 });
 
-it('future continuation takes precedence over historical graduation', function () {
+it('stored terminal status takes precedence over a future enrollment', function () {
     $class = SchoolClass::factory()->create(['level' => 7]);
     $student = Student::factory()->create(['class_id' => $class->id, 'status' => 'lulus']);
 
@@ -159,7 +159,7 @@ it('future continuation takes precedence over historical graduation', function (
         'status' => 'active',
     ]);
 
-    expect($student->academicStatus())->toBe('calon_siswa');
+    expect($student->academicStatus())->toBe('lulus');
 });
 
 it('returns Aktif for legacy student without enrollments', function () {

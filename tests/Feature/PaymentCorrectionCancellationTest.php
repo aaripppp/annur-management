@@ -569,10 +569,12 @@ it('kwitansi menampilkan status dibatalkan pada pembayaran yang dibatalkan', fun
     $sppBill = makeMonthlyBill($student, $catalog['SPP'], 970000, 10, 2026);
     $payment = createPaymentFromBills($student, [$sppBill->id => 970000]);
     cancelPaymentDirectly($payment, $user);
+    $payment->refresh();
 
     Livewire::test(PaymentShow::class, ['id' => $payment->id])
         ->assertSee('Dibatalkan')
-        ->assertSee($payment->cancellation_reason);
+        ->assertSee($payment->cancellation_reason)
+        ->assertSee($payment->cancelled_at->translatedFormat('d F Y, H:i'));
 });
 
 // ---------------------------------------------------------------------------

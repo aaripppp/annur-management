@@ -52,7 +52,12 @@ class ProspectivePaymentShow extends Component
 
         $this->dispatch('prospective-payment-cancelled', paymentId: $payment->id);
 
-        session()->flash('success', 'Pembayaran calon siswa berhasil dibatalkan.');
+        session()->now('local_success', 'Pembayaran calon siswa berhasil dibatalkan.');
+    }
+
+    public function dehydrate(): void
+    {
+        session()->forget('local_success');
     }
 
     public function render(): View
