@@ -77,7 +77,7 @@ class ReceiptPrintController extends Controller
      * @return array{
      *     category: string,
      *     receiptNumber: string,
-     *     badge: string,
+     *     badge?: string|null,
      *     paymentDate: string,
      *     identityLabel: string,
      *     identityName: string,
@@ -121,7 +121,6 @@ class ReceiptPrintController extends Controller
         return [
             'category' => $payment->isManualPayment() ? 'Siswa • Manual' : 'Siswa',
             'receiptNumber' => $payment->receipt_number,
-            'badge' => $payment->status_label,
             'paymentDate' => $paymentDate->translatedFormat('d F Y'),
             'identityLabel' => 'Informasi Siswa',
             'identityName' => $student->nama_lengkap,
@@ -202,7 +201,7 @@ class ReceiptPrintController extends Controller
      * @return array{
      *     category: string,
      *     receiptNumber: string,
-     *     badge: string,
+     *     badge?: string|null,
      *     paymentDate: string,
      *     identityLabel: string,
      *     identityName: string,
@@ -256,7 +255,6 @@ class ReceiptPrintController extends Controller
         return [
             'category' => 'Calon Siswa',
             'receiptNumber' => $payment->receipt_number,
-            'badge' => $payment->status_label,
             'paymentDate' => $paymentDate->translatedFormat('d F Y'),
             'identityLabel' => 'Informasi Calon Siswa',
             'identityName' => $prospectiveStudent->nama_lengkap ?? '—',
@@ -288,7 +286,7 @@ class ReceiptPrintController extends Controller
      * @param  array{
      *     category: string,
      *     receiptNumber: string,
-     *     badge: string,
+     *     badge?: string|null,
      *     paymentDate: string,
      *     identityLabel: string,
      *     identityName: string,

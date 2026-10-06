@@ -16,6 +16,7 @@ final readonly class TransactionHistoryRow
         public ?string $bankAccountNumber,
         public float $totalAmount,
         public ?CarbonInterface $paymentDate,
+        public ?CarbonInterface $createdAt,
         public string $statusLabel,
         public string $creatorName,
         public string $badgeLabel,

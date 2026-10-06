@@ -737,7 +737,8 @@ it('pembayaran yang sudah dibatalkan menampilkan alasan di halaman detail', func
     ]);
 
     Livewire::test(ProspectivePaymentShow::class, ['payment' => $payment->id])
-        ->assertSee('Dibatalkan')
+        ->assertDontSeeHtml('<span class="receipt-badge')
+        ->assertSee('Pembayaran dibatalkan')
         ->assertSee('Pembayaran ditolak sekolah')
         ->assertSee($user->name);
 });

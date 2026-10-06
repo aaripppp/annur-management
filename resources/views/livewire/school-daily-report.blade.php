@@ -99,6 +99,21 @@
                     Cetak PDF
                 </a>
             </div>
+        @elseif($activeTab === 'class')
+            <div class="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-row">
+                @if($classRecapAcademicYearId !== '' && $classRecapSchoolLevel !== '')
+                    <a href="{{ route('laporan.kelas.unit.export', ['academic_year_id' => $classRecapAcademicYearId, 'school_level' => $classRecapSchoolLevel]) }}" class="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-5 text-label-lg font-label-lg text-on-surface transition-colors hover:bg-surface-container-low sm:w-auto">
+                        <span class="material-symbols-outlined text-[20px]">download</span>
+                        Download Excel Unit
+                    </a>
+                @endif
+                @if($classRecapAcademicYearId !== '' && $classRecapSchoolLevel !== '' && $classRecapSchoolClassId !== '')
+                    <a href="{{ route('laporan.kelas.export', ['academic_year_id' => $classRecapAcademicYearId, 'school_level' => $classRecapSchoolLevel, 'class_id' => $classRecapSchoolClassId]) }}" class="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 text-label-lg font-label-lg text-on-primary transition-colors hover:bg-primary/90 sm:w-auto">
+                        <span class="material-symbols-outlined text-[20px]">download</span>
+                        Download Excel Kelas
+                    </a>
+                @endif
+            </div>
         @endif
     </div>
 

@@ -21,44 +21,88 @@
         </div>
     </div>
 
-    <!-- Summary Cards Row -->
-    <section class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-gutter mb-stack-lg">
-        <!-- Card 1: Total Siswa -->
-        <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md flex flex-col gap-2 hover:shadow-sm transition-shadow duration-300">
-            <div class="flex justify-between items-start">
-                <div class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary">
-                    <span class="material-symbols-outlined">groups</span>
-                </div>
+    <!-- Statistik Siswa -->
+    <section class="mb-stack-lg">
+        <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-stack-md">
+            <div>
+                <h2 class="text-headline-sm font-headline-sm text-on-surface">Statistik Siswa</h2>
+                <p class="text-body-sm text-on-surface-variant mt-1">Ringkasan status akademik untuk tahun ajaran terpilih.</p>
             </div>
-            <div class="mt-2">
-                <p class="text-on-surface-variant text-body-md font-body-md">Total Siswa</p>
-                <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data tracking-wider">{{ number_format($totalStudents, 0, ',', '.') }} Siswa</p>
+            <div class="flex flex-wrap items-center gap-3">
+                <span class="material-symbols-outlined text-on-surface-variant">filter_list</span>
+                <select wire:model.live="statYearId" class="w-full sm:w-44 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2" aria-label="Tahun Ajaran statistik">
+                    @forelse($academicYears as $year)
+                        <option value="{{ $year->id }}">{{ $year->year }}</option>
+                    @empty
+                        <option value="">Tidak ada tahun ajaran</option>
+                    @endforelse
+                </select>
+                <select wire:model.live="statLevel" class="w-full sm:w-36 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2" aria-label="Jenjang statistik">
+                    <option value="">Semua Jenjang</option>
+                    @foreach($levels as $level)
+                        <option value="{{ $level->value }}">{{ $level->value }}</option>
+                    @endforeach
+                </select>
+                <select wire:model.live="statClassId" class="w-full sm:w-44 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2" aria-label="Kelas statistik">
+                    <option value="">Semua Kelas</option>
+                    @foreach($statClasses as $c)
+                        <option value="{{ $c->id }}">{{ $c->name }} (Tingkat {{ $c->level }})</option>
+                    @endforeach
+                </select>
             </div>
         </div>
 
-        <!-- Card 2: Siswa Laki-laki -->
-        <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md flex flex-col gap-2 hover:shadow-sm transition-shadow duration-300">
-            <div class="flex justify-between items-start">
-                <div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary">
-                    <span class="material-symbols-outlined">man</span>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-gutter">
+            <!-- Card 1: Total Siswa -->
+            <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md flex flex-col gap-2 hover:shadow-sm transition-shadow duration-300">
+                <div class="flex justify-between items-start">
+                    <div class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary">
+                        <span class="material-symbols-outlined">groups</span>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <p class="text-on-surface-variant text-body-md font-body-md">Total Siswa</p>
+                    <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data tracking-wider">{{ number_format($statCounts['total'], 0, ',', '.') }} Siswa</p>
                 </div>
             </div>
-            <div class="mt-2">
-                <p class="text-on-surface-variant text-body-md font-body-md">Laki-laki</p>
-                <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data tracking-wider">{{ number_format($totalMale, 0, ',', '.') }} Siswa</p>
-            </div>
-        </div>
 
-        <!-- Card 3: Siswa Perempuan -->
-        <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md flex flex-col gap-2 hover:shadow-sm transition-shadow duration-300">
-            <div class="flex justify-between items-start">
-                <div class="w-10 h-10 rounded-full bg-error-container flex items-center justify-center text-error">
-                    <span class="material-symbols-outlined">woman</span>
+            <!-- Card 2: Siswa Aktif -->
+            <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md flex flex-col gap-2 hover:shadow-sm transition-shadow duration-300">
+                <div class="flex justify-between items-start">
+                    <div class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary">
+                        <span class="material-symbols-outlined">how_to_reg</span>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <p class="text-on-surface-variant text-body-md font-body-md">Siswa Aktif</p>
+                    <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data tracking-wider">{{ number_format($statCounts['active'], 0, ',', '.') }} Siswa</p>
                 </div>
             </div>
-            <div class="mt-2">
-                <p class="text-on-surface-variant text-body-md font-body-md">Perempuan</p>
-                <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data tracking-wider">{{ number_format($totalFemale, 0, ',', '.') }} Siswa</p>
+
+            <!-- Card 3: Calon Siswa -->
+            <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md flex flex-col gap-2 hover:shadow-sm transition-shadow duration-300">
+                <div class="flex justify-between items-start">
+                    <div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary">
+                        <span class="material-symbols-outlined">person_add</span>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <p class="text-on-surface-variant text-body-md font-body-md">Calon Siswa</p>
+                    <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data tracking-wider">{{ number_format($statCounts['prospective'], 0, ',', '.') }} Siswa</p>
+                </div>
+            </div>
+
+            <!-- Card 4: Lulus -->
+            <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md flex flex-col gap-2 hover:shadow-sm transition-shadow duration-300">
+                <div class="flex justify-between items-start">
+                    <div class="w-10 h-10 rounded-full bg-tertiary-fixed flex items-center justify-center text-on-tertiary-fixed">
+                        <span class="material-symbols-outlined">school</span>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <p class="text-on-surface-variant text-body-md font-body-md">Lulus</p>
+                    <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data tracking-wider">{{ number_format($statCounts['graduated'], 0, ',', '.') }} Siswa</p>
+                </div>
             </div>
         </div>
     </section>

@@ -223,7 +223,7 @@ it('dashboard shows Dibatalkan for cancelled payment', function () {
         ->assertSee($payment->receipt_number);
 });
 
-it('dashboard status matches payment show after correction', function () {
+it('dashboard shows Tunggakan after correction while receipt no longer shows a status badge', function () {
     $user = User::factory()->create();
     Livewire::actingAs($user);
 
@@ -249,8 +249,9 @@ it('dashboard status matches payment show after correction', function () {
         ->assertSee($payment->receipt_number);
 
     Livewire::test(PaymentShow::class, ['id' => $payment->id])
-        ->assertSeeHtml('Tunggakan')
-        ->assertSee($payment->receipt_number);
+        ->assertSee($payment->receipt_number)
+        ->assertDontSeeHtml('<span class="receipt-badge')
+        ->assertDontSee('Tunggakan');
 });
 
 it('payment index shows correct status label', function () {

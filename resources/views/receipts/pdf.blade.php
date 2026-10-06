@@ -69,7 +69,7 @@
                 <td class="align-right">
                     <div class="info-label">No. Kwitansi</div>
                     <div class="receipt-number">{{ $receipt['receiptNumber'] }}</div>
-                    <div class="badge">{{ $receipt['badge'] }}</div>
+                    @if(filled($receipt['badge'] ?? null))<div class="badge">{{ $receipt['badge'] }}</div>@endif
                 </td>
             </tr>
         </table>

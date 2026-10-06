@@ -203,8 +203,8 @@ function classRecapFormulirBalance(array $report, string $typeName = 'Formulir P
     return $report['rows'][0]['one_time'][$typeId];
 }
 
-it('adds Rekap Per Kelas to existing report navigation without export or report mode tabs', function () {
-    [$academicYear] = makeClassRecapStudent();
+it('adds Rekap Per Kelas to existing report navigation with contextual Excel actions', function () {
+    [$academicYear, $schoolClass] = makeClassRecapStudent();
 
     Livewire::test(SchoolDailyReport::class)
         ->call('setActiveTab', 'class')
@@ -214,7 +214,13 @@ it('adds Rekap Per Kelas to existing report navigation without export or report 
         ->assertSee('Jenjang')
         ->assertSee('Kelas')
         ->assertSee('Pilih jenjang dan kelas untuk menampilkan rekap.')
-        ->assertDontSee('Unduh Excel')
+        ->assertDontSee('Download Excel Unit')
+        ->assertDontSee('Download Excel Kelas')
+        ->set('classRecapSchoolLevel', SchoolLevel::SMP->value)
+        ->assertSee('Download Excel Unit')
+        ->assertDontSee('Download Excel Kelas')
+        ->set('classRecapSchoolClassId', (string) $schoolClass->id)
+        ->assertSee('Download Excel Kelas')
         ->assertDontSee('Cetak PDF')
         ->assertDontSeeHtml('setTargetMode');
 });

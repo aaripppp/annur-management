@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\BillFrequency;
+use App\Enums\StudentStatus;
 use App\Livewire\Dashboard;
 use App\Livewire\PaymentIndex;
 use App\Livewire\StudentDetail;
@@ -21,6 +22,7 @@ use App\Models\StudentBill;
 use App\Models\User;
 use App\Services\TransactionHistoryService;
 use App\Support\TransactionHistoryRow;
+use Carbon\Carbon;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
@@ -2107,4 +2109,628 @@ it('paginasi riwayat transaksi tetap 10 per halaman dengan total dan isi yang be
             collect($firstPage->items())->pluck('id')->all(),
             collect($secondPage->items())->pluck('id')->all(),
         ))->toBe([]);
+});
+
+// ---------------------------------------------------------------------------
+// FILTER KATEGORI (Semua / Siswa Aktif / Calon Siswa / Lulus / Pindah)
+// ---------------------------------------------------------------------------
+
+function makeCategoryStudent(string $status, string $name, string $nis): Student
+{
+    return Student::factory()->create([
+        'nama_lengkap' => $name,
+        'nis' => $nis,
+        'status' => $status,
+    ]);
+}
+
+function seedCategoryHistory(User $user, Bank $bank): array
+{
+    return [
+        'aktif' => makeHistoryPayment(
+            makeCategoryStudent(StudentStatus::Active->value, 'Siswa Kat Aktif', 'NIS-KAT-AKTIF'),
+            $bank,
+            $user,
+            'KWT-KAT-AKTIF',
+            '2026-08-10',
+            createdAt: '2026-08-10 09:00:00'
+        ),
+        'lulus' => makeHistoryPayment(
+            makeCategoryStudent(StudentStatus::Graduated->value, 'Siswa Kat Lulus', 'NIS-KAT-LULUS'),
+            $bank,
+            $user,
+            'KWT-KAT-LULUS',
+            '2026-08-11',
+            createdAt: '2026-08-11 09:00:00'
+        ),
+        'pindah' => makeHistoryPayment(
+            makeCategoryStudent(StudentStatus::Transferred->value, 'Siswa Kat Pindah', 'NIS-KAT-PINDAH'),
+            $bank,
+            $user,
+            'KWT-KAT-PINDAH',
+            '2026-08-12',
+            createdAt: '2026-08-12 09:00:00'
+        ),
+        'prospective' => makeProspectiveHistoryPayment(
+            ProspectiveStudent::factory()->create(['nama_lengkap' => 'Calon Kat Pross']),
+            $bank,
+            $user,
+            'KWT-KAT-PROSP',
+            '2026-08-13'
+        ),
+    ];
+}
+
+it('filter kategori riwayat default Semua menampilkan siswa dan calon siswa', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $payments = seedCategoryHistory($user, $bank);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->assertSet('studentCategory', '')
+        ->assertSee('Semua')
+        ->assertSee($payments['aktif']->receipt_number)
+        ->assertSee($payments['lulus']->receipt_number)
+        ->assertSee($payments['pindah']->receipt_number)
+        ->assertSee($payments['prospective']->receipt_number);
+});
+
+it('kategori Siswa Aktif hanya menampilkan pembayaran siswa berstatus aktif', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $payments = seedCategoryHistory($user, $bank);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->set('studentCategory', StudentStatus::Active->value)
+        ->assertSet('studentCategory', StudentStatus::Active->value)
+        ->assertSee($payments['aktif']->receipt_number)
+        ->assertDontSee($payments['lulus']->receipt_number)
+        ->assertDontSee($payments['pindah']->receipt_number)
+        ->assertDontSee($payments['prospective']->receipt_number);
+});
+
+it('kategori Calon Siswa hanya menampilkan pembayaran calon siswa', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $payments = seedCategoryHistory($user, $bank);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->set('studentCategory', 'calon_siswa')
+        ->assertSee($payments['prospective']->receipt_number)
+        ->assertDontSee($payments['aktif']->receipt_number)
+        ->assertDontSee($payments['lulus']->receipt_number)
+        ->assertDontSee($payments['pindah']->receipt_number);
+});
+
+it('kategori Lulus hanya menampilkan pembayaran siswa berstatus lulus', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $payments = seedCategoryHistory($user, $bank);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->set('studentCategory', StudentStatus::Graduated->value)
+        ->assertSee($payments['lulus']->receipt_number)
+        ->assertDontSee($payments['aktif']->receipt_number)
+        ->assertDontSee($payments['pindah']->receipt_number)
+        ->assertDontSee($payments['prospective']->receipt_number);
+});
+
+it('kategori Pindah hanya menampilkan pembayaran siswa berstatus pindah', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $payments = seedCategoryHistory($user, $bank);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->set('studentCategory', StudentStatus::Transferred->value)
+        ->assertSee($payments['pindah']->receipt_number)
+        ->assertDontSee($payments['aktif']->receipt_number)
+        ->assertDontSee($payments['lulus']->receipt_number)
+        ->assertDontSee($payments['prospective']->receipt_number);
+});
+
+it('kategori tidak dikenal disamakan ke Semua', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $payments = seedCategoryHistory($user, $bank);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->set('studentCategory', 'kategori-ngawur')
+        ->assertSet('studentCategory', '')
+        ->assertSee($payments['aktif']->receipt_number)
+        ->assertSee($payments['lulus']->receipt_number)
+        ->assertSee($payments['pindah']->receipt_number)
+        ->assertSee($payments['prospective']->receipt_number);
+
+    expect(historyRows(['studentCategory' => 'kategori-ngawur'])->pluck('receiptNumber')->all())
+        ->toEqualCanonicalizing([
+            'KWT-KAT-AKTIF',
+            'KWT-KAT-LULUS',
+            'KWT-KAT-PINDAH',
+            'KWT-KAT-PROSP',
+        ]);
+});
+
+it('kategori tidak dikenal pada service dinormalkan tanpa membocorkan seluruh data', function () {
+    $user = User::factory()->create();
+    seedCategoryHistory($user, Bank::factory()->create());
+
+    expect(historyRows(['studentCategory' => 'pindah'])->pluck('receiptNumber')->all())
+        ->toBe(['KWT-KAT-PINDAH'])
+        ->and(historyRows(['studentCategory' => 'tidak-ada'])->pluck('receiptNumber')->all())
+        ->toHaveCount(4);
+});
+
+it('pembayaran calon siswa yang sudah dikonversi tetap berada pada kategori Calon Siswa', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $prospect = ProspectiveStudent::factory()->create(['converted_student_id' => Student::factory()->create()->id]);
+    $payment = makeProspectiveHistoryPayment($prospect, $bank, $user, 'KWT-KAT-PROSP-KONVERSI');
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->set('studentCategory', 'calon_siswa')
+        ->assertSee($payment->receipt_number);
+
+    expect(historyRow('KWT-KAT-PROSP-KONVERSI', ['studentCategory' => 'calon_siswa'])->source)
+        ->toBe('prospective');
+});
+
+it('mengubah filter kategori mengembalikan riwayat ke halaman pertama', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $student = makeCategoryStudent(StudentStatus::Active->value, 'Siswa Kat Paginasi', 'NIS-KAT-PAGINASI');
+
+    for ($index = 1; $index <= 12; $index++) {
+        makeHistoryPayment($student, $bank, $user, 'KWT-KAT-PAGE-'.$index, '2026-08-10', createdAt: sprintf('2026-08-10 09:%02d:00', $index));
+    }
+
+    $component = Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->call('setPage', 2);
+
+    expect($component->get('paginators')['page'])->toBe(2);
+
+    $component->set('studentCategory', StudentStatus::Active->value);
+
+    expect($component->get('paginators')['page'])->toBe(1);
+});
+
+it('filter kategori tetap bisa digabung dengan filter bank, pencarian, dan tanggal', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create(['name' => 'Bank Kategori']);
+    $otherBank = Bank::factory()->create(['name' => 'Bank Lainnya']);
+    $activeStudent = makeCategoryStudent(StudentStatus::Active->value, 'Siswa Gabung Aktif', 'NIS-GABUNG-AKTIF');
+    $graduatedStudent = makeCategoryStudent(StudentStatus::Graduated->value, 'Siswa Gabung Lulus', 'NIS-GABUNG-LULUS');
+
+    $wanted = makeHistoryPayment($activeStudent, $bank, $user, 'KWT-GABUNG-ADA', '2026-08-20', createdAt: '2026-08-20 09:00:00');
+    makeHistoryPayment($activeStudent, $otherBank, $user, 'KWT-GABUNG-BANK-LAIN', '2026-08-20', createdAt: '2026-08-20 09:00:00');
+    makeHistoryPayment($graduatedStudent, $bank, $user, 'KWT-GABUNG-LULUS', '2026-08-20', createdAt: '2026-08-20 09:00:00');
+    makeHistoryPayment($activeStudent, $bank, $user, 'KWT-GABUNG-TANGGAL-LAMA', '2026-07-01', createdAt: '2026-07-01 09:00:00');
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->set('studentCategory', StudentStatus::Active->value)
+        ->set('bankId', (string) $bank->id)
+        ->set('startDate', '2026-08-01')
+        ->assertSee($wanted->receipt_number)
+        ->assertDontSee('KWT-GABUNG-BANK-LAIN')
+        ->assertDontSee('KWT-GABUNG-LULUS')
+        ->assertDontSee('KWT-GABUNG-TANGGAL-LAMA');
+
+    expect(historyRows([
+        'studentCategory' => StudentStatus::Active->value,
+        'bankId' => (string) $bank->id,
+        'search' => 'Siswa Gabung',
+        'startDate' => '2026-08-01',
+    ])->pluck('receiptNumber')->all())->toBe(['KWT-GABUNG-ADA']);
+});
+
+// ---------------------------------------------------------------------------
+// KOLOM TANGGAL INPUT (created_at, bukan payment_date)
+// ---------------------------------------------------------------------------
+
+it('kolom Tanggal Input memakai created_at dan bukan payment_date', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $payment = makeHistoryPayment(
+        makeCategoryStudent(StudentStatus::Active->value, 'Siswa Tanggal Input', 'NIS-TANGGAL-INPUT'),
+        $bank,
+        $user,
+        'KWT-TANGGAL-INPUT-1',
+        '2026-08-26',
+        createdAt: '2026-09-25 13:36:00'
+    );
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->assertSee('Tanggal TF')
+        ->assertSee('Tanggal Input')
+        ->assertSee('25 Sep 2026')
+        ->assertSee('13:36')
+        ->assertSee(Carbon::parse('2026-08-26')->translatedFormat('d M Y'));
+
+    expect(historyRow('KWT-TANGGAL-INPUT-1')->createdAt?->format('Y-m-d H:i'))->toBe('2026-09-25 13:36')
+        ->and(historyRow('KWT-TANGGAL-INPUT-1')->paymentDate?->format('Y-m-d'))->toBe('2026-08-26');
+});
+
+it('Tanggal Input menumpuk tanggal di atas jam dan Tanggal TF tetap terpisah', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    makeHistoryPayment(
+        makeCategoryStudent(StudentStatus::Active->value, 'Siswa Tumpukan Tanggal', 'NIS-TUMPUK-TANGGAL'),
+        $bank,
+        $user,
+        'KWT-TANGGAL-TUMPUK',
+        '2026-08-26',
+        createdAt: '2026-09-25 13:36:00'
+    );
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->assertSeeHtml('<th class="py-3 px-4 whitespace-nowrap">Tanggal Input</th>')
+        ->assertSeeHtml('<div>25 Sep 2026</div>')
+        ->assertSeeHtml('<div class="text-body-sm">13:36</div>')
+        ->assertSeeInOrder(['Tanggal TF', 'Tanggal Input', 'Nama & Kelas']);
+});
+
+it('Tanggal Input pembayaran calon siswa juga memakai created_at', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $payment = makeProspectiveHistoryPayment(
+        ProspectiveStudent::factory()->create(['nama_lengkap' => 'Calon Tanggal Input']),
+        $bank,
+        $user,
+        'KWT-TANGGAL-INPUT-PROSP'
+    );
+    setPaymentCreatedAt($payment, '2026-09-25 08:05:00');
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->set('studentCategory', 'calon_siswa')
+        ->assertSee('25 Sep 2026')
+        ->assertSee('08:05');
+
+    expect(historyRow('KWT-TANGGAL-INPUT-PROSP')->createdAt?->format('Y-m-d H:i'))->toBe('2026-09-25 08:05');
+});
+
+it('empty state riwayat memakai colspan sebelas kolom', function () {
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->assertSee('Belum ada transaksi pembayaran.')
+        ->assertSeeHtml('colspan="11"')
+        ->assertDontSeeHtml('colspan="10"');
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->set('studentCategory', StudentStatus::Active->value)
+        ->assertSee('Tidak ada transaksi yang sesuai filter.')
+        ->assertSeeHtml('colspan="11"');
+});
+
+it('baris riwayat tanpa data pembayaran memakai tanda hubung pada Tanggal Input', function () {
+    expect(historyPaginator()->total())->toBe(0);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->assertSeeHtml('colspan="11"');
+});
+
+// ---------------------------------------------------------------------------
+// KLASIFIKASI KATEGORI DARI STATUS AKADEMIK (konversi ke tahun ajaran mendatang)
+// ---------------------------------------------------------------------------
+
+/**
+ * Siswa hasil konversi yang enrollment aktifnya hanya ada pada tahun ajaran yang
+ * akan datang, pembayaran SPP-nya sudah tercatat pada tabel payments.
+ *
+ * @return array{student: Student, prospect: ProspectiveStudent, payment: Payment}
+ */
+function seedConvertedFutureStudent(
+    User $user,
+    Bank $bank,
+    AcademicYear $targetYear,
+    string $receiptNumber,
+    string $nis = 'NIS-KONV-FUTURE'
+): array {
+    $schoolClass = SchoolClass::factory()->create();
+
+    $prospect = ProspectiveStudent::factory()->converted()->create([
+        'nama_lengkap' => 'Calon Konversi Mendatang '.$nis,
+        'academic_year_id' => $targetYear->id,
+        'school_class_id' => $schoolClass->id,
+        'converted_at' => Carbon::parse('2026-08-05'),
+    ]);
+
+    $student = makeCategoryStudent(StudentStatus::Active->value, 'Siswa Konversi '.$nis, $nis);
+    $student->forceFill(['class_id' => $schoolClass->id])->saveQuietly();
+    $student->refresh();
+
+    $prospect->forceFill(['converted_student_id' => $student->id])->saveQuietly();
+
+    enrollWorkspaceStudent($student, $targetYear);
+
+    return [
+        'student' => $student,
+        'prospect' => $prospect->refresh(),
+        'payment' => makeHistoryPayment($student, $bank, $user, $receiptNumber, '2026-08-10', createdAt: '2026-08-10 09:00:00'),
+    ];
+}
+
+/**
+ * @return list<string>
+ */
+function historyCategoriesFor(string $receiptNumber): array
+{
+    return collect(['aktif', 'calon_siswa', 'lulus', 'pindah'])
+        ->filter(fn (string $category): bool => historyRows(['studentCategory' => $category])
+            ->contains('receiptNumber', $receiptNumber))
+        ->values()
+        ->all();
+}
+
+it('pembayaran siswa hasil konversi ke tahun ajaran mendatang muncul pada kategori Calon Siswa', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $targetYear = workspaceAcademicYear('2027/2028', '2027-07-01', '2028-06-30', false);
+    workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $seed = seedConvertedFutureStudent($user, $bank, $targetYear, 'KWT-KONV-FUTURE-AKTIF');
+
+    expect($seed['student']->fresh()->status->value)->toBe(StudentStatus::Active->value)
+        ->and($seed['prospect']->converted_student_id)->toBe($seed['student']->id)
+        ->and(historyRow($seed['payment']->receipt_number, ['studentCategory' => 'calon_siswa'])->source)->toBe('student')
+        ->and(historyCategoriesFor($seed['payment']->receipt_number))->toBe(['calon_siswa']);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->set('studentCategory', 'calon_siswa')
+        ->assertSee($seed['payment']->receipt_number);
+});
+
+it('pembayaran siswa konversi tahun mendatang tidak muncul pada kategori Siswa Aktif', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $targetYear = workspaceAcademicYear('2027/2028', '2027-07-01', '2028-06-30', false);
+    workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $seed = seedConvertedFutureStudent($user, $bank, $targetYear, 'KWT-KONV-FUTURE-BUKAN-AKTIF');
+
+    expect(historyRows(['studentCategory' => 'aktif'])->pluck('receiptNumber')->all())->not->toContain($seed['payment']->receipt_number)
+        ->and(historyRows(['studentCategory' => 'calon_siswa'])->pluck('receiptNumber')->all())->toContain($seed['payment']->receipt_number);
+
+    Livewire::test(PaymentIndex::class)
+        ->call('setActiveTab', 'history')
+        ->set('studentCategory', 'aktif')
+        ->assertDontSee($seed['payment']->receipt_number);
+});
+
+it('pembayaran konversi berpindah ke Siswa Aktif setelah tahun target menjadi tahun ajaran aktif', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $targetYear = workspaceAcademicYear('2027/2028', '2027-07-01', '2028-06-30', false);
+    workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $seed = seedConvertedFutureStudent($user, $bank, $targetYear, 'KWT-KONV-FUTURE-TRANSISI');
+
+    expect(historyCategoriesFor($seed['payment']->receipt_number))->toBe(['calon_siswa']);
+
+    workspaceAcademicYear('2027/2028', '2027-07-01', '2028-06-30', true);
+
+    expect(AcademicYear::active()?->id)->toBe($targetYear->id)
+        ->and(historyCategoriesFor($seed['payment']->receipt_number))->toBe(['aktif'])
+        ->and(historyRow($seed['payment']->receipt_number, ['studentCategory' => 'aktif'])->source)->toBe('student')
+        ->and(historyRows(['studentCategory' => 'calon_siswa'])->pluck('receiptNumber')->all())->not->toContain($seed['payment']->receipt_number);
+});
+
+it('link converted_student_id yang masih ada tidak menahan siswa pada kategori Calon Siswa', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $currentYear = workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $seed = seedConvertedFutureStudent($user, $bank, $currentYear, 'KWT-KONV-LINK-TAHAN');
+    $student = $seed['student'];
+
+    expect($student->enrollments()->where('academic_year_id', $currentYear->id)->update(['status' => 'active']))->toBe(1);
+
+    expect($seed['prospect']->converted_student_id)->toBe($student->id)
+        ->and(historyCategoriesFor($seed['payment']->receipt_number))->toBe(['aktif']);
+});
+
+it('kategori Lulus tetap memakai status stored walau ada enrollment masa depan', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $targetYear = workspaceAcademicYear('2027/2028', '2027-07-01', '2028-06-30', false);
+    workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $student = makeCategoryStudent(StudentStatus::Graduated->value, 'Siswa Lulus Masa Depan', 'NIS-LULUS-DEPAN');
+    enrollWorkspaceStudent($student, $targetYear);
+    $payment = makeHistoryPayment($student, $bank, $user, 'KWT-KONV-LULUS', '2026-08-10');
+
+    expect(historyCategoriesFor($payment->receipt_number))->toBe(['lulus']);
+});
+
+it('kategori Pindah tetap memakai status stored walau ada enrollment masa depan', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $targetYear = workspaceAcademicYear('2027/2028', '2027-07-01', '2028-06-30', false);
+    workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $student = makeCategoryStudent(StudentStatus::Transferred->value, 'Siswa Pindah Masa Depan', 'NIS-PINDAH-DEPAN');
+    enrollWorkspaceStudent($student, $targetYear);
+    $payment = makeHistoryPayment($student, $bank, $user, 'KWT-KONV-PINDAH', '2026-08-10');
+
+    expect(historyCategoriesFor($payment->receipt_number))->toBe(['pindah']);
+});
+
+it('pembayaran calon siswa yang belum dikonversi tetap Calon Siswa tanpa enrollment', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $prospect = ProspectiveStudent::factory()->create(['converted_student_id' => null]);
+    $payment = makeProspectiveHistoryPayment($prospect, $bank, $user, 'KWT-KONV-BELUM-DIKONVERSI');
+
+    expect(historyCategoriesFor($payment->receipt_number))->toBe(['calon_siswa'])
+        ->and(historyRow($payment->receipt_number, ['studentCategory' => 'calon_siswa'])->source)->toBe('prospective');
+});
+
+it('kategori Semua tetap menggabungkan pembayaran siswa dan calon siswa', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $targetYear = workspaceAcademicYear('2027/2028', '2027-07-01', '2028-06-30', false);
+    $currentYear = workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $future = seedConvertedFutureStudent($user, $bank, $targetYear, 'KWT-SEMUA-FUTURE');
+    $currentStudent = makeCategoryStudent(StudentStatus::Active->value, 'Siswa Semua Aktif', 'NIS-SEMUA-AKTIF');
+    enrollWorkspaceStudent($currentStudent, $currentYear);
+    $currentPayment = makeHistoryPayment($currentStudent, $bank, $user, 'KWT-SEMUA-AKTIF', '2026-08-10');
+    $prospectPayment = makeProspectiveHistoryPayment(
+        ProspectiveStudent::factory()->create(),
+        $bank,
+        $user,
+        'KWT-SEMUA-PROSP'
+    );
+
+    $rows = historyRows(['studentCategory' => '']);
+
+    expect($rows->pluck('receiptNumber')->all())->toContain($future['payment']->receipt_number)
+        ->and($rows->pluck('receiptNumber')->all())->toContain($currentPayment->receipt_number)
+        ->and($rows->pluck('receiptNumber')->all())->toContain($prospectPayment->receipt_number)
+        ->and($rows->pluck('source')->all())->toContain('student')
+        ->and($rows->pluck('source')->all())->toContain('prospective');
+});
+
+it('siswa aktif lama tanpa enrollment tetap masuk kategori Siswa Aktif', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $student = makeCategoryStudent(StudentStatus::Active->value, 'Siswa Legacy Tanpa Enrollment', 'NIS-LEGACY');
+    $payment = makeHistoryPayment($student, $bank, $user, 'KWT-LEGACY-TANPA-ENROLLMENT', '2026-08-10');
+
+    expect($student->enrollments()->count())->toBe(0)
+        ->and($student->academicStatus())->toBe(StudentStatus::Active->value)
+        ->and(historyCategoriesFor($payment->receipt_number))->toBe(['aktif']);
+});
+
+it('enrollment tahun berjalan non-aktif dengan enrollment masa depan aktif masuk Calon Siswa', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $targetYear = workspaceAcademicYear('2027/2028', '2027-07-01', '2028-06-30', false);
+    $currentYear = workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $student = makeCategoryStudent(StudentStatus::Active->value, 'Siswa Planned Tahun Berjalan', 'NIS-PLANNED');
+    enrollWorkspaceStudent($student, $currentYear, 'planned');
+    enrollWorkspaceStudent($student, $targetYear);
+    $payment = makeHistoryPayment($student, $bank, $user, 'KWT-KONV-PLANNED', '2026-08-10');
+
+    expect($student->academicStatus())->toBe('calon_siswa')
+        ->and(historyCategoriesFor($payment->receipt_number))->toBe(['calon_siswa']);
+});
+
+it('tanpa tahun ajaran aktif tidak ada error dan kategori memakai status stored', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $inactiveYear = workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', false);
+
+    expect(AcademicYear::active())->toBeNull();
+
+    $activeStudent = makeCategoryStudent(StudentStatus::Active->value, 'Siswa Tanpa Tahun Aktif', 'NIS-NO-AY-AKTIF');
+    $activePayment = makeHistoryPayment($activeStudent, $bank, $user, 'KWT-NO-AY-AKTIF', '2026-08-10');
+    $graduatedPayment = makeHistoryPayment(
+        makeCategoryStudent(StudentStatus::Graduated->value, 'Siswa Tanpa Tahun Aktif Lulus', 'NIS-NO-AY-LULUS'),
+        $bank,
+        $user,
+        'KWT-NO-AY-LULUS',
+        '2026-08-11'
+    );
+    $prospectPayment = makeProspectiveHistoryPayment(
+        ProspectiveStudent::factory()->create(['academic_year_id' => $inactiveYear->id]),
+        $bank,
+        $user,
+        'KWT-NO-AY-PROSP'
+    );
+
+    $futureSeed = seedConvertedFutureStudent($user, $bank, $inactiveYear, 'KWT-NO-AY-FUTURE');
+
+    expect(historyCategoriesFor($activePayment->receipt_number))->toBe(['aktif'])
+        ->and(historyCategoriesFor($graduatedPayment->receipt_number))->toBe(['lulus'])
+        ->and(historyCategoriesFor($prospectPayment->receipt_number))->toBe(['calon_siswa'])
+        ->and(historyCategoriesFor($futureSeed['payment']->receipt_number))->toBe(['aktif'])
+        ->and(historyRows(['studentCategory' => '']))->not->toBeEmpty();
+});
+
+it('klasifikasi SQL kategori riwayat sama dengan Student::academicStatus()', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $targetYear = workspaceAcademicYear('2027/2028', '2027-07-01', '2028-06-30', false);
+    $currentYear = workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $activeStudent = makeCategoryStudent(StudentStatus::Active->value, 'Parity Aktif', 'NIS-PARITY-AKTIF');
+    enrollWorkspaceStudent($activeStudent, $currentYear);
+    $activePayment = makeHistoryPayment($activeStudent, $bank, $user, 'KWT-PARITY-AKTIF', '2026-08-10');
+
+    $futureStudent = makeCategoryStudent(StudentStatus::Active->value, 'Parity Calon', 'NIS-PARITY-CALON');
+    enrollWorkspaceStudent($futureStudent, $targetYear);
+    $futurePayment = makeHistoryPayment($futureStudent, $bank, $user, 'KWT-PARITY-CALON', '2026-08-11');
+
+    $graduatedStudent = makeCategoryStudent(StudentStatus::Graduated->value, 'Parity Lulus', 'NIS-PARITY-LULUS');
+    $graduatedPayment = makeHistoryPayment($graduatedStudent, $bank, $user, 'KWT-PARITY-LULUS', '2026-08-12');
+
+    $transferredStudent = makeCategoryStudent(StudentStatus::Transferred->value, 'Parity Pindah', 'NIS-PARITY-PINDAH');
+    $transferredPayment = makeHistoryPayment($transferredStudent, $bank, $user, 'KWT-PARITY-PINDAH', '2026-08-13');
+
+    expect($activeStudent->academicStatus())->toBe('aktif')
+        ->and($futureStudent->academicStatus())->toBe('calon_siswa')
+        ->and($graduatedStudent->academicStatus())->toBe('lulus')
+        ->and($transferredStudent->academicStatus())->toBe('pindah')
+        ->and(historyCategoriesFor($activePayment->receipt_number))->toBe([$activeStudent->academicStatus()])
+        ->and(historyCategoriesFor($futurePayment->receipt_number))->toBe([$futureStudent->academicStatus()])
+        ->and(historyCategoriesFor($graduatedPayment->receipt_number))->toBe([$graduatedStudent->academicStatus()])
+        ->and(historyCategoriesFor($transferredPayment->receipt_number))->toBe([$transferredStudent->academicStatus()]);
+});
+
+it('klasifikasi kategori riwayat tidak memicu query tambahan per baris', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $targetYear = workspaceAcademicYear('2027/2028', '2027-07-01', '2028-06-30', false);
+    workspaceAcademicYear('2026/2027', '2026-07-01', '2027-06-30', true);
+
+    $seed = seedConvertedFutureStudent($user, $bank, $targetYear, 'KWT-N1-1');
+    $prospectPayment = makeProspectiveHistoryPayment(
+        ProspectiveStudent::factory()->create(),
+        $bank,
+        $user,
+        'KWT-N1-PROSP'
+    );
+
+    $oneRow = measureHistoryQueries(fn () => historyRows(['perPage' => 50, 'studentCategory' => 'calon_siswa']));
+
+    $addRows = function (int $from, int $to) use ($seed, $bank, $user): void {
+        for ($index = $from; $index <= $to; $index++) {
+            makeHistoryPayment(
+                $seed['student'],
+                $bank,
+                $user,
+                'KWT-N1-'.$index,
+                '2026-08-10',
+                createdAt: sprintf('2026-08-10 10:%02d:00', $index)
+            );
+        }
+    };
+
+    $addRows(2, 20);
+    $manyRows = measureHistoryQueries(fn () => historyRows(['perPage' => 50, 'studentCategory' => 'calon_siswa']));
+
+    expect(historyRows(['perPage' => 50, 'studentCategory' => 'calon_siswa']))->toHaveCount(21)
+        ->and($oneRow['lazy'])->toBe(0)
+        ->and($manyRows['lazy'])->toBe(0)
+        ->and($manyRows['total'] - $oneRow['total'])->toBeLessThanOrEqual(1)
+        ->and($prospectPayment->receipt_number)->toBeString();
 });

@@ -65,24 +65,8 @@
             <div class="flex flex-col sm:items-end gap-1 sm:text-right">
                 <div class="receipt-label text-body-sm font-semibold uppercase tracking-wider text-on-surface-variant">No. Kwitansi</div>
                 <div class="receipt-number text-title-lg font-bold text-on-surface font-numeric-data mt-1 whitespace-nowrap">{{ $payment->receipt_number }}</div>
-                @if($payment->status_label === 'Dibatalkan')
-                    <span class="receipt-badge inline-flex items-center gap-1.5 mt-2 py-1 px-3 rounded-full text-label-sm bg-error-container text-on-error-container w-fit">
-                        <span class="w-2 h-2 rounded-full bg-error"></span>
-                        Dibatalkan
-                    </span>
-                    @if($payment->cancellation_reason)
-                        <span class="text-body-sm text-error mt-1 max-w-[280px] text-right">Alasan: {{ $payment->cancellation_reason }}</span>
-                    @endif
-                @elseif($payment->status_label === 'Tunggakan')
-                    <span class="receipt-badge inline-flex items-center gap-1.5 mt-2 py-1 px-3 rounded-full text-label-sm bg-error-container text-on-error-container w-fit">
-                        <span class="w-2 h-2 rounded-full bg-error"></span>
-                        Tunggakan
-                    </span>
-                @else
-                    <span class="receipt-badge inline-flex items-center gap-1.5 mt-2 py-1 px-3 rounded-full text-label-sm bg-primary-fixed text-on-primary-fixed w-fit">
-                        <span class="w-2 h-2 rounded-full bg-primary"></span>
-                        {{ $payment->status_label }}
-                    </span>
+                @if($payment->status_label === 'Dibatalkan' && $payment->cancellation_reason)
+                    <span class="text-body-sm text-error mt-1 max-w-[280px] text-right">Alasan: {{ $payment->cancellation_reason }}</span>
                 @endif
                 <span class="text-body-sm text-on-surface-variant mt-1 flex items-center gap-1">
                     <x-receipt-icon name="calendar" class="w-4 h-4" />

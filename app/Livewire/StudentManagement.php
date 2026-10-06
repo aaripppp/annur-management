@@ -12,7 +12,10 @@ use App\Services\StudentCreationService;
 use App\Services\StudentDeletionService;
 use App\Services\StudentPhotoService;
 use App\Services\StudentProfileUpdater;
+use App\Services\StudentStatisticService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -37,6 +40,13 @@ class StudentManagement extends Component
 
     #[Url(as: 'status')]
     public $filterStatus = '';
+
+    // Statistik siswa (kartu) — terpisah dari filter tabel di bawah.
+    public string $statYearId = '';
+
+    public string $statLevel = '';
+
+    public string $statClassId = '';
 
     // Modal state
     public $isModalOpen = false;
@@ -108,6 +118,30 @@ class StudentManagement extends Component
     public function updatedSearch()
     {
         $this->resetPage();
+    }
+
+    /**
+     * Saat jenjang statistik berubah, kelas yang tidak lagi cocok direset.
+     * Bila jenjang kosong (Semua Jenjang), kelas apa pun masih valid sehingga
+     * pilihan kelas dipertahankan.
+     */
+    public function updatedStatLevel()
+    {
+        if ($this->statClassId === '') {
+            return;
+        }
+
+        $level = $this->statLevel !== '' ? SchoolLevel::tryFrom($this->statLevel) : null;
+
+        if ($level === null) {
+            return;
+        }
+
+        $schoolClass = SchoolClass::find((int) $this->statClassId);
+
+        if (! $schoolClass || ! in_array($schoolClass->level, $level->classLevels(), true)) {
+            $this->statClassId = '';
+        }
     }
 
     public function confirmDelete(int $id)
@@ -351,18 +385,65 @@ class StudentManagement extends Component
             }
         }
 
-        $totalStudents = Student::count();
-        $totalMale = Student::where('jenis_kelamin', 'L')->count();
-        $totalFemale = Student::where('jenis_kelamin', 'P')->count();
+        $academicYears = AcademicYear::orderByDesc('year')->get();
+        $statYear = $this->resolveStatYear($academicYears);
+        $statLevelValue = $this->statLevel !== '' ? SchoolLevel::tryFrom($this->statLevel) : null;
+        $statClassIdValue = $this->statClassId !== '' ? (int) $this->statClassId : null;
+
+        $statCounts = $statYear === null
+            ? ['total' => 0, 'active' => 0, 'prospective' => 0, 'graduated' => 0]
+            : app(StudentStatisticService::class)->counts($statYear, $statLevelValue, $statClassIdValue);
+
+        $statClasses = SchoolClass::query()
+            ->when($this->statLevel !== '', function (Builder $query): void {
+                $level = SchoolLevel::tryFrom($this->statLevel);
+
+                if ($level === null) {
+                    $query->whereRaw('0 = 1');
+                } else {
+                    $query->whereIn('level', $level->classLevels());
+                }
+            })
+            ->orderBy('level')
+            ->orderBy('name')
+            ->get();
 
         return view('livewire.student.index', [
             'students' => $query->paginate(10),
             'classes' => SchoolClass::orderBy('level')->orderBy('name')->get(),
             'levels' => SchoolLevel::cases(),
-            'totalStudents' => $totalStudents,
-            'totalMale' => $totalMale,
-            'totalFemale' => $totalFemale,
-            'academicYears' => AcademicYear::orderByDesc('year')->get(),
+            'academicYears' => $academicYears,
+            'statCounts' => $statCounts,
+            'statClasses' => $statClasses,
         ]);
+    }
+
+    /**
+     * Resolve tahun ajaran statistik: default tahun aktif, fallback aktif bila
+     * pilihan tidak valid. Nilai properti disinkronkan agar dropdown berkorelasi.
+     *
+     * @param  Collection<int, AcademicYear>  $academicYears
+     */
+    private function resolveStatYear(Collection $academicYears): ?AcademicYear
+    {
+        if ($this->statYearId === '') {
+            $active = $academicYears->first(fn (AcademicYear $year): bool => $year->is_active);
+
+            if ($active !== null) {
+                $this->statYearId = (string) $active->id;
+            }
+
+            return $active;
+        }
+
+        $selected = $academicYears->firstWhere('id', (int) $this->statYearId);
+
+        if ($selected !== null) {
+            return $selected;
+        }
+
+        $this->statYearId = '';
+
+        return $this->resolveStatYear($academicYears);
     }
 }

@@ -63,6 +63,9 @@ it('renders the reorganized sidebar structure on the dashboard', function () {
     $response->assertSee('Master Data', false);
     $response->assertSee('Pengaturan', false);
     $response->assertSee('Keluar', false);
+    $response->assertSee('YPI Nurrahim An-nur', false);
+    $response->assertSee('Management System', false);
+    $response->assertDontSee('Sistem Manajemen SPP', false);
 
     $response->assertSee('href="'.route('siswa.index').'"', false);
     $response->assertSee('href="'.route('siswa.exam-eligibility').'"', false);

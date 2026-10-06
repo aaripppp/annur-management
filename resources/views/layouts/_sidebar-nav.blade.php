@@ -2,8 +2,8 @@
 <div class="flex items-center gap-3 mb-5 px-2">
     <img src="{{ asset('images/annur_logo2.png') }}" alt="Annur" class="h-11 w-auto max-w-12 object-contain shrink-0">
     <div>
-        <h1 class="text-headline-md font-headline-md text-on-primary">Annur Management</h1>
-        <p class="text-body-sm font-body-sm text-on-primary-container">Sistem Manajemen SPP</p>
+        <h1 class="text-headline-md font-headline-md text-on-primary">YPI Nurrahim An-nur</h1>
+        <p class="text-body-sm font-body-sm text-on-primary-container">Management System</p>
     </div>
 </div>
 

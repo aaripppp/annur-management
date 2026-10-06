@@ -105,6 +105,8 @@ class PaymentIndex extends Component
 
     public string $status = '';
 
+    public string $studentCategory = '';
+
     public string $startDate = '';
 
     public string $endDate = '';
@@ -288,6 +290,18 @@ class PaymentIndex extends Component
 
     public function updatedStatus(): void
     {
+        $this->resetPage();
+    }
+
+    /**
+     * Kategori siswa/calon siswa menggantikan filter status transaksi pada UI.
+     *
+     * Nilai di luar whitelist disamakan ke "Semua" supaya kategori tidak pernah
+     * berarti tanpa filter, dan halaman selalu kembali ke page 1.
+     */
+    public function updatedStudentCategory(string $value): void
+    {
+        $this->studentCategory = TransactionHistoryService::normalizeStudentCategory($value);
         $this->resetPage();
     }
 
@@ -615,6 +629,7 @@ class PaymentIndex extends Component
             'classes' => $classes,
             'payments' => $payments,
             'banks' => $banks,
+            'studentCategoryOptions' => TransactionHistoryService::studentCategoryOptions(),
             'deletingPayment' => $deletingPayment,
             'summaryTotal' => $summary['total_amount'],
             'summaryCount' => $summary['total_count'],
@@ -640,6 +655,7 @@ class PaymentIndex extends Component
             status: $this->status,
             startDate: $this->startDate,
             endDate: $this->endDate,
+            studentCategory: $this->studentCategory,
         );
     }
 }

@@ -559,7 +559,7 @@ it('filter lunas tidak menampilkan pembayaran yang dibatalkan', function () {
         ->assertDontSee($cancelledPayment->receipt_number);
 });
 
-it('kwitansi menampilkan status dibatalkan pada pembayaran yang dibatalkan', function () {
+it('kwitansi menampilkan detail pembatalan tanpa badge status pada pembayaran yang dibatalkan', function () {
     $user = User::factory()->create();
     Livewire::actingAs($user);
 
@@ -572,7 +572,8 @@ it('kwitansi menampilkan status dibatalkan pada pembayaran yang dibatalkan', fun
     $payment->refresh();
 
     Livewire::test(PaymentShow::class, ['id' => $payment->id])
-        ->assertSee('Dibatalkan')
+        ->assertDontSeeHtml('<span class="receipt-badge')
+        ->assertSee('Pembayaran dibatalkan')
         ->assertSee($payment->cancellation_reason)
         ->assertSee($payment->cancelled_at->translatedFormat('d F Y, H:i'));
 });

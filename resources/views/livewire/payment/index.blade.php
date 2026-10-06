@@ -597,7 +597,7 @@
     @else
         <section>
             <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm mb-stack-lg">
-                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
                     <div class="md:col-span-2 xl:col-span-1">
                         <label for="history-search" class="block text-label-md font-label-md text-on-surface mb-1">Cari Transaksi</label>
                         <div class="relative">
@@ -615,11 +615,11 @@
                         </select>
                     </div>
                     <div>
-                        <label for="history-status" class="block text-label-md font-label-md text-on-surface mb-1">Status</label>
-                        <select id="history-status" wire:model.live="status" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2">
-                            <option value="">Semua Status</option>
-                            <option value="active">Aktif</option>
-                            <option value="cancelled">Dibatalkan</option>
+                        <label for="history-student-category" class="block text-label-md font-label-md text-on-surface mb-1">Kategori</label>
+                        <select id="history-student-category" wire:model.live="studentCategory" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2">
+                            @foreach($studentCategoryOptions as $categoryValue => $categoryLabel)
+                                <option value="{{ $categoryValue }}">{{ $categoryLabel }}</option>
+                            @endforeach
                         </select>
                     </div>
                     <div>
@@ -639,12 +639,13 @@
                     <p class="text-body-sm text-on-surface-variant mt-1">Daftar seluruh transaksi pembayaran siswa.</p>
                 </div>
                 <div class="overflow-x-auto w-full">
-                    <table class="w-full text-left border-collapse min-w-[1200px]">
+                    <table class="w-full text-left border-collapse min-w-[1320px]">
                         <thead>
                             <tr class="bg-surface-container-low border-b border-outline-variant text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">
                                 <th class="py-3.5 px-3 w-14 whitespace-nowrap text-center">No.</th>
                                 <th class="py-3 px-4 whitespace-nowrap">No. Kwitansi</th>
                                 <th class="py-3 px-4 whitespace-nowrap">Tanggal TF</th>
+                                <th class="py-3 px-4 whitespace-nowrap">Tanggal Input</th>
                                 <th class="py-3 px-4 whitespace-nowrap">Nama &amp; Kelas</th>
                                 <th class="py-3 px-4 whitespace-nowrap">Detail Pembayaran</th>
                                 <th class="py-3 px-4 whitespace-nowrap">Bank</th>
@@ -665,6 +666,14 @@
                                         </div>
                                     </td>
                                     <td class="py-3 px-4 text-body-md text-on-surface-variant whitespace-nowrap">{{ $row->paymentDate?->translatedFormat('d M Y') ?? '—' }}</td>
+                                    <td class="py-3 px-4 text-body-md text-on-surface-variant whitespace-nowrap font-numeric-data">
+                                        @if($row->createdAt)
+                                            <div>{{ $row->createdAt->translatedFormat('d M Y') }}</div>
+                                            <div class="text-body-sm">{{ $row->createdAt->format('H:i') }}</div>
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
                                     <td class="py-3 px-4 text-body-md text-on-surface whitespace-nowrap">
                                         <div class="font-semibold">{{ $row->name }}</div>
                                         <div class="text-body-sm text-on-surface-variant">{{ $row->secondaryInfo }}</div>
@@ -701,9 +710,9 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="10" class="p-8 text-center text-on-surface-variant">
+                                    <td colspan="11" class="p-8 text-center text-on-surface-variant">
                                         <span class="material-symbols-outlined text-4xl mb-2 block">receipt_long</span>
-                                        <p>{{ trim($search) !== '' || $bankId !== '' || $status !== '' || $startDate !== '' || $endDate !== '' ? 'Tidak ada transaksi yang sesuai filter.' : 'Belum ada transaksi pembayaran.' }}</p>
+                                        <p>{{ trim($search) !== '' || $bankId !== '' || $status !== '' || $studentCategory !== '' || $startDate !== '' || $endDate !== '' ? 'Tidak ada transaksi yang sesuai filter.' : 'Belum ada transaksi pembayaran.' }}</p>
                                     </td>
                                 </tr>
                             @endforelse

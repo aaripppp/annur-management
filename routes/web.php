@@ -19,8 +19,10 @@ use App\Http\Controllers\SchoolMonthlyByLevelReportPdfController;
 use App\Http\Controllers\SchoolMonthlyReportExportController;
 use App\Http\Controllers\SchoolMonthlyReportPdfController;
 use App\Http\Controllers\StudentBillsPdfController;
+use App\Http\Controllers\StudentClassPaymentRecapExportController;
 use App\Http\Controllers\StudentTargetArrearsReportExportController;
 use App\Http\Controllers\StudentTargetArrearsReportPdfController;
+use App\Http\Controllers\StudentUnitClassPaymentRecapExportController;
 use App\Livewire\AcademicYearManagement;
 use App\Livewire\AccountManagement;
 use App\Livewire\BankManagement;
@@ -312,6 +314,14 @@ Route::get('/laporan/target-tunggakan.xlsx', StudentTargetArrearsReportExportCon
 Route::get('/laporan/target-tunggakan.pdf', StudentTargetArrearsReportPdfController::class)
     ->middleware('auth')
     ->name('laporan.target.pdf');
+
+Route::get('/laporan/rekap-kelas.xlsx', StudentClassPaymentRecapExportController::class)
+    ->middleware('auth')
+    ->name('laporan.kelas.export');
+
+Route::get('/laporan/rekap-kelas/unit.xlsx', StudentUnitClassPaymentRecapExportController::class)
+    ->middleware('auth')
+    ->name('laporan.kelas.unit.export');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

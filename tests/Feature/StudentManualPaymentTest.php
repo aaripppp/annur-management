@@ -65,7 +65,8 @@ it('uses manual detail descriptions in detail display and receipt surfaces', fun
     Livewire::actingAs($user)
         ->test(PaymentShow::class, ['id' => $payment->id])
         ->assertSee('Siswa • Manual')
-        ->assertSee('Tercatat')
+        ->assertDontSeeHtml('<span class="receipt-badge')
+        ->assertDontSee('Tercatat')
         ->assertSeeInOrder(['Infaq', 'Rp 500.000', 'Donasi Kegiatan', 'Rp 100.000', 'Rp 600.000'])
         ->assertSee('Donasi Kegiatan')
         ->assertDontSee('Pembayaran SPP');
