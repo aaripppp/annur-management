@@ -9,6 +9,7 @@ use Database\Factories\StudentFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 
@@ -89,6 +90,33 @@ class Student extends Model
     public function schoolClass(): BelongsTo
     {
         return $this->belongsTo(SchoolClass::class, 'class_id');
+    }
+
+    /**
+     * @return BelongsToMany<StudentCategory, $this>
+     */
+    public function categories(): BelongsToMany
+    {
+        return $this->belongsToMany(StudentCategory::class, 'student_category_student')->withTimestamps();
+    }
+
+    public function isNormalCategoryState(): bool
+    {
+        return $this->relationLoaded('categories')
+            ? $this->categories->isEmpty()
+            : ! $this->categories()->exists();
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    public function categoryDisplayLabels(): Collection
+    {
+        $categories = $this->relationLoaded('categories')
+            ? $this->categories
+            : $this->categories()->get();
+
+        return $categories->sortBy('name')->pluck('name')->values();
     }
 
     public function getSchoolLevelAttribute(): ?SchoolLevel

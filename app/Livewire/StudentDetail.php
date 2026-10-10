@@ -65,7 +65,7 @@ class StudentDetail extends Component
 
     public function mount(Student $student): void
     {
-        $this->student = $student;
+        $this->student = $student->load('categories');
 
         $latestEnrollment = $student->enrollments()
             ->with('academicYear')
@@ -340,6 +340,8 @@ class StudentDetail extends Component
 
     public function render(): View
     {
+        $this->student->loadMissing('categories');
+
         $billbook = StudentBillbook::build(
             $this->student,
             $this->selectedAcademicYear,

@@ -253,6 +253,7 @@ it('opens the master data group with the correct child active on each page', fun
     $cases = [
         route('bank.index') => route('bank.index'),
         route('jenis-pembayaran.index') => route('jenis-pembayaran.index'),
+        route('kategori-siswa.index') => route('kategori-siswa.index'),
         route('tarif-pembayaran.index') => route('tarif-pembayaran.index'),
         route('kelas.index') => route('kelas.index'),
         route('tahun-ajaran.index') => route('tahun-ajaran.index'),

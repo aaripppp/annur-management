@@ -33,6 +33,48 @@ it('menampilkan tagihan outstanding saat siswa dipilih', function () {
     expect($component->get('outstandingBills'))->toHaveCount(2);
 });
 
+it('mengurutkan tagihan dan ringkasan bulanan tanpa mengubah urutan state pilihan', function () {
+    $student = makeBillStudent(8);
+    $sppBill = makeMonthlyBill($student, makeBillType('SPP'), 970000, 10, 2026);
+    $ekskulBill = makeMonthlyBill($student, makeBillType('Ekskul'), 60000, 10, 2026);
+    $osisBill = makeMonthlyBill($student, makeBillType('OSIS'), 5000, 10, 2026);
+    $jemputanBill = makeMonthlyBill($student, makeBillType('Jemputan'), 150000, 10, 2026);
+    $digitalBill = makeMonthlyBill($student, makeBillType('Iuran Digital'), 75000, 10, 2026);
+
+    $selectionOrder = [
+        $digitalBill->id,
+        $jemputanBill->id,
+        $sppBill->id,
+        $osisBill->id,
+        $ekskulBill->id,
+    ];
+    $canonicalOrder = [
+        $sppBill->id,
+        $ekskulBill->id,
+        $osisBill->id,
+        $jemputanBill->id,
+        $digitalBill->id,
+    ];
+
+    $component = Livewire::test(PaymentCreate::class)
+        ->call('selectStudent', $student->id)
+        ->set('selectedBillIds', $selectionOrder)
+        ->assertSet('selectedBillIds', $selectionOrder)
+        ->assertSeeInOrder(['SPP', 'Ekskul', 'OSIS', 'Jemputan', 'Iuran Digital'])
+        ->assertSee('Rp 1.260.000');
+
+    preg_match_all('/data-summary-bill-id="(\d+)"/', $component->html(), $matches);
+
+    expect(array_map('intval', $matches[1]))->toBe($canonicalOrder)
+        ->and($component->get('selectedBillAmounts'))->toMatchArray([
+            $sppBill->id => 970000,
+            $ekskulBill->id => 60000,
+            $osisBill->id => 5000,
+            $jemputanBill->id => 150000,
+            $digitalBill->id => 75000,
+        ]);
+});
+
 it('mencetang tagihan mengisi nominal default = sisa dan membatalkan pilihan tidak menghapus bill', function () {
     $student = makeBillStudent(8);
 

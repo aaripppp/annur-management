@@ -823,3 +823,39 @@ it('save persists corrected amount and creates audit log', function () {
         ->and((float) $log->after_data['total_amount'])->toBe(45000.0)
         ->and((float) $log->after_data['details'][0]['amount'])->toBe(45000.0);
 });
+
+it('mengurutkan tagihan dan ringkasan koreksi tanpa mengubah state atau nominal', function () {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+
+    $student = makeBillStudent(8);
+    $catalog = manualAddCatalog(8);
+    $sppBill = makeMonthlyBill($student, $catalog['SPP'], 970000, 10, 2026);
+    $ekskulBill = makeMonthlyBill($student, $catalog['Ekskul'], 60000, 10, 2026);
+    $osisBill = makeMonthlyBill($student, $catalog['OSIS'], 5000, 10, 2026);
+    $jemputanBill = makeMonthlyBill($student, $catalog['Jemputan'], 150000, 10, 2026);
+    $payment = createPaymentFromBills($student, [
+        $jemputanBill->id => 150000,
+        $sppBill->id => 970000,
+        $osisBill->id => 5000,
+        $ekskulBill->id => 60000,
+    ]);
+    $selectionOrder = [$jemputanBill->id, $sppBill->id, $osisBill->id, $ekskulBill->id];
+    $canonicalOrder = [$sppBill->id, $ekskulBill->id, $osisBill->id, $jemputanBill->id];
+
+    $component = Livewire::test(PaymentCorrection::class, ['id' => $payment->id])
+        ->set('selectedBillIds', $selectionOrder)
+        ->assertSet('selectedBillIds', $selectionOrder)
+        ->assertSeeInOrder(['SPP', 'Ekskul', 'OSIS', 'Jemputan'])
+        ->assertSee('Rp 1.185.000');
+
+    preg_match_all('/data-summary-bill-id="(\d+)"/', $component->html(), $matches);
+
+    expect(array_map('intval', $matches[1]))->toBe($canonicalOrder)
+        ->and($component->get('selectedBillAmounts'))->toMatchArray([
+            $sppBill->id => 970000,
+            $ekskulBill->id => 60000,
+            $osisBill->id => 5000,
+            $jemputanBill->id => 150000,
+        ]);
+});

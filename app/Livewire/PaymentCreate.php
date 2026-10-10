@@ -8,6 +8,7 @@ use App\Models\PaymentDetail;
 use App\Models\Student;
 use App\Models\StudentBill;
 use App\Services\StudentReceiptNumberGenerator;
+use App\Support\BillDisplayOrder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -223,7 +224,14 @@ class PaymentCreate extends Component
 
         $grouped = collect($groups);
 
-        $monthly = $grouped->where('type', 'monthly')->sortBy('key');
+        $monthly = $grouped
+            ->where('type', 'monthly')
+            ->sortBy('key')
+            ->map(function (array $group): array {
+                $group['bills'] = BillDisplayOrder::sortRows($group['bills'])->all();
+
+                return $group;
+            });
         $yearly = $grouped->where('type', 'yearly')->sortBy('key');
         $oneTime = $grouped->where('type', 'one-time');
 
@@ -374,11 +382,20 @@ class PaymentCreate extends Component
                 ->get();
         }
 
+        $billGroups = $this->buildBillGroups();
+        $selectedIds = array_map('intval', (array) $this->selectedBillIds);
+        $selectedBills = collect($billGroups)
+            ->flatMap(fn (array $group): array => $group['bills'])
+            ->filter(fn (array $bill): bool => in_array((int) $bill['id'], $selectedIds, true))
+            ->values()
+            ->all();
+
         return view('livewire.payment.create', [
             'searchResults' => $searchResults,
             'banks' => Bank::orderBy('name')->get(),
-            'billGroups' => $this->buildBillGroups(),
-            'selectedIds' => array_map('intval', (array) $this->selectedBillIds),
+            'billGroups' => $billGroups,
+            'selectedIds' => $selectedIds,
+            'selectedBills' => $selectedBills,
             'totalPembayaran' => $this->totalSelectedAmount(),
         ]);
     }

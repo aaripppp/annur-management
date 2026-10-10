@@ -147,7 +147,7 @@
         <div class="p-6 border-b border-outline-variant flex flex-col sm:flex-row justify-between items-center gap-4">
             <h2 class="text-headline-sm font-headline-sm text-on-surface">Daftar Siswa</h2>
             
-            <div class="flex items-center gap-3 w-full sm:w-auto">
+            <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                 <div class="relative flex-1 sm:flex-initial">
                     <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
                     <input type="text"
@@ -175,12 +175,19 @@
                     <option value="lulus">Lulus</option>
                     <option value="pindah">Pindah</option>
                 </select>
+                <select wire:model.live="filterCategory" class="w-full sm:w-44 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2" aria-label="Filter kategori siswa">
+                    <option value="">Semua Kategori</option>
+                    <option value="normal">Siswa Normal</option>
+                    @foreach($activeCategories as $category)
+                        <option value="{{ $category->code }}">{{ $category->name }}</option>
+                    @endforeach
+                </select>
             </div>
         </div>
 
         <!-- Table -->
         <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse min-w-[1100px]">
+            <table class="w-full text-left border-collapse min-w-[1250px]">
                 <thead>
                     <tr class="bg-surface border-b border-outline-variant text-body-sm font-label-md text-on-surface-variant uppercase tracking-wider">
                         <th class="p-4 w-14 text-center font-semibold">No.</th>
@@ -189,6 +196,7 @@
                         <th class="p-4 font-semibold">Panggilan</th>
                         <th class="p-4 font-semibold">Kelas</th>
                         <th class="p-4 font-semibold">Status</th>
+                        <th class="p-4 font-semibold">Kategori</th>
                         <th class="p-4 font-semibold">L/P</th>
                         <th class="p-4 font-semibold">Alamat</th>
                         <th class="p-4 font-semibold text-right">Aksi</th>
@@ -236,6 +244,17 @@
                                     <span class="text-on-surface-variant text-body-sm">-</span>
                                 @endif
                             </td>
+                            <td class="p-4 max-w-[220px]">
+                                <div class="flex flex-wrap gap-1.5">
+                                    @forelse($student->categories->sortBy('name') as $category)
+                                        <x-student.category-badge :category="$category" />
+                                    @empty
+                                        <span class="inline-flex px-2 py-0.5 rounded-full border border-outline-variant text-on-surface-variant text-label-sm font-label-sm">
+                                            Siswa Normal
+                                        </span>
+                                    @endforelse
+                                </div>
+                            </td>
                             <td class="p-4">
                                 @if($student->jenis_kelamin === 'L')
                                     <span class="text-primary font-bold">L</span>
@@ -262,7 +281,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="p-8 text-center text-on-surface-variant">
+                            <td colspan="10" class="p-8 text-center text-on-surface-variant">
                                 <span class="material-symbols-outlined text-4xl mb-2">search_off</span>
                                 <p>Tidak ada siswa yang ditemukan.</p>
                             </td>
@@ -393,6 +412,31 @@
                             <textarea id="alamat" wire:model="alamat" rows="3" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm" placeholder="Jalan, RT/RW, Desa/Kelurahan..."></textarea>
                             @error('alamat') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
                         </div>
+
+                        <fieldset>
+                            <legend class="block text-label-md font-label-md text-on-surface mb-2">Kategori Siswa</legend>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                @forelse($activeCategories as $category)
+                                    <label class="flex items-center gap-2 border border-outline-variant rounded-lg px-3 py-2.5 cursor-pointer hover:bg-surface-container-low transition-colors">
+                                        <input type="checkbox" wire:model="categoryIds" value="{{ $category->id }}" class="rounded text-primary focus:ring-primary border-outline-variant">
+                                        <span class="text-body-md text-on-surface">{{ $category->name }}</span>
+                                    </label>
+                                @empty
+                                    <p class="text-body-sm text-on-surface-variant">Belum ada kategori aktif.</p>
+                                @endforelse
+                            </div>
+                            @if($inactiveCategoryNames !== [])
+                                <div class="flex flex-wrap gap-1.5 mt-3">
+                                    <span class="text-body-sm text-on-surface-variant">Kategori nonaktif yang tetap tersimpan:</span>
+                                    @foreach($inactiveCategoryNames as $inactiveCategoryName)
+                                        <span class="inline-flex px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface text-label-sm font-label-sm">{{ $inactiveCategoryName }}</span>
+                                    @endforeach
+                                </div>
+                            @endif
+                            <p class="text-body-sm text-on-surface-variant mt-2">Tidak ada kategori khusus — siswa dianggap Siswa Normal.</p>
+                            @error('categoryIds') <span class="text-error text-body-sm mt-1 block">{{ $message }}</span> @enderror
+                            @error('categoryIds.*') <span class="text-error text-body-sm mt-1 block">{{ $message }}</span> @enderror
+                        </fieldset>
 
                     </form>
                 </div>

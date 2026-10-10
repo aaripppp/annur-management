@@ -32,7 +32,7 @@
                 'key' => 'monthly:'.$year.'-'.str_pad((string) $month, 2, '0', STR_PAD_LEFT),
                 'label' => 'Tagihan '.$label,
                 'type' => 'monthly',
-                'bills' => $bills,
+                'bills' => \App\Support\BillDisplayOrder::sortRows($bills)->all(),
             ];
         }
         ksort($monthlyOrdered);
@@ -58,6 +58,11 @@
                 'bills' => array_values($oneTimeBills),
             ];
         }
+
+        $selectedBills = collect($editGroups)
+            ->flatMap(fn (array $group): array => $group['bills'])
+            ->filter(fn (array $bill): bool => in_array((int) $bill['id'], $selectedIds, true))
+            ->values();
     @endphp
 
     <!-- Top Subtitle / Breadcrumb -->
@@ -236,12 +241,6 @@
                 </div>
                 <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                        <label for="payment_date" class="block text-label-md font-label-md text-on-surface mb-1">Tanggal Pembayaran <span class="text-error">*</span></label>
-                        <input type="date" id="payment_date" wire:model.live="payment_date" class="w-full py-2.5 px-3 border-outline-variant focus:border-primary focus:ring-primary rounded-lg text-body-md shadow-sm">
-                        @error('payment_date') <span class="text-error text-body-sm mt-1 block">{{ $message }}</span> @enderror
-                    </div>
-
-                    <div>
                         <label for="bank_id" class="block text-label-md font-label-md text-on-surface mb-1">Metode / Rekening <span class="text-error">*</span></label>
                         <select id="bank_id" wire:model.live="bank_id" class="w-full py-2.5 px-3 border-outline-variant focus:border-primary focus:ring-primary rounded-lg text-body-md shadow-sm">
                             @foreach($banks as $bank)
@@ -249,6 +248,12 @@
                             @endforeach
                         </select>
                         @error('bank_id') <span class="text-error text-body-sm mt-1 block">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label for="payment_date" class="block text-label-md font-label-md text-on-surface mb-1">Tanggal Pembayaran <span class="text-error">*</span></label>
+                        <input type="date" id="payment_date" wire:model.live="payment_date" class="w-full py-2.5 px-3 border-outline-variant focus:border-primary focus:ring-primary rounded-lg text-body-md shadow-sm">
+                        @error('payment_date') <span class="text-error text-body-sm mt-1 block">{{ $message }}</span> @enderror
                     </div>
 
                     <div class="md:col-span-2">
@@ -283,18 +288,16 @@
                             <span class="text-label-md font-semibold text-on-surface-variant">Tagihan Dipilih</span>
                             <span class="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full text-label-sm font-label-sm bg-primary-fixed text-on-primary-fixed">{{ count($selectedIds) }}</span>
                         </div>
-                        <div class="flex flex-col">
-                            @forelse($selectedIds as $billId)
+                        <div class="flex flex-col" data-testid="selected-bill-summary">
+                            @forelse($selectedBills as $selected)
                                 @php
-                                    $selected = collect($candidateBills)->firstWhere('id', $billId);
+                                    $billId = (int) $selected['id'];
                                     $amount = (int) round((float) ($selectedBillAmounts[$billId] ?? 0));
                                 @endphp
-                                @if($selected)
-                                    <div wire:key="summary-{{ $billId }}" class="flex justify-between items-center gap-3 text-body-md py-2 border-b border-outline-variant/50 last:border-b-0">
-                                        <span class="min-w-0 truncate text-on-surface">{{ $selected['payment_type_name'] }} <span class="text-body-sm text-on-surface-variant">({{ $selected['period'] }})</span></span>
-                                        <span class="font-semibold text-on-surface whitespace-nowrap font-numeric-data">Rp {{ number_format($amount, 0, ',', '.') }}</span>
-                                    </div>
-                                @endif
+                                <div wire:key="summary-{{ $billId }}" data-summary-bill-id="{{ $billId }}" class="flex justify-between items-center gap-3 text-body-md py-2 border-b border-outline-variant/50 last:border-b-0">
+                                    <span class="min-w-0 truncate text-on-surface">{{ $selected['payment_type_name'] }} <span class="text-body-sm text-on-surface-variant">({{ $selected['period'] }})</span></span>
+                                    <span class="font-semibold text-on-surface whitespace-nowrap font-numeric-data">Rp {{ number_format($amount, 0, ',', '.') }}</span>
+                                </div>
                             @empty
                                 <p class="text-body-sm text-on-surface-variant">Belum ada tagihan dipilih.</p>
                             @endforelse

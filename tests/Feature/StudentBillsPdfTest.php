@@ -2,6 +2,7 @@
 
 use App\Enums\BillFrequency;
 use App\Enums\SchoolLevel;
+use App\Livewire\PaymentCorrection;
 use App\Livewire\StudentDetail;
 use App\Models\AcademicYear;
 use App\Models\Bank;
@@ -16,7 +17,7 @@ use App\Services\StudentBillStatementService;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 
-function payBillForStatement(StudentBill $bill, int $amount, string $status = Payment::STATUS_ACTIVE): void
+function payBillForStatement(StudentBill $bill, int $amount, string $status = Payment::STATUS_ACTIVE): Payment
 {
     $payment = Payment::create([
         'receipt_number' => 'KWT-ST-'.uniqid(),
@@ -38,6 +39,8 @@ function payBillForStatement(StudentBill $bill, int $amount, string $status = Pa
         'academic_year' => $bill->academic_year,
         'amount' => $amount,
     ]);
+
+    return $payment;
 }
 
 function renderBillStatement(Student $student, string $academicYear = ''): array
@@ -131,41 +134,83 @@ it('menampilkan identitas siswa pada statement', function () {
         ->toContain('2026/2027');
 });
 
-it('menampilkan seluruh tagihan bulanan termasuk yang lunas', function () {
+it('meringkas SPP Ekskul dan OSIS dengan nilai kanonik serta mempertahankan Jemputan', function () {
     [$student] = makeEnrolledStudent(SchoolLevel::SMP, '2026/2027');
 
     $spp = makeBillType('SPP');
     $ekskul = makeBillType('Ekskul');
     $osis = makeBillType('OSIS');
+    $jemputan = makeBillType('Jemputan');
 
     payBillForStatement(
-        makeMonthlyBill($student, $spp, 1000000, month: 7, year: 2026),
-        1000000,
+        makeMonthlyBill($student, $spp, 970000, month: 7, year: 2026),
+        970000,
     );
-    makeMonthlyBill($student, $ekskul, 200000, month: 7, year: 2026);
-    makeMonthlyBill($student, $osis, 50000, month: 7, year: 2026);
+    makeMonthlyBill($student, $ekskul, 60000, month: 7, year: 2026);
+    payBillForStatement(
+        makeMonthlyBill($student, $osis, 5000, month: 7, year: 2026),
+        5000,
+    );
+    makeMonthlyBill($student, $jemputan, 150000, month: 7, year: 2026);
 
     [$report, $html] = renderBillStatement($student, '2026/2027');
 
     $july = $report['sections']['monthly'][0];
+    $groupedSpp = $july['rows'][0];
     expect($report['sections']['monthly'])->toHaveCount(1)
         ->and($july['period_label'])->toBe('Juli 2026')
-        ->and($july['rows'])->toHaveCount(3)
+        ->and($july['rows'])->toHaveCount(2)
         ->and(collect($july['rows'])->pluck('payment_type_name')->all())
-        ->toBe(['Ekskul', 'OSIS', 'SPP'])
-        ->and(collect($july['rows'])->pluck('status')->contains('Lunas'))
-        ->toBeTrue();
+        ->toBe(['SPP', 'Jemputan'])
+        ->and((float) $groupedSpp['target'])->toBe(1035000.0)
+        ->and((float) $groupedSpp['paid'])->toBe(975000.0)
+        ->and((float) $groupedSpp['remaining'])->toBe(60000.0)
+        ->and($groupedSpp['status'])->toBe('Sebagian');
 
     expect($html)
         ->toContain('TAGIHAN BULANAN')
         ->toContain('SPP')
-        ->toContain('Ekskul')
-        ->toContain('OSIS')
+        ->toContain('Jemputan')
         ->toContain('Juli 2026')
-        ->toContain('Lunas')
-        ->toContain('Belum Bayar')
+        ->toContain('Rp 1.035.000')
+        ->toContain('Rp 975.000')
+        ->toContain('Rp 60.000')
+        ->toContain('rowspan="2"')
+        ->not->toContain('Ekskul')
+        ->not->toContain('OSIS')
+        ->not->toContain('SPP sudah mencakup')
         ->not->toContain('TAGIHAN TAHUNAN')
         ->not->toContain('TAGIHAN SEKALI BAYAR');
+
+    expect(substr_count($html, 'rowspan="2"'))->toBe(2);
+});
+
+it('mengelompokkan hanya komponen SPP yang benar-benar ada', function () {
+    [$student] = makeEnrolledStudent(SchoolLevel::SMP, '2026/2027');
+
+    $spp = makeBillType('SPP');
+    $ekskul = makeBillType('Ekskul');
+    makeBillType('OSIS');
+
+    makeMonthlyBill($student, $spp, 970000, month: 7, year: 2026);
+    makeMonthlyBill($student, $ekskul, 60000, month: 7, year: 2026);
+
+    [$report, $html] = renderBillStatement($student, '2026/2027');
+
+    $rows = $report['sections']['monthly'][0]['rows'];
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0]['payment_type_name'])->toBe('SPP')
+        ->and((float) $rows[0]['target'])->toBe(1030000.0)
+        ->and((float) $rows[0]['paid'])->toBe(0.0)
+        ->and((float) $rows[0]['remaining'])->toBe(1030000.0)
+        ->and($rows[0]['status'])->toBe('Belum Bayar');
+
+    expect($html)
+        ->toContain('rowspan="1"')
+        ->not->toContain('Ekskul')
+        ->not->toContain('OSIS');
+
+    expect(substr_count($html, 'rowspan="1"'))->toBe(2);
 });
 
 it('menampilkan tagihan sebagian dengan terbayar dan sisa yang benar', function () {
@@ -219,17 +264,23 @@ it('menampilkan tagihan sekali bayar per baris', function () {
     [$student] = makeEnrolledStudent(SchoolLevel::SMP, '2026/2027');
 
     $pangkal = makeBillType('Uang Pangkal');
+    $admJemputan = makeBillType('Adm Jemputan');
     makeBillRate($pangkal, 8, 5000000, ['billing_frequency' => BillFrequency::OneTime]);
+    makeBillRate($admJemputan, 8, 50000, ['billing_frequency' => BillFrequency::OneTime]);
     $bill = makeOneTimeBill($student, $pangkal, 5000000, '2026/2027');
+    makeOneTimeBill($student, $admJemputan, 50000, '2026/2027');
     payBillForStatement($bill, 5000000);
 
     [$report, $html] = renderBillStatement($student, '2026/2027');
 
-    expect($report['sections']['one_time'])->toHaveCount(1)
-        ->and($report['sections']['one_time'][0]['status'])->toBe('Lunas');
+    $oneTimeRows = collect($report['sections']['one_time'])->keyBy('payment_type_name');
+    expect($report['sections']['one_time'])->toHaveCount(2)
+        ->and($oneTimeRows->keys()->all())->toContain('Adm Jemputan', 'Uang Pangkal')
+        ->and($oneTimeRows['Uang Pangkal']['status'])->toBe('Lunas');
 
     expect($html)
         ->toContain('TAGIHAN SEKALI BAYAR')
+        ->toContain('Adm Jemputan')
         ->toContain('Uang Pangkal')
         ->toContain('Tahun Ajaran 2026/2027')
         ->toContain('Lunas');
@@ -251,8 +302,35 @@ it('tidak menampilkan jenis pembayaran yang tidak punya tagihan', function () {
 
     expect($html)
         ->toContain('SPP')
+        ->toContain('rowspan="1"')
         ->not->toContain('Ekskul')
         ->not->toContain('OSIS');
+});
+
+it('mengurutkan SPP Jemputan dan tipe bulanan lain tanpa menyembunyikan tipe dinamis', function () {
+    [$student] = makeEnrolledStudent(SchoolLevel::SMP, '2026/2027');
+
+    $spp = makeBillType(' SPP ');
+    $osis = makeBillType('OsIs');
+    $jemputan = makeBillType('Jemputan');
+    $digital = makeBillType('Iuran Digital');
+    $lainnya = makeBillType('Lainnya');
+
+    makeMonthlyBill($student, $lainnya, 40000, month: 7, year: 2026);
+    makeMonthlyBill($student, $osis, 5000, month: 7, year: 2026);
+    makeMonthlyBill($student, $digital, 75000, month: 7, year: 2026);
+    makeMonthlyBill($student, $jemputan, 150000, month: 7, year: 2026);
+    makeMonthlyBill($student, $spp, 970000, month: 7, year: 2026);
+
+    [$report, $html] = renderBillStatement($student, '2026/2027');
+
+    expect(collect($report['sections']['monthly'][0]['rows'])->pluck('payment_type_name')->all())
+        ->toBe(['SPP', 'Jemputan', 'Iuran Digital', 'Lainnya']);
+
+    expect($html)
+        ->toContain('Iuran Digital')
+        ->toContain('Lainnya')
+        ->not->toContain('OsIs');
 });
 
 it('menempatkan tipe pembayaran dinamis pada section yang benar', function () {
@@ -295,8 +373,8 @@ it('membatasi populasi sesuai tahun ajaran terpilih', function () {
     expect($html26)->toContain('SPP')->not->toContain('Ekskul');
 
     expect($report27['sections']['monthly'])->toHaveCount(1)
-        ->and($report27['sections']['monthly'][0]['rows'][0]['payment_type_name'])->toBe('Ekskul');
-    expect($html27)->toContain('Ekskul')->not->toContain('SPP');
+        ->and($report27['sections']['monthly'][0]['rows'][0]['payment_type_name'])->toBe('SPP');
+    expect($html27)->toContain('SPP')->not->toContain('Ekskul');
 });
 
 it('menggunakan snapshot tagihan yang tersimpan meski tarif berubah', function () {
@@ -333,7 +411,69 @@ it('tidak menghitung alokasi pembayaran yang dibatalkan', function () {
     expect($html)
         ->toContain('Belum Bayar')
         ->not->toContain('Lunas')
-        ->and(substr_count($html, '<td class="money">-</td>'))->toBe(2);
+        ->and(substr_count($html, '<td class="money">-</td>'))->toBe(1);
+});
+
+it('menggunakan alokasi terkini setelah koreksi pembayaran', function () {
+    $user = User::factory()->create();
+    Livewire::actingAs($user);
+    [$student] = makeEnrolledStudent(SchoolLevel::SMP, '2026/2027');
+
+    $spp = makeBillType('SPP');
+    $ekskul = makeBillType('Ekskul');
+    $sppBill = makeMonthlyBill($student, $spp, 970000, month: 7, year: 2026);
+    $ekskulBill = makeMonthlyBill($student, $ekskul, 60000, month: 7, year: 2026);
+    $payment = payBillForStatement($sppBill, 970000);
+
+    Livewire::test(PaymentCorrection::class, ['id' => $payment->id])
+        ->set('selectedBillIds', [$sppBill->id, $ekskulBill->id])
+        ->set('selectedBillAmounts.'.$sppBill->id, 500000)
+        ->set('selectedBillAmounts.'.$ekskulBill->id, 60000)
+        ->call('gotoConfirm')
+        ->set('reason', 'Koreksi alokasi untuk pengujian statement')
+        ->call('save');
+
+    [$report] = renderBillStatement($student, '2026/2027');
+
+    $row = $report['sections']['monthly'][0]['rows'][0];
+    expect((float) $row['target'])->toBe(1030000.0)
+        ->and((float) $row['paid'])->toBe(560000.0)
+        ->and((float) $row['remaining'])->toBe(470000.0)
+        ->and($row['status'])->toBe('Sebagian');
+});
+
+it('membatasi kelebihan pembayaran pada target grup', function () {
+    [$student] = makeEnrolledStudent(SchoolLevel::SMP, '2026/2027');
+
+    $spp = makeBillType('SPP');
+    $bill = makeMonthlyBill($student, $spp, 1000000, month: 7, year: 2026);
+    payBillForStatement($bill, 1200000);
+
+    [$report, $html] = renderBillStatement($student, '2026/2027');
+
+    $row = $report['sections']['monthly'][0]['rows'][0];
+    expect((float) $row['target'])->toBe(1000000.0)
+        ->and((float) $row['paid'])->toBe(1000000.0)
+        ->and((float) $row['remaining'])->toBe(0.0)
+        ->and($row['status'])->toBe('Lunas');
+
+    expect($html)->not->toContain('Rp 1.200.000');
+});
+
+it('memberi status Lunas ketika seluruh komponen grup SPP terbayar', function () {
+    [$student] = makeEnrolledStudent(SchoolLevel::SMP, '2026/2027');
+
+    $spp = makeBillType('SPP');
+    $ekskul = makeBillType('Ekskul');
+    payBillForStatement(makeMonthlyBill($student, $spp, 970000, month: 7, year: 2026), 970000);
+    payBillForStatement(makeMonthlyBill($student, $ekskul, 60000, month: 7, year: 2026), 60000);
+
+    [$report] = renderBillStatement($student, '2026/2027');
+
+    $row = $report['sections']['monthly'][0]['rows'][0];
+    expect((float) $row['paid'])->toBe(1030000.0)
+        ->and((float) $row['remaining'])->toBe(0.0)
+        ->and($row['status'])->toBe('Lunas');
 });
 
 it('total selalu rekonsiliasi: tagihan = terbayar + sisa', function () {
@@ -373,7 +513,7 @@ it('NIS yang null tetap menghasilkan PDF tanpa error', function () {
 
     expect($html)
         ->toContain('NIS')
-        ->toContain($student->nama_lengkap);
+        ->toContain(e($student->nama_lengkap));
 
     $this->actingAs(User::factory()->create())
         ->get(route('siswa.bills.pdf', ['student' => $student->id]))
@@ -428,7 +568,7 @@ it('menampilkan tombol Cetak Tagihan dengan tahun ajaran yang dipilih', function
         ->assertSeeHtml(route('siswa.bills.pdf', ['student' => $student->id, 'academic_year' => '2026/2027']));
 });
 
-it('mengelompokkan tagihan per bulan dengan subtotal masing-masing', function () {
+it('mengelompokkan tagihan per bulan tanpa merender baris total bulanan', function () {
     [$student] = makeEnrolledStudent(SchoolLevel::SMP, '2026/2027');
 
     $spp = makeBillType('SPP');
@@ -447,16 +587,16 @@ it('mengelompokkan tagihan per bulan dengan subtotal masing-masing', function ()
     expect(collect($report['sections']['monthly'])->pluck('period_label')->all())
         ->toBe(['Juli 2026', 'Agustus 2026']);
 
-    expect($july['rows'])->toHaveCount(2)
-        ->and(collect($july['rows'])->pluck('payment_type_name')->all())->toBe(['Ekskul', 'SPP'])
-        ->and(collect($july['rows'])->pluck('status')->contains('Lunas'))->toBeTrue()
+    expect($july['rows'])->toHaveCount(1)
+        ->and(collect($july['rows'])->pluck('payment_type_name')->all())->toBe(['SPP'])
+        ->and($july['rows'][0]['status'])->toBe('Sebagian')
         ->and((float) $july['totals']['target'])->toBe(935000.0)
         ->and((float) $july['totals']['paid'])->toBe(800000.0)
         ->and((float) $july['totals']['remaining'])->toBe(135000.0)
         ->and($july['totals']['target'])->toBe(round($july['totals']['paid'] + $july['totals']['remaining'], 2));
 
-    expect($august['rows'])->toHaveCount(2)
-        ->and(collect($august['rows'])->pluck('status')->contains('Belum Bayar'))->toBeTrue()
+    expect($august['rows'])->toHaveCount(1)
+        ->and($august['rows'][0]['status'])->toBe('Belum Bayar')
         ->and((float) $august['totals']['paid'])->toBe(0.0)
         ->and((float) $august['totals']['remaining'])->toBe(935000.0)
         ->and($august['totals']['target'])->toBe(round($august['totals']['paid'] + $august['totals']['remaining'], 2));
@@ -464,7 +604,7 @@ it('mengelompokkan tagihan per bulan dengan subtotal masing-masing', function ()
     expect($html)
         ->toContain('Juli 2026')
         ->toContain('Agustus 2026')
-        ->toContain('TOTAL');
+        ->not->toContain('TOTAL');
 });
 
 it('menghasilkan statement billbook normal sebagai satu halaman F4B portrait tanpa gaya pemotongan', function () {
@@ -520,6 +660,8 @@ it('menghasilkan statement billbook normal sebagai satu halaman F4B portrait tan
 
     expect($html)
         ->toContain('@page { size: 216mm 330mm')
+        ->toContain('thead { display: table-header-group; }')
+        ->toContain('.report-table tr, .month-group { page-break-inside: avoid; }')
         ->toContain('DAFTAR TAGIHAN SISWA')
         ->toContain('TAGIHAN BULANAN')
         ->toContain('TAGIHAN TAHUNAN')
@@ -535,6 +677,30 @@ it('menghasilkan statement billbook normal sebagai satu halaman F4B portrait tan
             'November 2026', 'Desember 2026', 'Januari 2027', 'Februari 2027',
             'Maret 2027', 'April 2027', 'Mei 2027', 'Juni 2027',
         ]);
+});
+
+it('menghasilkan PDF tanpa menulis ulang data finansial', function () {
+    [$student] = makeEnrolledStudent(SchoolLevel::SMP, '2026/2027');
+    $spp = makeBillType('SPP');
+    $bill = makeMonthlyBill($student, $spp, 1000000, month: 7, year: 2026);
+    payBillForStatement($bill, 400000);
+    $user = User::factory()->create();
+
+    $before = [
+        'bills' => StudentBill::count(),
+        'payments' => Payment::count(),
+        'details' => PaymentDetail::count(),
+    ];
+
+    $this->actingAs($user)
+        ->get(route('siswa.bills.pdf', ['student' => $student->id, 'academic_year' => '2026/2027']))
+        ->assertOk();
+
+    expect([
+        'bills' => StudentBill::count(),
+        'payments' => Payment::count(),
+        'details' => PaymentDetail::count(),
+    ])->toBe($before);
 });
 
 it('mengalirkan PDF billbook satu tahun penuh tanpa error', function () {

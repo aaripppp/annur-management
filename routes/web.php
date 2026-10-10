@@ -55,6 +55,7 @@ use App\Livewire\ProspectiveStudentManagement;
 use App\Livewire\SchoolClassManagement;
 use App\Livewire\SchoolDailyReport;
 use App\Livewire\StudentBulkUpdate;
+use App\Livewire\StudentCategoryManagement;
 use App\Livewire\StudentDetail;
 use App\Livewire\StudentExamEligibility;
 use App\Livewire\StudentImport;
@@ -198,6 +199,10 @@ Route::get('/bank', BankManagement::class)
 Route::get('/jenis-pembayaran', PaymentTypeManagement::class)
     ->middleware('auth')
     ->name('jenis-pembayaran.index');
+
+Route::get('/kategori-siswa', StudentCategoryManagement::class)
+    ->middleware('auth')
+    ->name('kategori-siswa.index');
 
 Route::get('/tarif-pembayaran', PaymentRateManagement::class)
     ->middleware('auth')

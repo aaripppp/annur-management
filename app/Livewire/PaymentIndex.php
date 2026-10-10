@@ -520,7 +520,7 @@ class PaymentIndex extends Component
             $searchTerm = '%'.$search.'%';
 
             $searchResults = Student::query()
-                ->with(['schoolClass', 'enrollments.academicYear'])
+                ->with(['schoolClass', 'enrollments.academicYear', 'categories'])
                 ->where(function ($query) use ($searchTerm): void {
                     $query->where('nama_lengkap', 'like', $searchTerm)
                         ->orWhere('nama_panggilan', 'like', $searchTerm)
@@ -550,7 +550,7 @@ class PaymentIndex extends Component
         $selectedStudent = $this->selectedStudentId === null
             ? null
             : Student::query()
-                ->with(['schoolClass', 'enrollments.academicYear'])
+                ->with(['schoolClass', 'enrollments.academicYear', 'categories'])
                 ->find($this->selectedStudentId);
 
         $academicYearContext = null;

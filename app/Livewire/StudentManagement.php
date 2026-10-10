@@ -8,6 +8,7 @@ use App\Models\AcademicYear;
 use App\Models\ProspectiveStudent;
 use App\Models\SchoolClass;
 use App\Models\Student;
+use App\Models\StudentCategory;
 use App\Services\StudentCreationService;
 use App\Services\StudentDeletionService;
 use App\Services\StudentPhotoService;
@@ -16,6 +17,8 @@ use App\Services\StudentStatisticService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -40,6 +43,9 @@ class StudentManagement extends Component
 
     #[Url(as: 'status')]
     public $filterStatus = '';
+
+    #[Url(as: 'kategori')]
+    public string $filterCategory = '';
 
     // Statistik siswa (kartu) — terpisah dari filter tabel di bawah.
     public string $statYearId = '';
@@ -99,6 +105,12 @@ class StudentManagement extends Component
 
     public bool $remove_foto = false;
 
+    /** @var array<int, int|string> */
+    public array $categoryIds = [];
+
+    /** @var array<int, string> */
+    public array $inactiveCategoryNames = [];
+
     // Reset pagination when filter changes
     public function updatedFilterClassId()
     {
@@ -111,6 +123,11 @@ class StudentManagement extends Component
     }
 
     public function updatedFilterStatus()
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterCategory(): void
     {
         $this->resetPage();
     }
@@ -178,6 +195,7 @@ class StudentManagement extends Component
             'studentId', 'nis', 'nama_lengkap', 'nama_panggilan', 'class_id', 'entry_academic_year_id', 'status',
             'jenis_kelamin', 'alamat', 'nama_ayah', 'no_telp_ayah', 'nama_ibu', 'no_telp_ibu',
             'tempat_lahir', 'tanggal_lahir', 'entry_date', 'foto_upload', 'existing_foto', 'remove_foto', 'isEditing',
+            'categoryIds', 'inactiveCategoryNames',
         ]);
         $this->resetValidation();
     }
@@ -204,6 +222,16 @@ class StudentManagement extends Component
         $this->existing_foto = $student->foto;
         $this->foto_upload = null;
         $this->remove_foto = false;
+        $categories = $student->categories()->orderBy('name')->get();
+        $this->categoryIds = $categories
+            ->where('is_active', true)
+            ->pluck('id')
+            ->all();
+        $this->inactiveCategoryNames = $categories
+            ->where('is_active', false)
+            ->pluck('name')
+            ->values()
+            ->all();
 
         $this->isModalOpen = true;
     }
@@ -214,7 +242,10 @@ class StudentManagement extends Component
             $student = Student::query()->findOrFail((int) $this->studentId);
             $updater = app(StudentProfileUpdater::class);
             $photoService = app(StudentPhotoService::class);
-            $validatedData = $this->validate($updater->rules($student), $updater->messages());
+            $validatedData = $this->validate([
+                ...$updater->rules($student),
+                ...$this->categoryRules(),
+            ], $updater->messages());
             $newPhotoPath = null;
 
             try {
@@ -225,7 +256,10 @@ class StudentManagement extends Component
                     $validatedData['foto'] = null;
                 }
 
-                $updater->update($student, $validatedData);
+                DB::transaction(function () use ($updater, $student, $validatedData): void {
+                    $updater->update($student, $validatedData);
+                    $student->categories()->sync($this->categoryIdsForSync($student, $validatedData['categoryIds'] ?? []));
+                });
             } catch (Throwable $exception) {
                 $photoService->delete($newPhotoPath);
 
@@ -251,6 +285,7 @@ class StudentManagement extends Component
             'alamat' => 'nullable|string',
             'entry_academic_year_id' => 'nullable|required_if:status,lulus,pindah|exists:academic_years,id',
             ...app(StudentProfileUpdater::class)->biodataRules(),
+            ...$this->categoryRules(),
         ];
 
         $rules['nis'] = 'nullable|string|max:50';
@@ -259,7 +294,7 @@ class StudentManagement extends Component
 
         $updater = app(StudentProfileUpdater::class);
         $photoService = app(StudentPhotoService::class);
-        $data = collect($validatedData)->except(['entry_academic_year_id', 'foto_upload', 'remove_foto'])->toArray();
+        $data = collect($validatedData)->except(['entry_academic_year_id', 'foto_upload', 'remove_foto', 'categoryIds'])->toArray();
         $data = $updater->normalizeBiodata($data);
 
         if (! empty($validatedData['entry_academic_year_id'])) {
@@ -274,7 +309,10 @@ class StudentManagement extends Component
                 $data['foto'] = $photoPath;
             }
 
-            app(StudentCreationService::class)->create($data);
+            DB::transaction(function () use ($data, $validatedData): void {
+                $student = app(StudentCreationService::class)->create($data);
+                $student->categories()->sync($validatedData['categoryIds'] ?? []);
+            });
         } catch (Throwable $exception) {
             $photoService->delete($photoPath);
 
@@ -319,7 +357,7 @@ class StudentManagement extends Component
 
     public function render()
     {
-        $query = Student::with(['schoolClass', 'enrollments.academicYear'])->latest();
+        $query = Student::with(['schoolClass', 'enrollments.academicYear', 'categories'])->latest();
 
         if ($this->filterLevel !== '') {
             $level = SchoolLevel::tryFrom($this->filterLevel);
@@ -337,6 +375,16 @@ class StudentManagement extends Component
 
         if ($this->filterClassId) {
             $query->where('class_id', $this->filterClassId);
+        }
+
+        if ($this->filterCategory === 'normal') {
+            $query->whereDoesntHave('categories');
+        } elseif ($this->filterCategory !== '') {
+            $query->whereHas('categories', function (Builder $categoryQuery): void {
+                $categoryQuery
+                    ->where('code', $this->filterCategory)
+                    ->where('is_active', true);
+            });
         }
 
         if (trim($this->search) !== '') {
@@ -415,7 +463,46 @@ class StudentManagement extends Component
             'academicYears' => $academicYears,
             'statCounts' => $statCounts,
             'statClasses' => $statClasses,
+            'activeCategories' => StudentCategory::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(),
         ]);
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    private function categoryRules(): array
+    {
+        return [
+            'categoryIds' => ['nullable', 'array'],
+            'categoryIds.*' => [
+                'integer',
+                'distinct',
+                Rule::exists('student_categories', 'id')->where('is_active', true),
+            ],
+        ];
+    }
+
+    /**
+     * Preserve inactive historical assignments while syncing active selections.
+     *
+     * @param  array<int, int|string>  $activeCategoryIds
+     * @return array<int, int>
+     */
+    private function categoryIdsForSync(Student $student, array $activeCategoryIds): array
+    {
+        $inactiveCategoryIds = $student->categories()
+            ->where('is_active', false)
+            ->pluck('student_categories.id')
+            ->all();
+
+        return collect([...$activeCategoryIds, ...$inactiveCategoryIds])
+            ->map(fn (int|string $id): int => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

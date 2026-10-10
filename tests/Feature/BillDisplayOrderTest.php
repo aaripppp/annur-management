@@ -17,11 +17,12 @@ use Livewire\Livewire;
  */
 function billDisplayOrderFixture(array $names): Collection
 {
-    return collect($names)->map(function (string $name): StudentBill {
+    return collect($names)->map(function (string $name, int $index): StudentBill {
         $type = new PaymentType;
         $type->name = $name;
 
         $bill = new StudentBill;
+        $bill->id = $index + 1;
         $bill->setRelation('paymentType', $type);
 
         return $bill;
@@ -54,9 +55,25 @@ it('menaruh SPP sebelum OSIS', function () {
         ->toBe(['SPP', 'OSIS']);
 });
 
-it('menaruh SPP, Ekskul, OSIS di depan dan mempertahankan urutan relatif jenis lain', function () {
+it('menaruh SPP, Ekskul, OSIS, dan Jemputan di depan jenis lain', function () {
     expect(billDisplayOrderNames(BillDisplayOrder::sort(billDisplayOrderFixture(['Jemputan', 'OSIS', 'Infak', 'Ekskul', 'SPP']))))
         ->toBe(['SPP', 'Ekskul', 'OSIS', 'Jemputan', 'Infak']);
+});
+
+it('mengurutkan jenis bulanan lain berdasarkan nama normal lalu ID', function () {
+    $rows = [
+        ['id' => 9, 'payment_type_name' => 'Lainnya'],
+        ['id' => 8, 'payment_type_name' => ' iuran digital '],
+        ['id' => 7, 'payment_type_name' => 'Iuran Digital'],
+        ['id' => 6, 'payment_type_name' => 'Jemputan'],
+    ];
+
+    expect(BillDisplayOrder::sortRows($rows)->pluck('id')->all())->toBe([6, 7, 8, 9]);
+});
+
+it('menaruh Jemputan setelah Ekskul ketika OSIS tidak ada', function () {
+    expect(billDisplayOrderNames(BillDisplayOrder::sort(billDisplayOrderFixture(['Jemputan', 'Ekskul', 'SPP']))))
+        ->toBe(['SPP', 'Ekskul', 'Jemputan']);
 });
 
 it('mengenali nama jenis pembayaran tanpa memedulikan huruf besar/kecil', function () {
@@ -80,11 +97,26 @@ it('shared bill table mengurutkan ulang jenis pembayaran sesuai prioritas', func
         fn (string $name): StudentBill => makeMonthlyBill($student, makeBillType($name), 100000, 8, 2026)->load('paymentType')
     );
 
-    $html = view('livewire.student.bill-table', ['bills' => $bills, 'readOnly' => true])->render();
+    $html = view('livewire.student.bill-table', [
+        'bills' => $bills,
+        'readOnly' => true,
+        'applyMonthlyOrder' => true,
+    ])->render();
 
     expect(preg_match_all('/<td[^>]*font-body-md text-on-surface whitespace-nowrap[^>]*>(.*?)<\/td>/s', $html, $matches))
         ->toBe(5)
         ->and($matches[1])->toBe(['SPP', 'Ekskul', 'OSIS', 'Jemputan', 'Infak']);
+});
+
+it('Billbook menaruh tipe bulanan lain setelah Jemputan secara deterministik', function () {
+    $student = makeBillStudent(8);
+
+    foreach (['Lainnya', 'Jemputan', 'Iuran Digital', 'Ekskul', 'SPP'] as $name) {
+        makeMonthlyBill($student, makeBillType($name), 100000, 8, 2026);
+    }
+
+    Livewire::test(StudentDetail::class, ['student' => $student])
+        ->assertSeeInOrder(['Tagihan Agustus 2026', 'SPP', 'Ekskul', 'Jemputan', 'Iuran Digital', 'Lainnya']);
 });
 
 it('menampilkan SPP, Ekskul, OSIS di atas jenis lain pada tabel tagihan bulanan siswa', function () {

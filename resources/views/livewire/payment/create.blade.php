@@ -307,18 +307,16 @@
                             <span class="text-label-md font-semibold text-on-surface-variant">Tagihan Dipilih</span>
                             <span class="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full text-label-sm font-label-sm bg-primary-fixed text-on-primary-fixed">{{ count($selectedIds) }}</span>
                         </div>
-                        <div class="flex flex-col">
-                            @forelse($selectedIds as $billId)
+                        <div class="flex flex-col" data-testid="selected-bill-summary">
+                            @forelse($selectedBills as $selected)
                                 @php
-                                    $selected = collect($outstandingBills)->firstWhere('id', $billId);
+                                    $billId = (int) $selected['id'];
                                     $amount = (int) round((float) ($selectedBillAmounts[$billId] ?? 0));
                                 @endphp
-                                @if($selected)
-                                    <div wire:key="summary-{{ $billId }}" class="flex justify-between items-center gap-3 text-body-md py-2 border-b border-outline-variant/50 last:border-b-0">
-                                        <span class="min-w-0 truncate text-on-surface">{{ $selected['payment_type_name'] }} <span class="text-body-sm text-on-surface-variant">({{ $selected['period'] }})</span></span>
-                                        <span class="font-semibold text-on-surface whitespace-nowrap font-numeric-data">Rp {{ number_format($amount, 0, ',', '.') }}</span>
-                                    </div>
-                                @endif
+                                <div wire:key="summary-{{ $billId }}" data-summary-bill-id="{{ $billId }}" class="flex justify-between items-center gap-3 text-body-md py-2 border-b border-outline-variant/50 last:border-b-0">
+                                    <span class="min-w-0 truncate text-on-surface">{{ $selected['payment_type_name'] }} <span class="text-body-sm text-on-surface-variant">({{ $selected['period'] }})</span></span>
+                                    <span class="font-semibold text-on-surface whitespace-nowrap font-numeric-data">Rp {{ number_format($amount, 0, ',', '.') }}</span>
+                                </div>
                             @empty
                                 <p class="text-body-sm text-on-surface-variant">Belum ada tagihan dipilih.</p>
                             @endforelse

@@ -129,7 +129,12 @@
                             class="w-full px-4 py-3 text-left hover:bg-surface-container-low transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                         >
                             <div class="min-w-0">
-                                <p class="font-semibold text-on-surface text-body-md truncate">{{ $student->nama_lengkap }}</p>
+                                <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                                    <span class="font-semibold text-on-surface text-body-md break-words">{{ $student->nama_lengkap }}</span>
+                                    @foreach($student->categories->sortBy('name') as $category)
+                                        <x-student.category-badge :category="$category" />
+                                    @endforeach
+                                </div>
                                 <p class="text-body-sm text-on-surface-variant mt-0.5">
                                     NIS: {{ $student->nis ?? '—' }} &bull; {{ $student->academicClassLabel() }} &bull; {{ $student->schoolLevel?->value ?? '-' }} &bull; {{ $student->academicYearContextLabel() ?? '-' }}
                                 </p>
@@ -228,13 +233,21 @@
                                 </span>
                             @endif
                         </div>
-                        <p class="text-body-sm text-on-surface-variant mt-1.5">
+                        <div data-testid="selected-student-metadata" class="text-body-sm text-on-surface-variant mt-1.5 flex flex-wrap items-center gap-y-1">
                             <span class="font-numeric-data">NIS {{ $selectedStudent->nis ?? '—' }}</span>
                             <span class="mx-1">&bull;</span>
-                            {{ $selectedStudent->nama_panggilan ?? '—' }}
+                            <span>{{ $selectedStudent->nama_panggilan ?? '—' }}</span>
                             <span class="mx-1">&bull;</span>
-                            {{ $selectedStudent->jenis_kelamin === 'L' ? 'Laki-laki' : ($selectedStudent->jenis_kelamin === 'P' ? 'Perempuan' : '—') }}
-                        </p>
+                            <span>{{ $selectedStudent->jenis_kelamin === 'L' ? 'Laki-laki' : ($selectedStudent->jenis_kelamin === 'P' ? 'Perempuan' : '—') }}</span>
+                            @if($selectedStudent->categories->isNotEmpty())
+                                <span class="mx-1">&bull;</span>
+                                <span class="flex flex-wrap items-center gap-1.5 min-w-0">
+                                    @foreach($selectedStudent->categories->sortBy('name') as $category)
+                                        <x-student.category-badge :category="$category" />
+                                    @endforeach
+                                </span>
+                            @endif
+                        </div>
                     </div>
                 </div>
 
@@ -451,7 +464,7 @@
                                     Tambah Tagihan
                                 </button>
                             </div>
-                            @include('livewire.student.bill-table', ['bills' => $group['bills']])
+                            @include('livewire.student.bill-table', ['bills' => $group['bills'], 'applyMonthlyOrder' => true])
                         </div>
                     @endforeach
 

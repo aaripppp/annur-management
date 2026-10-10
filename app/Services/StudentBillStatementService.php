@@ -24,6 +24,12 @@ use Illuminate\Support\Collection;
  */
 class StudentBillStatementService
 {
+    private const SPP_PAYMENT_TYPES = [
+        'spp' => true,
+        'ekskul' => true,
+        'osis' => true,
+    ];
+
     /**
      * @return array{
      *     student_name: string,
@@ -51,6 +57,7 @@ class StudentBillStatementService
                 $rows = $group['bills']
                     ->map(fn (StudentBill $bill): array => $this->row($bill))
                     ->all();
+                $rows = $this->compactMonthlyRows($rows);
 
                 return [
                     'period_label' => Carbon::createFromDate(
@@ -135,6 +142,68 @@ class StudentBillStatementService
                 fn (StudentBill $bill): int => $bill->id,
             ])
             ->values();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function compactMonthlyRows(array $rows): array
+    {
+        [$sppRows, $standaloneRows] = collect($rows)
+            ->partition(fn (array $row): bool => isset(self::SPP_PAYMENT_TYPES[$this->normalizedName($row)]));
+
+        $standaloneRows = $standaloneRows
+            ->sort(function (array $left, array $right): int {
+                $leftName = $this->normalizedName($left);
+                $rightName = $this->normalizedName($right);
+                $priority = ($leftName === 'jemputan' ? 0 : 1) <=> ($rightName === 'jemputan' ? 0 : 1);
+
+                return $priority
+                    ?: ($leftName <=> $rightName)
+                    ?: ((int) $left['bill_id'] <=> (int) $right['bill_id']);
+            })
+            ->values();
+
+        if ($sppRows->isEmpty()) {
+            return $standaloneRows->all();
+        }
+
+        $groupedSpp = [
+            'bill_id' => (int) $sppRows->min('bill_id'),
+            'payment_type_name' => 'SPP',
+            'period_label' => $sppRows->first()['period_label'],
+            'target' => $this->sum($sppRows->all(), 'target'),
+            'paid' => $this->sum($sppRows->all(), 'paid'),
+            'remaining' => $this->sum($sppRows->all(), 'remaining'),
+        ];
+        $groupedSpp['status'] = $this->status(
+            $groupedSpp['paid'],
+            $groupedSpp['remaining'],
+        );
+
+        return [$groupedSpp, ...$standaloneRows->all()];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function normalizedName(array $row): string
+    {
+        return mb_strtolower(trim((string) $row['payment_type_name']));
+    }
+
+    private function status(float $paid, float $remaining): string
+    {
+        if ($remaining <= 0) {
+            return 'Lunas';
+        }
+
+        if ($paid <= 0) {
+            return 'Belum Bayar';
+        }
+
+        return 'Sebagian';
     }
 
     /**

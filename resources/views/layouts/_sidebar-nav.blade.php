@@ -111,6 +111,10 @@
                 <span class="material-symbols-outlined text-[20px]" data-icon="tune">tune</span>
                 Jenis Bayar
             </a>
+            <a class="{{ request()->routeIs('kategori-siswa.*') ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('kategori-siswa.index') }}">
+                <span class="material-symbols-outlined text-[20px]" data-icon="label">label</span>
+                Kategori Siswa
+            </a>
             <a class="{{ request()->routeIs('tarif-pembayaran.*') ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('tarif-pembayaran.index') }}">
                 <span class="material-symbols-outlined text-[20px]" data-icon="request_quote">request_quote</span>
                 Tarif SPP

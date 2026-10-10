@@ -70,6 +70,16 @@
                         Kelas : {{ $student->academicClassLabel() }}
                     </p>
                 @endif
+                <div class="flex flex-wrap items-center gap-1.5 mt-2">
+                    <span class="text-body-sm text-on-surface-variant mr-1">Kategori Siswa:</span>
+                    @forelse($student->categories->sortBy('name') as $category)
+                        <x-student.category-badge :category="$category" />
+                    @empty
+                        <span class="inline-flex px-2 py-0.5 rounded-full border border-outline-variant text-on-surface-variant text-label-sm font-label-sm">
+                            Siswa Normal
+                        </span>
+                    @endforelse
+                </div>
             </div>
         </div>
         <div class="flex items-center gap-2">
@@ -230,7 +240,7 @@
                 </button>
             </div>
 
-                @include('livewire.student.bill-table', ['bills' => $group['bills']])
+                @include('livewire.student.bill-table', ['bills' => $group['bills'], 'applyMonthlyOrder' => true])
             </div>
         @endforeach
 

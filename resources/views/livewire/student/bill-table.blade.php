@@ -1,5 +1,7 @@
 @php
-    $bills = \App\Support\BillDisplayOrder::sort($bills);
+    if ($applyMonthlyOrder ?? false) {
+        $bills = \App\Support\BillDisplayOrder::sort($bills);
+    }
 @endphp
 <div class="overflow-x-auto">
     <table class="w-full text-left border-collapse {{ ($readOnly ?? false) ? 'min-w-[760px]' : 'min-w-[900px]' }}">

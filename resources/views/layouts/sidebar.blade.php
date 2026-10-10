@@ -19,6 +19,7 @@
 
     $isMasterDataActive = request()->routeIs('bank.*')
         || request()->routeIs('jenis-pembayaran.*')
+        || request()->routeIs('kategori-siswa.*')
         || request()->routeIs('tarif-pembayaran.*')
         || request()->routeIs('kelas.*')
         || request()->routeIs('tahun-ajaran.*')

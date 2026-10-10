@@ -1,5 +1,7 @@
 <?php
 
+use App\Livewire\PaymentCorrection;
+use App\Livewire\PaymentCreate;
 use App\Livewire\PaymentEdit;
 use App\Models\Bank;
 use App\Models\Payment;
@@ -300,4 +302,63 @@ it('billing frequency drives grouping correctly for all types', function () {
         ->assertSee('Tagihan Sekali Bayar')
         ->assertSee('Uang Buku')
         ->assertSee('Uang Pangkal');
+});
+
+it('mengurutkan tagihan dan ringkasan bulanan tanpa mengubah state atau nominal edit', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $student = makeBillStudent(8);
+    $catalog = manualAddCatalog(8);
+
+    $jemputanBill = makeMonthlyBill($student, $catalog['Jemputan'], 150000, 10, 2026);
+    $osisBill = makeMonthlyBill($student, $catalog['OSIS'], 5000, 10, 2026);
+    $ekskulBill = makeMonthlyBill($student, $catalog['Ekskul'], 60000, 10, 2026);
+    $sppBill = makeMonthlyBill($student, $catalog['SPP'], 970000, 10, 2026);
+
+    $payment = Payment::create([
+        'receipt_number' => 'KWT-ORDER-'.uniqid(),
+        'student_id' => $student->id,
+        'bank_id' => $bank->id,
+        'payment_date' => '2026-10-05',
+        'total_amount' => 0,
+        'payment_method' => 'transfer',
+        'created_by' => $user->id,
+    ]);
+    $selectionOrder = [$jemputanBill->id, $sppBill->id, $osisBill->id, $ekskulBill->id];
+    $canonicalOrder = [$sppBill->id, $ekskulBill->id, $osisBill->id, $jemputanBill->id];
+
+    Livewire::actingAs($user);
+    $component = Livewire::test(PaymentEdit::class, ['id' => $payment->id])
+        ->set('selectedBillIds', $selectionOrder)
+        ->assertSet('selectedBillIds', $selectionOrder)
+        ->assertSeeInOrder(['SPP', 'Ekskul', 'OSIS', 'Jemputan'])
+        ->assertSee('Rp 1.185.000');
+
+    preg_match_all('/data-summary-bill-id="(\d+)"/', $component->html(), $matches);
+
+    expect(array_map('intval', $matches[1]))->toBe($canonicalOrder)
+        ->and($component->get('selectedBillAmounts'))->toMatchArray([
+            $sppBill->id => 970000,
+            $ekskulBill->id => 60000,
+            $osisBill->id => 5000,
+            $jemputanBill->id => 150000,
+        ]);
+});
+
+it('menempatkan metode rekening sebelum tanggal pembayaran seperti form tambah dan koreksi', function () {
+    $payment = createPaymentWithMixedBills();
+    Livewire::actingAs(User::factory()->create());
+
+    $editHtml = Livewire::test(PaymentEdit::class, ['id' => $payment->id])->html();
+    $createHtml = Livewire::test(PaymentCreate::class)->html();
+    $correctionHtml = Livewire::test(PaymentCorrection::class, ['id' => $payment->id])->html();
+
+    foreach ([$editHtml, $createHtml, $correctionHtml] as $markup) {
+        expect(strpos($markup, 'for="bank_id"'))->toBeLessThan(strpos($markup, 'for="payment_date"'));
+    }
+
+    expect($editHtml)
+        ->toContain('wire:model.live="bank_id"')
+        ->toContain('wire:model.live="payment_date"')
+        ->toContain('grid grid-cols-1 md:grid-cols-2 gap-5');
 });

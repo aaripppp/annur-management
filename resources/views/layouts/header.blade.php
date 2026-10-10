@@ -6,6 +6,7 @@
         request()->routeIs('kelas.*') => 'Data Kelas',
         request()->routeIs('bank.*') => 'Data Bank',
         request()->routeIs('jenis-pembayaran.*') => 'Jenis Pembayaran',
+        request()->routeIs('kategori-siswa.*') => 'Kategori Siswa',
         request()->routeIs('tarif-pembayaran.*') => 'Tarif Pembayaran',
         request()->routeIs('pembayaran.*') => 'Pembayaran',
         request()->routeIs('laporan.*') => 'Laporan',

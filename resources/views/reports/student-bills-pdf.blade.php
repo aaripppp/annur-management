@@ -26,12 +26,13 @@
         .info { width: 100%; margin-bottom: 6px; border-collapse: collapse; table-layout: fixed; }
         .info td { border: .5px solid #666; padding: 3px 6px; font-size: 8.5px; vertical-align: top; }
         .info-label { font-weight: bold; }
-        .section-head { margin: 6px 0 3px; padding: 2px 6px; font-size: 9px; font-weight: bold; }
+        .section-head { margin: 6px 0 3px; padding: 2px 6px; font-size: 9px; font-weight: bold; page-break-after: avoid; }
         .report-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .report-table th, .report-table td { padding: 1.5px 3px; border: .4px solid #000; }
         .report-table th { background: #dfe7ef; text-align: center; font-size: 7.5px; }
+        .report-table thead { display: table-header-group; }
+        .report-table tr, .month-group { page-break-inside: avoid; }
         .month-cell { font-size: 8px; font-weight: bold; vertical-align: middle; text-align: center; background: #eef4fb; }
-        .month-total td { background: #e7f0fa; font-weight: bold; font-size: 7.5px; }
         .money { text-align: right; white-space: nowrap; padding-left: 4px; }
         .status { text-align: center; }
         .pill { display: inline-block; padding: .5px 5px; font-size: 6.5px; font-weight: bold; border-radius: 5px; line-height: 1.4; }
@@ -71,20 +72,22 @@
         <table class="report-table">
             <thead>
                 <tr>
-                    <th style="width: 14%;">Bulan</th>
+                    <th style="width: 5%;">No.</th>
+                    <th style="width: 14%;">Periode</th>
                     <th style="width: 20%;">Jenis Pembayaran</th>
-                    <th style="width: 16%;">Tagihan</th>
+                    <th style="width: 15%;">Tagihan</th>
                     <th style="width: 17%;">Sudah Dibayar</th>
-                    <th style="width: 16%;">Sisa</th>
-                    <th style="width: 17%;">Status</th>
+                    <th style="width: 15%;">Sisa</th>
+                    <th style="width: 14%;">Status</th>
                 </tr>
             </thead>
-            <tbody>
-                @foreach ($monthly as $month)
-                    @php $span = count($month['rows']) + 1; $monthlyFirst = true; @endphp
+            @foreach ($monthly as $month)
+                @php $span = count($month['rows']); $monthlyFirst = true; @endphp
+                <tbody class="month-group">
                     @foreach ($month['rows'] as $row)
                         <tr>
                             @if ($monthlyFirst)
+                                <td class="no-col" rowspan="{{ $span }}">{{ $loop->parent->iteration }}</td>
                                 <td class="month-cell" rowspan="{{ $span }}">{{ $month['period_label'] }}</td>
                                 @php $monthlyFirst = false; @endphp
                             @endif
@@ -95,15 +98,8 @@
                             <td class="status"><span class="pill {{ $statusClass($row['status']) }}">{{ $row['status'] }}</span></td>
                         </tr>
                     @endforeach
-                    <tr class="month-total">
-                        <td>TOTAL</td>
-                        <td class="money">{{ $rupiah((float) $month['totals']['target']) }}</td>
-                        <td class="money">{{ $dashIfZero((float) $month['totals']['paid']) }}</td>
-                        <td class="money">{{ $dashIfZero((float) $month['totals']['remaining']) }}</td>
-                        <td></td>
-                    </tr>
-                @endforeach
-            </tbody>
+                </tbody>
+            @endforeach
         </table>
     @endif
 
