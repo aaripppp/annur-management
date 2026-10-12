@@ -364,6 +364,7 @@
                                         <tr class="hover:bg-surface-container-low/50">
                                             <td class="sticky left-0 z-10 border-r border-outline-variant bg-surface-container-lowest px-3 py-3 text-center font-numeric-data">{{ $index + 1 }}</td>
                                             <td class="sticky left-14 z-10 border-r-2 border-outline bg-surface-container-lowest px-4 py-3 font-medium">{{ $row['student_name'] }}</td>
+                                            <td class="w-40 min-w-40 border-r-2 border-outline px-4 py-3">{{ $row['category_display'] }}</td>
                                             @if($recapMonthlyCount > 0)
                                                 @foreach($recapMonthlyTypes as $type)
                                                     <td class="whitespace-nowrap border-r border-outline-variant px-3 py-3 text-center font-numeric-data">{{ $formatClassRecapAmount($row['monthly_summary'][$type['id']]) }}</td>
@@ -394,6 +395,7 @@
                                 <tfoot>
                                     <tr class="border-t-2 border-primary bg-primary-fixed text-label-md font-label-md text-on-primary-fixed">
                                         <td colspan="2" class="sticky left-0 z-20 border-r-2 border-outline bg-primary-fixed px-4 py-3">JUMLAH</td>
+                                        <td class="border-r-2 border-outline px-4 py-3"></td>
                                         @if($recapMonthlyCount > 0)
                                             @foreach($recapMonthlyTypes as $type)
                                                 <td class="whitespace-nowrap border-r border-outline-variant px-3 py-3 text-center font-numeric-data">{{ $formatClassRecapAmount($classRecapReport['totals']['monthly_summary'][$type['id']]) }}</td>

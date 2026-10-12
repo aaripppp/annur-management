@@ -32,7 +32,7 @@
         .report-table th { background: #dfe7ef; text-align: center; font-size: 7.5px; }
         .report-table thead { display: table-header-group; }
         .report-table tr, .month-group { page-break-inside: avoid; }
-        .month-cell { font-size: 8px; font-weight: bold; vertical-align: middle; text-align: center; background: #eef4fb; }
+        .month-cell { font-size: 8px; font-weight: bold; vertical-align: middle; text-align: left; background: #eef4fb; }
         .money { text-align: right; white-space: nowrap; padding-left: 4px; }
         .status { text-align: center; }
         .pill { display: inline-block; padding: .5px 5px; font-size: 6.5px; font-weight: bold; border-radius: 5px; line-height: 1.4; }

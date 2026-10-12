@@ -1,6 +1,7 @@
 <tr class="border-b border-outline-variant bg-surface-container-low">
     <th rowspan="3" class="sticky left-0 z-30 w-14 min-w-14 border-r border-outline-variant bg-surface-container-low px-3 py-3 text-center">No.</th>
     <th rowspan="3" class="sticky left-14 z-30 w-56 min-w-56 border-r-2 border-outline bg-surface-container-low px-4 py-3">Nama Siswa</th>
+    <th rowspan="3" class="w-40 min-w-40 border-r-2 border-outline bg-surface-container-low px-4 py-3">Kategori</th>
     @if($recapMonthlyCount > 0)
         <th colspan="{{ 13 * $recapMonthlyCount + 1 }}" class="{{ $recapMonthlyIsLastGroup ? '' : 'border-r-2 border-outline' }} px-4 py-3 text-center text-primary">Bulanan</th>
     @endif

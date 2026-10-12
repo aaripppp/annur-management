@@ -7,8 +7,11 @@ use App\Models\PaymentType;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\StudentAcademicEnrollment;
+use App\Models\StudentBill;
+use App\Models\StudentCategory;
 use App\Models\User;
 use App\Services\StudentClassPaymentRecapService;
+use Illuminate\Support\Facades\DB;
 use OpenSpout\Reader\XLSX\Reader;
 
 function enrollRecapExportStudent(
@@ -75,6 +78,62 @@ function recapExportWorksheetXml(string $path, int $sheetNumber = 1): string
     $archive->close();
 
     return is_string($worksheet) ? $worksheet : '';
+}
+
+function recapExportStylesXml(string $path): string
+{
+    $archive = new ZipArchive;
+
+    if ($archive->open($path) !== true) {
+        return '';
+    }
+
+    $styles = $archive->getFromName('xl/styles.xml');
+    $archive->close();
+
+    return is_string($styles) ? $styles : '';
+}
+
+/** @return array{style_id: int, font: string, fill: string, border_id: int, format: string} */
+function recapExportCellStyle(string $worksheetXml, string $stylesXml, string $cellReference): array
+{
+    $empty = ['style_id' => -1, 'font' => '', 'fill' => '', 'border_id' => -1, 'format' => ''];
+    $pattern = '/<c\b(?=[^>]*\br="'.preg_quote($cellReference, '/').'")(?=[^>]*\bs="(\d+)")[^>]*>/';
+
+    if (preg_match($pattern, $worksheetXml, $cellMatch) !== 1) {
+        return $empty;
+    }
+
+    $styles = simplexml_load_string($stylesXml);
+
+    if ($styles === false) {
+        return $empty;
+    }
+
+    $styleId = (int) $cellMatch[1];
+    $cellFormat = $styles->cellXfs->xf[$styleId];
+    $fontId = (int) $cellFormat['fontId'];
+    $fillId = (int) $cellFormat['fillId'];
+    $borderId = (int) $cellFormat['borderId'];
+    $numberFormatId = (int) $cellFormat['numFmtId'];
+    $font = strtoupper((string) $styles->fonts->font[$fontId]->color['rgb']);
+    $fill = strtoupper((string) $styles->fills->fill[$fillId]->patternFill->fgColor['rgb']);
+    $format = '';
+
+    foreach ($styles->numFmts->numFmt as $numberFormat) {
+        if ((int) $numberFormat['numFmtId'] === $numberFormatId) {
+            $format = (string) $numberFormat['formatCode'];
+            break;
+        }
+    }
+
+    return [
+        'style_id' => $styleId,
+        'font' => substr($font, -6),
+        'fill' => substr($fill, -6),
+        'border_id' => $borderId,
+        'format' => $format,
+    ];
 }
 
 /** @return list<string> */
@@ -238,25 +297,29 @@ it('exports one historical class with canonical totals and Jemputan data', funct
     expect($flat)->toContain('2026/2027', 'Siswa Historis VII A', 'REKAP JEMPUTAN')
         ->and($flat)->not->toContain('Siswa VII B', 'Siswa Tahun Lain')
         ->and($mainHeader)->toContain('JULI 2026', 'AGUSTUS 2026', 'UANG BUKU', 'UANG PANGKAL')
-        ->and(array_slice($mainDetailHeader, 6, 3))->toBe(['SPP', 'Ekskul', 'OSIS'])
+        ->and(array_slice($mainHeader, 0, 3))->toBe(['NO.', 'NAMA SISWA', 'KATEGORI'])
+        ->and(array_slice($mainDetailHeader, 7, 3))->toBe(['SPP', 'Ekskul', 'OSIS'])
         ->and(array_slice($mainDetailHeader, $uangBukuStartIndex, 3))->toBe(['Tagihan', 'Terbayar', 'Sisa'])
         ->and(array_slice($mainDetailHeader, $uangPangkalStartIndex, 3))->toBe(['Tagihan', 'Terbayar', 'Sisa'])
         ->and($mergedRanges)->toContain(
             'A9:A10',
             'B9:B10',
-            'C9:E9',
-            'F9:F10',
-            'G9:I9',
-            'AQ9:AS9',
-            'AT9:AV9',
+            'C9:C10',
+            'D9:F9',
+            'G9:G10',
+            'H9:J9',
+            'AR9:AT9',
+            'AU9:AW9',
             'C15:E15',
             'R15:S15',
         )
         ->and(recapExportWidthForColumn($columnWidths, 1))->toBe(7.0)
         ->and(recapExportWidthForColumn($columnWidths, 2))->toBe(34.0)
         ->and(recapExportWidthForColumn($columnWidths, 3))->toBe(16.0)
-        ->and(recapExportWidthForColumn($columnWidths, 48))->toBe(16.0)
+        ->and(recapExportWidthForColumn($columnWidths, 4))->toBe(16.0)
+        ->and(recapExportWidthForColumn($columnWidths, 49))->toBe(16.0)
         ->and(recapExportWidthForColumn($columnWidths, 2))->toBeGreaterThan(recapExportWidthForColumn($columnWidths, 3))
+        ->and($mainStudent[2])->toBe('Siswa Normal')
         ->and($mainStudent[$ringkasanSppIndex])->toBe(970_000)
         ->and($mainTotal[$ringkasanSppIndex])->toBe((int) $canonical['totals']['monthly_summary'][$spp->id])
         ->and($mainStudent[$uangBukuRemainingIndex])->toBe(600_000)
@@ -270,6 +333,101 @@ it('exports one historical class with canonical totals and Jemputan data', funct
         ->and($jemputanStudent[$admPaidIndex])->toBe(50_000)
         ->and($jemputanStudent[$admStatusIndex])->toBe('Lunas')
         ->and($jemputanStudent[$jemputanTargetIndex])->toBeInt();
+});
+
+it('exports every category state with semantic styles while preserving body formatting', function () {
+    $academicYear = recapExportYear();
+    $schoolClass = SchoolClass::query()->create(['name' => 'VII Kategori', 'level' => 7]);
+    $spp = configureRecapExportType('SPP', BillFrequency::Monthly, [7], 970_000);
+    $employee = StudentCategory::factory()->create(['name' => 'Anak Pegawai', 'code' => 'anak_pegawai']);
+    $teacher = StudentCategory::query()->where('code', 'anak_guru')->sole();
+    $orphan = StudentCategory::query()->where('code', 'anak_yatim')->sole();
+    $scholarship = StudentCategory::query()->where('code', 'beasiswa')->sole();
+    $unknown = StudentCategory::factory()->create(['name' => 'Kategori Khusus', 'code' => 'kategori_khusus']);
+    $definitions = [
+        ['A Normal', []],
+        ['B Employee', [$employee->id]],
+        ['C Teacher', [$teacher->id]],
+        ['D Orphan', [$orphan->id]],
+        ['E Scholarship', [$scholarship->id]],
+        ['F Unknown', [$unknown->id]],
+        ['G Multiple', [$employee->id, $orphan->id]],
+    ];
+
+    foreach ($definitions as [$name, $categoryIds]) {
+        $student = Student::factory()->create(['nama_lengkap' => $name, 'class_id' => $schoolClass->id]);
+        enrollRecapExportStudent($student, $academicYear, $schoolClass);
+        $student->categories()->attach($categoryIds);
+        makeMonthlyBill($student, $spp, 970_000, 7, 2026);
+    }
+
+    $databaseCounts = [
+        'categories' => StudentCategory::query()->count(),
+        'assignments' => DB::table('student_category_student')->count(),
+        'bills' => StudentBill::query()->count(),
+    ];
+    $response = $this->actingAs(User::factory()->create())
+        ->get(route('laporan.kelas.export', [
+            'academic_year_id' => $academicYear->id,
+            'school_level' => SchoolLevel::SMP->value,
+            'class_id' => $schoolClass->id,
+        ]))
+        ->assertOk();
+    $path = $response->baseResponse->getFile()->getPathname();
+
+    try {
+        $rows = collect(readRecapExportWorkbook($path)['VII Kategori']);
+        $worksheetXml = recapExportWorksheetXml($path);
+        $stylesXml = recapExportStylesXml($path);
+    } finally {
+        if (is_file($path)) {
+            unlink($path);
+        }
+    }
+
+    $studentRows = $rows
+        ->filter(fn (array $row): bool => isset($row[1]) && preg_match('/^[A-G] /', (string) $row[1]) === 1)
+        ->values();
+
+    expect($studentRows->pluck(2)->all())->toBe([
+        'Siswa Normal',
+        'Anak Pegawai',
+        'Anak Guru',
+        'Anak Yatim',
+        'Beasiswa',
+        'Kategori Khusus',
+        'Anak Pegawai, Anak Yatim',
+    ])->and($studentRows->pluck(3)->all())->each->toBeInt()
+        ->and(StudentCategory::query()->count())->toBe($databaseCounts['categories'])
+        ->and(DB::table('student_category_student')->count())->toBe($databaseCounts['assignments'])
+        ->and(StudentBill::query()->count())->toBe($databaseCounts['bills']);
+
+    $expectedColors = [
+        12 => ['FFC000', '000000'],
+        13 => ['FFC000', '000000'],
+        14 => ['548235', 'FFFFFF'],
+        15 => ['2F5597', 'FFFFFF'],
+        16 => ['7F8C8D', 'FFFFFF'],
+        17 => ['7030A0', 'FFFFFF'],
+    ];
+    $normalCategoryStyle = recapExportCellStyle($worksheetXml, $stylesXml, 'C11');
+    $normalFinancialStyle = recapExportCellStyle($worksheetXml, $stylesXml, 'D11');
+
+    expect($normalCategoryStyle['style_id'])->toBe($normalFinancialStyle['style_id'])
+        ->and($normalCategoryStyle['fill'])->toBe('')
+        ->and($normalFinancialStyle['format'])->toBe('#,##0;;')
+        ->and($normalFinancialStyle['border_id'])->toBeGreaterThan(0);
+
+    foreach ($expectedColors as $rowNumber => [$fill, $font]) {
+        $categoryStyle = recapExportCellStyle($worksheetXml, $stylesXml, "C{$rowNumber}");
+        $financialStyle = recapExportCellStyle($worksheetXml, $stylesXml, "D{$rowNumber}");
+
+        expect($categoryStyle['fill'])->toBe($fill)
+            ->and($categoryStyle['font'])->toBe($font)
+            ->and($categoryStyle['border_id'])->toBe($financialStyle['border_id'])
+            ->and($categoryStyle['format'])->toBe('#,##0;;')
+            ->and($financialStyle['format'])->toBe('#,##0;;');
+    }
 });
 
 it('exports only eligible unit classes in level and name order', function () {
@@ -348,11 +506,13 @@ it('exports only eligible unit classes in level and name order', function () {
         $groupHeaderIndex = $rows->search(fn (array $row): bool => in_array('JULI 2026', $row, true));
 
         expect($groupHeaderIndex)->not->toBeFalse()
-            ->and(array_slice($rows[$groupHeaderIndex + 1], 5, 2))->toBe(['SPP', 'Ekskul']);
+            ->and(array_slice($rows[$groupHeaderIndex], 0, 3))->toBe(['NO.', 'NAMA SISWA', 'KATEGORI'])
+            ->and(array_slice($rows[$groupHeaderIndex + 1], 6, 2))->toBe(['SPP', 'Ekskul'])
+            ->and(collect($rows)->first(fn (array $row): bool => isset($row[1]) && str_starts_with((string) $row[1], 'Siswa '))[2])->toBe('Siswa Normal');
     }
 
     foreach ($worksheetXmls as $worksheetXml) {
-        expect(recapExportMergedRanges($worksheetXml))->toContain('C9:D9', 'E9:E10', 'F9:G9');
+        expect(recapExportMergedRanges($worksheetXml))->toContain('C9:C10', 'D9:E9', 'F9:F10', 'G9:H9');
     }
 });
 

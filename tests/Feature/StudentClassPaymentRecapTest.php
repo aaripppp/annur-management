@@ -23,6 +23,7 @@ use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\StudentAcademicEnrollment;
 use App\Models\StudentBill;
+use App\Models\StudentCategory;
 use App\Models\User;
 use App\Services\StudentClassPaymentRecapService;
 use Illuminate\Support\Facades\DB;
@@ -477,6 +478,68 @@ it('renders a sticky clone header aligned with the real recap table', function (
         ->and(substr_count($html, 'class="border-b-2 border-primary bg-surface-container-low text-label-sm"'))->toBe(2);
 });
 
+it('renders plain student categories after the sticky student name column', function () {
+    [$academicYear, $schoolClass, $normalStudent] = makeClassRecapStudent(studentName: 'A Normal');
+    $singleStudent = Student::factory()->create(['nama_lengkap' => 'B Single', 'class_id' => $schoolClass->id]);
+    $multipleStudent = Student::factory()->create(['nama_lengkap' => 'C Multiple', 'class_id' => $schoolClass->id]);
+    $inactiveStudent = Student::factory()->create(['nama_lengkap' => 'D Inactive', 'class_id' => $schoolClass->id]);
+
+    foreach ([$singleStudent, $multipleStudent, $inactiveStudent] as $student) {
+        enrollClassRecapStudent($student, $academicYear, $schoolClass);
+    }
+
+    $employee = StudentCategory::factory()->create(['name' => 'Anak Pegawai', 'code' => 'anak_pegawai']);
+    $orphan = StudentCategory::query()->where('code', 'anak_yatim')->sole();
+    $inactive = StudentCategory::factory()->create([
+        'name' => 'Kategori Historis',
+        'code' => 'kategori_historis',
+        'is_active' => false,
+    ]);
+    $singleStudent->categories()->attach($employee);
+    $multipleStudent->categories()->attach([$employee->id, $orphan->id]);
+    $inactiveStudent->categories()->attach($inactive);
+
+    $report = app(StudentClassPaymentRecapService::class)
+        ->generate($academicYear->id, SchoolLevel::SMP, $schoolClass->id);
+    $rows = collect($report['rows'])->keyBy('student_name');
+
+    expect($rows['A Normal']['category_names'])->toBe([])
+        ->and($rows['A Normal']['category_codes'])->toBe([])
+        ->and($rows['A Normal']['category_display'])->toBe('Siswa Normal')
+        ->and($rows['B Single']['category_display'])->toBe('Anak Pegawai')
+        ->and($rows['C Multiple']['category_names'])->toBe(['Anak Pegawai', 'Anak Yatim'])
+        ->and($rows['C Multiple']['category_codes'])->toBe(['anak_pegawai', 'anak_yatim'])
+        ->and($rows['C Multiple']['category_display'])->toBe('Anak Pegawai, Anak Yatim')
+        ->and($rows['D Inactive']['category_display'])->toBe('Kategori Historis');
+
+    $html = Livewire::test(SchoolDailyReport::class)
+        ->call('setActiveTab', 'class')
+        ->set('classRecapSchoolLevel', SchoolLevel::SMP->value)
+        ->set('classRecapSchoolClassId', (string) $schoolClass->id)
+        ->set('classRecapAcademicYearId', (string) $academicYear->id)
+        ->html();
+    preg_match('/<table class="recap-real-table.*?<\/table>/s', $html, $mainTableMatch);
+    $mainTable = $mainTableMatch[0] ?? '';
+
+    expect($mainTable)->toContain('>Nama Siswa</th>')
+        ->and($mainTable)->toContain('>Kategori</th>')
+        ->and(strpos($mainTable, '>Nama Siswa</th>'))->toBeLessThan(strpos($mainTable, '>Kategori</th>'))
+        ->and($mainTable)->toContain('Siswa Normal')
+        ->and($mainTable)->toContain('Anak Pegawai')
+        ->and($mainTable)->toContain('Anak Pegawai, Anak Yatim')
+        ->and($mainTable)->toContain('Kategori Historis')
+        ->and($mainTable)->not->toContain('>Kelas</th>');
+
+    preg_match('/<th\b([^>]*)>Kategori<\/th>/', $mainTable, $categoryHeaderMatch);
+
+    expect($categoryHeaderMatch[1] ?? '')->toContain('rowspan="3"')
+        ->and($categoryHeaderMatch[1] ?? '')->not->toContain('sticky')
+        ->and($mainTable)->toContain('sticky left-0 z-30 w-14 min-w-14')
+        ->and($mainTable)->toContain('sticky left-14 z-30 w-56 min-w-56')
+        ->and($mainTable)->toContain('colspan="2"')
+        ->and($mainTable)->not->toContain('student-category-badge');
+});
+
 it('scopes yearly bills to the selected academic year and caps paid amounts', function () {
     [$academicYear, $schoolClass, $student] = makeClassRecapStudent();
     $book = makeBillType('Uang Buku');
@@ -650,6 +713,8 @@ it('loads a whole class with a bounded batched query count', function () {
     $spp = makeBillType('SPP');
     configureClassRecapType($spp, SchoolLevel::SMP);
     makeMonthlyBill($firstStudent, $spp, 970_000, 7, 2026);
+    $category = StudentCategory::query()->where('code', 'anak_guru')->sole();
+    $firstStudent->categories()->attach($category);
 
     for ($number = 2; $number <= 20; $number++) {
         $student = Student::factory()->create([
@@ -658,17 +723,24 @@ it('loads a whole class with a bounded batched query count', function () {
         ]);
         enrollClassRecapStudent($student, $academicYear, $schoolClass);
         makeMonthlyBill($student, $spp, 970_000, 7, 2026);
+        $student->categories()->attach($category);
     }
 
     DB::flushQueryLog();
     DB::enableQueryLog();
     $report = app(StudentClassPaymentRecapService::class)
         ->generate($academicYear->id, SchoolLevel::SMP, $schoolClass->id);
-    $queryCount = count(DB::getQueryLog());
+    $queries = collect(DB::getQueryLog());
+    $queryCount = $queries->count();
+    $categoryQueryCount = $queries
+        ->pluck('query')
+        ->filter(fn (string $query): bool => str_contains($query, 'student_category_student'))
+        ->count();
     DB::disableQueryLog();
 
     expect($report['student_count'])->toBe(20)
-        ->and($queryCount)->toBeLessThanOrEqual(10);
+        ->and($queryCount)->toBeLessThanOrEqual(11)
+        ->and($categoryQueryCount)->toBe(1);
 });
 
 it('derives recap columns from rate frequencies instead of payment type names', function () {
@@ -1057,7 +1129,7 @@ it('loads prospective Formulir data without adding a query per student', functio
     $after = $measure();
 
     expect($after)->toBe($before)
-        ->and($before)->toBeLessThanOrEqual(11);
+        ->and($before)->toBeLessThanOrEqual(12);
 });
 
 it('excludes a jenjang mapped Jemputan from the main recap table', function () {

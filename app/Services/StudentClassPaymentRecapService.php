@@ -98,7 +98,7 @@ class StudentClassPaymentRecapService
             ->where('academic_year_id', $academicYear->id)
             ->where('school_class_id', $schoolClass->id)
             ->where('status', 'active')
-            ->with(['student.enrollments.academicYear'])
+            ->with(['student.enrollments.academicYear', 'student.categories'])
             ->get()
             ->filter(fn (StudentAcademicEnrollment $enrollment): bool => $enrollment->student instanceof Student)
             ->sortBy(fn (StudentAcademicEnrollment $enrollment): string => Str::lower($enrollment->student->nama_lengkap))
@@ -608,6 +608,8 @@ class StudentClassPaymentRecapService
      */
     private function emptyRow(Student $student, array $periods, array $monthlyTypeIds, array $yearlyTypeIds, array $oneTimeTypeIds): array
     {
+        $categories = $student->categories->sortBy('name')->values();
+        $categoryNames = $categories->pluck('name')->values()->all();
         $monthlyAmounts = [];
         $monthlyTargets = [];
 
@@ -632,6 +634,9 @@ class StudentClassPaymentRecapService
         return [
             'student_id' => $student->id,
             'student_name' => $student->nama_lengkap,
+            'category_names' => $categoryNames,
+            'category_codes' => $categories->pluck('code')->values()->all(),
+            'category_display' => $categoryNames === [] ? 'Siswa Normal' : implode(', ', $categoryNames),
             'monthly_summary' => $monthlySummary,
             'monthly_targets' => $monthlyTargets,
             'monthly_paid' => $monthlyAmounts,

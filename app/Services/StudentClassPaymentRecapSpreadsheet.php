@@ -126,10 +126,11 @@ class StudentClassPaymentRecapSpreadsheet
         $this->writeGroupedHeader($writer, $options, $sheet, $mainHeader, 9);
 
         foreach ($report['rows'] as $index => $row) {
-            $writer->addRow(Row::fromValuesWithStyle(
-                $this->mainRow($report, $row, $index + 1),
-                $this->tableBodyStyle(),
-            ));
+            $values = $this->mainRow($report, $row, $index + 1);
+            $bodyStyle = $this->tableBodyStyle();
+            $styles = array_fill(0, count($values), $bodyStyle);
+            $styles[2] = $this->categoryStyle($row, $bodyStyle);
+            $writer->addRow(Row::fromValuesWithStyles($values, $styles));
         }
 
         $writer->addRow(Row::fromValuesWithStyle(
@@ -170,10 +171,10 @@ class StudentClassPaymentRecapSpreadsheet
      */
     private function mainHeaderRows(array $report): array
     {
-        $group = ['NO.', 'NAMA SISWA'];
-        $detail = ['', ''];
+        $group = ['NO.', 'NAMA SISWA', 'KATEGORI'];
+        $detail = ['', '', ''];
         $horizontalMerges = [];
-        $verticalColumns = [0, 1];
+        $verticalColumns = [0, 1, 2];
         $monthlyTypes = $report['payment_types']['monthly'];
 
         if ($monthlyTypes !== []) {
@@ -233,7 +234,7 @@ class StudentClassPaymentRecapSpreadsheet
      */
     private function mainRow(array $report, array $row, int $number): array
     {
-        $values = [$number, $row['student_name']];
+        $values = [$number, $row['student_name'], $row['category_display']];
 
         foreach ($report['payment_types']['monthly'] as $type) {
             $values[] = $row['monthly_summary'][$type['id']];
@@ -266,7 +267,7 @@ class StudentClassPaymentRecapSpreadsheet
      */
     private function mainTotalsRow(array $report): array
     {
-        $values = ['', 'JUMLAH'];
+        $values = ['', 'JUMLAH', ''];
 
         foreach ($report['payment_types']['monthly'] as $type) {
             $values[] = $report['totals']['monthly_summary'][$type['id']];
@@ -495,6 +496,37 @@ class StudentClassPaymentRecapSpreadsheet
     private function tableBodyStyle(): Style
     {
         return new Style(shouldWrapText: true, border: $this->border(), format: '#,##0;;');
+    }
+
+    /** @param array<string, mixed> $row */
+    private function categoryStyle(array $row, Style $style): Style
+    {
+        $categoryCodes = $row['category_codes'];
+
+        if ($categoryCodes === []) {
+            return $style;
+        }
+
+        if (count($categoryCodes) > 1) {
+            return $style
+                ->withBackgroundColor('7030A0')
+                ->withFontColor(Color::WHITE);
+        }
+
+        return match ($categoryCodes[0]) {
+            'anak_pegawai', 'anak_guru' => $style
+                ->withBackgroundColor('FFC000')
+                ->withFontColor(Color::BLACK),
+            'anak_yatim' => $style
+                ->withBackgroundColor('548235')
+                ->withFontColor(Color::WHITE),
+            'beasiswa' => $style
+                ->withBackgroundColor('2F5597')
+                ->withFontColor(Color::WHITE),
+            default => $style
+                ->withBackgroundColor('7F8C8D')
+                ->withFontColor(Color::WHITE),
+        };
     }
 
     private function totalStyle(): Style
