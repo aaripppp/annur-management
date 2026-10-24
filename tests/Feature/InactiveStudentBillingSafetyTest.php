@@ -74,6 +74,7 @@ it('blocks every automatic bill frequency for inactive students', function (stri
 })->with([
     'graduated' => StudentStatus::Graduated->value,
     'transferred' => StudentStatus::Transferred->value,
+    'withdrawn' => StudentStatus::Withdrawn->value,
 ]);
 
 it('keeps automatic billing unchanged for active students', function () {
@@ -138,8 +139,12 @@ it('uses the same active-student roster for monthly batch preview and execution'
         'class_id' => $schoolClass->id,
         'status' => StudentStatus::Transferred,
     ]);
+    $withdrawn = Student::factory()->create([
+        'class_id' => $schoolClass->id,
+        'status' => StudentStatus::Withdrawn,
+    ]);
 
-    foreach ([$active, $graduated, $transferred] as $student) {
+    foreach ([$active, $graduated, $transferred, $withdrawn] as $student) {
         StudentAcademicEnrollment::create([
             'student_id' => $student->id,
             'academic_year_id' => $academicYear->id,
@@ -161,9 +166,11 @@ it('uses the same active-student roster for monthly batch preview and execution'
         ->and($active->bills()->count())->toBe($preview['will_create'])
         ->and($graduated->bills()->count())->toBe(0)
         ->and($transferred->bills()->count())->toBe(0)
+        ->and($withdrawn->bills()->count())->toBe(0)
         ->and($active->paymentSettings()->count())->toBe(1)
         ->and($graduated->paymentSettings()->count())->toBe(0)
-        ->and($transferred->paymentSettings()->count())->toBe(0);
+        ->and($transferred->paymentSettings()->count())->toBe(0)
+        ->and($withdrawn->paymentSettings()->count())->toBe(0);
 });
 
 it('excludes inactive students with active source enrollments from promotion', function (string $status) {
@@ -199,6 +206,7 @@ it('excludes inactive students with active source enrollments from promotion', f
 })->with([
     'graduated' => StudentStatus::Graduated->value,
     'transferred' => StudentStatus::Transferred->value,
+    'withdrawn' => StudentStatus::Withdrawn->value,
 ]);
 
 it('prevents direct promotion reactivation before any mutation', function () {
@@ -308,6 +316,7 @@ it('hides and rejects automatic generation UI while preserving manual controls',
 })->with([
     'graduated' => StudentStatus::Graduated->value,
     'transferred' => StudentStatus::Transferred->value,
+    'withdrawn' => StudentStatus::Withdrawn->value,
 ]);
 
 it('keeps automatic generation controls visible for active students', function () {
@@ -358,15 +367,16 @@ it('allows intentional manual historical bills for inactive students', function 
 })->with([
     'graduated' => StudentStatus::Graduated->value,
     'transferred' => StudentStatus::Transferred->value,
+    'withdrawn' => StudentStatus::Withdrawn->value,
 ]);
 
-it('keeps an old bill searchable and payable after the student graduates', function () {
+it('keeps an old bill searchable and payable after the student becomes inactive', function (StudentStatus $status) {
     $user = User::factory()->create();
     $bank = Bank::factory()->create();
     $student = makeBillStudent(8);
     $type = makeBillType('Old Payable SPP');
     $bill = makeMonthlyBill($student, $type, 970000, 8, 2026);
-    $student->update(['status' => StudentStatus::Graduated]);
+    $student->update(['status' => $status]);
     Livewire::actingAs($user);
 
     Livewire::test(PaymentCreate::class)
@@ -388,4 +398,8 @@ it('keeps an old bill searchable and payable after the student graduates', funct
     expect($student->bills()->count())->toBe(1)
         ->and($bill->fresh()->remaining_amount)->toBe(0.0)
         ->and($payment->details()->where('bill_id', $bill->id)->exists())->toBeTrue();
-});
+})->with([
+    'graduated' => StudentStatus::Graduated,
+    'transferred' => StudentStatus::Transferred,
+    'withdrawn' => StudentStatus::Withdrawn,
+]);

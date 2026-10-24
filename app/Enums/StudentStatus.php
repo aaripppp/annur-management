@@ -7,6 +7,7 @@ enum StudentStatus: string
     case Active = 'aktif';
     case Graduated = 'lulus';
     case Transferred = 'pindah';
+    case Withdrawn = 'keluar';
 
     public function label(): string
     {
@@ -14,6 +15,7 @@ enum StudentStatus: string
             self::Active => 'Aktif',
             self::Graduated => 'Lulus',
             self::Transferred => 'Pindah',
+            self::Withdrawn => 'Drop Out',
         };
     }
 }

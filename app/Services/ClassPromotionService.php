@@ -301,6 +301,10 @@ class ClassPromotionService
         AcademicYear $toYear,
         ?array &$targetEnrollmentStudentIds = null,
     ): void {
+        if (StudentStatus::tryFrom((string) $student->getRawOriginal('status')) !== StudentStatus::Active) {
+            return;
+        }
+
         $hasTargetEnrollment = $targetEnrollmentStudentIds === null
             ? StudentAcademicEnrollment::query()
                 ->where('student_id', $student->id)

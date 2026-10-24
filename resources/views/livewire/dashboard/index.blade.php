@@ -102,7 +102,7 @@
             <div>
                 <p class="text-label-sm font-label-sm uppercase tracking-[0.14em] text-primary">{{ $targetCardTitle }}</p>
                 <h2 class="mt-1 text-headline-sm font-headline-sm text-on-surface">{{ $targetArrearsSummary['period_label'] }}</h2>
-                <p class="mt-1 text-body-sm text-on-surface-variant">Target dan tunggakan tagihan bulanan siswa.</p>
+                <p class="mt-1 text-body-sm text-on-surface-variant">{{ $targetCardDescription }}</p>
             </div>
             <a href="{{ $targetArrearsUrl }}" class="inline-flex items-center gap-1 self-start whitespace-nowrap text-label-lg font-label-lg text-primary transition-colors hover:text-primary/80 sm:self-auto">
                 Lihat Target &amp; Tunggakan
@@ -110,23 +110,47 @@
             </a>
         </div>
 
-        <div class="grid grid-cols-1 gap-3 border-b border-outline-variant p-5 sm:grid-cols-3 sm:p-6">
-            <label class="block min-w-0 text-label-sm font-label-sm text-on-surface-variant">
-                BULAN
-                <select wire:model.live="targetMonth" class="mt-1 h-10 w-full rounded-lg border-outline-variant bg-surface-container-lowest px-3 text-body-sm text-on-surface shadow-sm focus:border-primary focus:ring-primary">
-                    @foreach($targetMonthOptions as $option)
-                        <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
-                    @endforeach
-                </select>
-            </label>
-            <label class="block min-w-0 text-label-sm font-label-sm text-on-surface-variant">
-                TAHUN
-                <select wire:model.live="targetYear" class="mt-1 h-10 w-full rounded-lg border-outline-variant bg-surface-container-lowest px-3 text-body-sm text-on-surface shadow-sm focus:border-primary focus:ring-primary">
-                    @foreach($targetYearOptions as $year)
-                        <option value="{{ $year }}">{{ $year }}</option>
-                    @endforeach
-                </select>
-            </label>
+        <div class="border-b border-outline-variant px-5 pt-2 sm:px-6">
+            <div class="flex gap-1 overflow-x-auto" aria-label="Mode capaian tagihan">
+                @foreach(['monthly' => 'Bulanan', 'yearly' => 'Tahunan', 'one_time' => 'Sekali Bayar'] as $mode => $label)
+                    <button type="button" wire:click="setTargetMode('{{ $mode }}')" class="relative whitespace-nowrap px-4 py-3 text-label-lg font-label-lg transition-colors {{ $targetMode === $mode ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface' }}">
+                        {{ $label }}
+                        @if($targetMode === $mode)
+                            <span class="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary"></span>
+                        @endif
+                    </button>
+                @endforeach
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 border-b border-outline-variant p-5 sm:grid-cols-2 sm:p-6 {{ $targetMode === 'monthly' ? 'lg:grid-cols-3' : 'lg:grid-cols-2' }}">
+            @if($targetMode === 'monthly')
+                <label class="block min-w-0 text-label-sm font-label-sm text-on-surface-variant">
+                    BULAN
+                    <select wire:model.live="targetMonth" class="mt-1 h-10 w-full rounded-lg border-outline-variant bg-surface-container-lowest px-3 text-body-sm text-on-surface shadow-sm focus:border-primary focus:ring-primary">
+                        @foreach($targetMonthOptions as $option)
+                            <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                        @endforeach
+                    </select>
+                </label>
+                <label class="block min-w-0 text-label-sm font-label-sm text-on-surface-variant">
+                    TAHUN
+                    <select wire:model.live="targetYear" class="mt-1 h-10 w-full rounded-lg border-outline-variant bg-surface-container-lowest px-3 text-body-sm text-on-surface shadow-sm focus:border-primary focus:ring-primary">
+                        @foreach($targetYearOptions as $year)
+                            <option value="{{ $year }}">{{ $year }}</option>
+                        @endforeach
+                    </select>
+                </label>
+            @else
+                <label class="block min-w-0 text-label-sm font-label-sm text-on-surface-variant">
+                    {{ $targetMode === 'one_time' ? 'TAHUN AJARAN ASAL TAGIHAN' : 'TAHUN AJARAN' }}
+                    <select wire:model.live="targetAcademicYear" @disabled(empty($targetAcademicYearOptions)) class="mt-1 h-10 w-full rounded-lg border-outline-variant bg-surface-container-lowest px-3 text-body-sm text-on-surface shadow-sm focus:border-primary focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50">
+                        @foreach($targetAcademicYearOptions as $academicYear)
+                            <option value="{{ $academicYear }}">{{ $academicYear }}</option>
+                        @endforeach
+                    </select>
+                </label>
+            @endif
             <label class="block min-w-0 text-label-sm font-label-sm text-on-surface-variant">
                 JENJANG
                 <select wire:model.live="targetJenjang" class="mt-1 h-10 w-full rounded-lg border-outline-variant bg-surface-container-lowest px-3 text-body-sm text-on-surface shadow-sm focus:border-primary focus:ring-primary">
@@ -137,12 +161,20 @@
             </label>
         </div>
 
-        <div wire:loading.delay wire:target="targetMonth,targetYear,targetJenjang" class="px-5 pb-4 pt-1 text-xs text-on-surface-variant sm:px-6">Memperbarui capaian tagihan...</div>
+        <div wire:loading.delay wire:target="setTargetMode,targetMonth,targetYear,targetAcademicYear,targetJenjang" class="px-5 pb-4 pt-1 text-xs text-on-surface-variant sm:px-6">Memperbarui capaian tagihan...</div>
 
         @if($targetArrearsSummary['bill_count'] === 0)
             <div class="px-5 py-8 text-center sm:px-6">
                 <span class="material-symbols-outlined text-4xl text-on-surface-variant">assignment_late</span>
-                <p class="mt-3 text-body-md font-medium text-on-surface">Belum ada tagihan bulanan untuk {{ $targetArrearsSummary['period_label'] }}.</p>
+                <p class="mt-3 text-body-md font-medium text-on-surface">
+                    @if($targetMode === 'monthly')
+                        Belum ada tagihan bulanan untuk {{ $targetArrearsSummary['period_label'] }}.
+                    @elseif($targetMode === 'yearly')
+                        Belum ada tagihan tahunan untuk {{ $targetArrearsSummary['period_label'] }}.
+                    @else
+                        Belum ada tagihan sekali bayar dengan asal {{ $targetArrearsSummary['period_label'] }}.
+                    @endif
+                </p>
                 <p class="mt-1 text-body-sm text-on-surface-variant">Buka laporan lengkap untuk melihat periode lainnya.</p>
             </div>
         @else

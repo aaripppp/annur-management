@@ -71,6 +71,35 @@ function promotionPerformanceQueryCount(array $queries, string $table): int
         ->count();
 }
 
+/** @param list<array{sql: string, bindings: array<mixed>}> $queries */
+function promotionPerformanceStatementCount(array $queries, string $statement): int
+{
+    return collect($queries)
+        ->filter(fn (array $query): bool => str_starts_with($query['sql'], $statement))
+        ->count();
+}
+
+/** @param list<array{sql: string, bindings: array<mixed>}> $queries */
+function promotionPerformanceSelectContainingTableCount(array $queries, string $table): int
+{
+    return collect($queries)
+        ->filter(fn (array $query): bool => str_starts_with($query['sql'], 'select')
+            && str_contains($query['sql'], 'from "'.$table.'"'))
+        ->count();
+}
+
+/** @param list<array{sql: string, bindings: array<mixed>}> $queries */
+function promotionPerformanceOuterTableSelectCount(array $queries, string $table): int
+{
+    return collect($queries)
+        ->filter(function (array $query) use ($table): bool {
+            preg_match('/\bfrom "([^"]+)"/', $query['sql'], $matches);
+
+            return ($matches[1] ?? null) === $table;
+        })
+        ->count();
+}
+
 beforeEach(function () {
     AcademicYear::query()->update(['is_active' => false, 'promotion_processed_at' => null]);
     PaymentTypeSchoolLevel::query()->update(['is_active' => false]);
@@ -197,6 +226,105 @@ it('bounds billing configuration rate applicability and duplicate lookup queries
     expect($oneBillSelects)->toHaveCount(1)
         ->and($manyBillSelects)->toHaveCount(1);
 });
+
+it('measures promotion payment retrieval without changing settings bills or amounts', function (int $studentCount, int $startYear, int $expectedSelectCount) {
+    $monthly = makeBillType("SPP Retrieval {$studentCount}");
+    $yearly = makeBillType("Buku Retrieval {$studentCount}");
+    $oneTime = makeBillType("Pangkal Retrieval {$studentCount}");
+
+    makeBillRate($monthly, 8, 500_000, ['effective_from' => '2020-01-01']);
+    makeBillRate($yearly, 8, 700_000, [
+        'billing_frequency' => BillFrequency::Yearly,
+        'effective_from' => '2020-01-01',
+    ]);
+    makeBillRate($oneTime, 8, 1_500_000, [
+        'billing_frequency' => BillFrequency::OneTime,
+        'effective_from' => '2020-01-01',
+    ]);
+
+    foreach ([$monthly, $yearly, $oneTime] as $type) {
+        makeLevelDefault($type, SchoolLevel::SMP);
+    }
+
+    [$sourceYear, $targetYear] = promotionPerformanceYears($startYear);
+    $sourceClass = SchoolClass::create(['name' => "VII Retrieval {$studentCount}", 'level' => 7]);
+    $targetClass = SchoolClass::create(['name' => "VIII Retrieval {$studentCount}", 'level' => 8]);
+    createPromotionRule($sourceClass, 'promote', $targetClass);
+    $students = promotionPerformanceRoster($sourceYear, $sourceClass, $studentCount);
+    $firstStudent = $students->first();
+
+    $firstStudent->paymentSettings()
+        ->where('payment_type_id', $monthly->id)
+        ->update(['custom_amount' => 123_456]);
+    $firstStudent->paymentSettings()
+        ->where('payment_type_id', $yearly->id)
+        ->delete();
+
+    StudentBill::create([
+        'student_id' => $firstStudent->id,
+        'payment_type_id' => $monthly->id,
+        'amount' => 111_111,
+        'period_month' => 7,
+        'period_year' => $startYear + 1,
+        'billing_frequency' => BillFrequency::Monthly->value,
+        'due_date' => null,
+    ]);
+
+    $settingsBefore = StudentPaymentSetting::query()->count();
+    $billsBefore = StudentBill::query()->count();
+    $queries = [];
+    DB::listen(function (QueryExecuted $query) use (&$queries): void {
+        $queries[] = ['sql' => strtolower($query->sql), 'bindings' => $query->bindings];
+    });
+
+    $result = app(ClassPromotionService::class)->processPromotion($sourceYear, $targetYear);
+
+    $selectCount = promotionPerformanceStatementCount($queries, 'select');
+    $paymentSettingSelectCount = promotionPerformanceSelectContainingTableCount($queries, 'student_payment_settings');
+    $paymentTypeSelectCount = promotionPerformanceSelectContainingTableCount($queries, 'payment_types');
+    $paymentTypeRelationSelectCount = promotionPerformanceOuterTableSelectCount($queries, 'payment_types');
+    $rateSelectCount = promotionPerformanceSelectContainingTableCount($queries, 'payment_rates');
+    $insertCount = promotionPerformanceStatementCount($queries, 'insert');
+    $updateCount = promotionPerformanceStatementCount($queries, 'update');
+    $generatedBillCount = StudentBill::query()->count() - $billsBefore;
+    $createdSettingCount = StudentPaymentSetting::query()->count() - $settingsBefore;
+    $bills = StudentBill::query()
+        ->whereIn('student_id', $students->pluck('id'))
+        ->get();
+    $expectedBillTotal = 14 * $studentCount;
+    $expectedGeneratedBillCount = $expectedBillTotal - 1;
+    $expectedBillAmountTotal = 111_111
+        + (11 * 123_456)
+        + (($studentCount - 1) * 12 * 500_000)
+        + ($studentCount * 700_000)
+        + ($studentCount * 1_500_000);
+
+    expect($result)->toBe(['promoted' => $studentCount, 'graduated' => 0, 'blocked' => 0])
+        ->and($selectCount)->toBe($expectedSelectCount)
+        ->and($paymentSettingSelectCount)->toBe(4 * $studentCount)
+        ->and($paymentTypeSelectCount)->toBe(3)
+        ->and($paymentTypeRelationSelectCount)->toBe(1)
+        ->and($rateSelectCount)->toBe(37)
+        ->and($createdSettingCount)->toBe(1)
+        ->and($generatedBillCount)->toBe($expectedGeneratedBillCount)
+        ->and($bills)->toHaveCount($expectedBillTotal)
+        ->and($bills->where('billing_frequency', BillFrequency::Monthly->value))->toHaveCount(12 * $studentCount)
+        ->and($bills->where('billing_frequency', BillFrequency::Yearly->value))->toHaveCount($studentCount)
+        ->and($bills->where('billing_frequency', BillFrequency::OneTime->value))->toHaveCount($studentCount)
+        ->and((float) $bills->sum('amount'))->toBe((float) $expectedBillAmountTotal)
+        ->and($insertCount)->toBe((15 * $studentCount))
+        ->and($updateCount)->toBe($studentCount + 3)
+        ->and($students->every(function (Student $student) use ($targetClass): bool {
+            $student = $student->fresh();
+
+            return $student->class_id === $targetClass->id
+                && $student->status === StudentStatus::Active;
+        }))->toBeTrue();
+})->with([
+    'one student' => [1, 2050, 57],
+    'ten students' => [10, 2052, 93],
+    'one hundred students' => [100, 2054, 453],
+]);
 
 it('preserves exact monthly yearly one-time custom amount and duplicate outputs', function () {
     $monthly = makeBillType('SPP Output Equivalence');

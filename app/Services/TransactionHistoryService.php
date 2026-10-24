@@ -43,6 +43,7 @@ class TransactionHistoryService
             self::CATEGORY_PROSPECTIVE => 'Calon Siswa',
             StudentStatus::Graduated->value => 'Lulus',
             StudentStatus::Transferred->value => 'Pindah',
+            StudentStatus::Withdrawn->value => 'Drop Out',
         ];
     }
 
@@ -216,7 +217,7 @@ class TransactionHistoryService
     ): void {
         // Status terminal memakai students.status apa adanya, enrollment masa depan
         // tidak boleh mengubahnya.
-        if (in_array($studentCategory, [StudentStatus::Graduated->value, StudentStatus::Transferred->value], true)) {
+        if (in_array($studentCategory, [StudentStatus::Graduated->value, StudentStatus::Transferred->value, StudentStatus::Withdrawn->value], true)) {
             $this->constrainToStoredStudentStatus($query, $studentCategory);
 
             return;

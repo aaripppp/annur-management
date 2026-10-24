@@ -62,8 +62,24 @@ class StudentPaymentSettings extends Component
                 ->pluck('is_required', 'payment_type_id')
             : collect();
 
-        $this->settings = $types->map(function (PaymentType $type) use ($existing, $level, $levelDefaults) {
-            $rate = $this->latestRateFor($type, $level);
+        $ratesByType = collect();
+        if ($level !== null && $types->isNotEmpty()) {
+            $rateRows = PaymentRate::query()
+                ->whereIn('payment_type_id', $types->pluck('id'))
+                ->where('class_level', $level)
+                ->orderByDesc('effective_from')
+                ->orderByDesc('id')
+                ->get();
+
+            foreach ($rateRows as $rate) {
+                if (! $ratesByType->has($rate->payment_type_id)) {
+                    $ratesByType[$rate->payment_type_id] = $rate;
+                }
+            }
+        }
+
+        $this->settings = $types->map(function (PaymentType $type) use ($existing, $levelDefaults, $ratesByType) {
+            $rate = $ratesByType->get($type->id);
             $setting = $existing->get($type->id);
 
             return [

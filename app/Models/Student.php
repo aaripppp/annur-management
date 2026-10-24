@@ -130,6 +130,33 @@ class Student extends Model
     }
 
     /**
+     * Academic year resolved once for the current render, when the list page
+     * stashes it on each student. Falls back to the canonical lookup so callers
+     * outside the student-list page behave exactly as before.
+     */
+    public function resolvedAcademicYearForDisplay(): ?AcademicYear
+    {
+        if ($this->relationLoaded('academicContextActiveYear')) {
+            return $this->getRelation('academicContextActiveYear');
+        }
+
+        return AcademicYear::active();
+    }
+
+    /**
+     * Return the student's enrollments, using the already-loaded collection on
+     * the student-list page to avoid repeating per-student SELECT queries.
+     */
+    public function enrollmentsForAcademicDisplay(): Collection
+    {
+        if ($this->relationLoaded('enrollments')) {
+            return $this->enrollments;
+        }
+
+        return $this->enrollments()->with(['academicYear', 'schoolClass'])->get();
+    }
+
+    /**
      * Resolve terminal stored status before deriving active/future context.
      *
      * Priority:
@@ -145,38 +172,58 @@ class Student extends Model
     {
         $storedStatus = StudentStatus::tryFrom((string) $this->getRawOriginal('status'));
 
-        if (in_array($storedStatus, [StudentStatus::Graduated, StudentStatus::Transferred], true)) {
+        if (in_array($storedStatus, [StudentStatus::Graduated, StudentStatus::Transferred, StudentStatus::Withdrawn], true)) {
             return $storedStatus->value;
         }
 
-        $activeYear = AcademicYear::active();
+        $activeYear = $this->resolvedAcademicYearForDisplay();
 
         if ($activeYear !== null) {
-            // Check active enrollment in the current active year
-            $hasActiveEnrollment = $this->enrollments()
-                ->where('academic_year_id', $activeYear->id)
-                ->where('status', 'active')
-                ->exists();
+            if ($this->relationLoaded('enrollments')) {
+                $hasActiveEnrollment = $this->enrollmentsForAcademicDisplay()->contains(
+                    fn (StudentAcademicEnrollment $enrollment): bool => $enrollment->academic_year_id == $activeYear->id
+                        && $enrollment->status === 'active'
+                );
+            } else {
+                // Check active enrollment in the current active year
+                $hasActiveEnrollment = $this->enrollments()
+                    ->where('academic_year_id', $activeYear->id)
+                    ->where('status', 'active')
+                    ->exists();
+            }
 
             if ($hasActiveEnrollment) {
                 return StudentStatus::Active->value;
             }
 
-            // Check enrollment in an academic year after the active year.
-            $hasFutureEnrollment = $this->enrollments()
-                ->whereHas('academicYear', function ($query) use ($activeYear) {
-                    $query->whereDate('start_date', '>', $activeYear->start_date);
-                })
-                ->exists();
+            if ($this->relationLoaded('enrollments')) {
+                $hasFutureEnrollment = $this->enrollmentsForAcademicDisplay()->contains(
+                    fn (StudentAcademicEnrollment $enrollment): bool => $enrollment->academicYear !== null
+                        && $enrollment->academicYear->start_date->toDateString() > $activeYear->start_date->toDateString()
+                );
+            } else {
+                // Check enrollment in an academic year after the active year.
+                $hasFutureEnrollment = $this->enrollments()
+                    ->whereHas('academicYear', function ($query) use ($activeYear) {
+                        $query->whereDate('start_date', '>', $activeYear->start_date);
+                    })
+                    ->exists();
+            }
 
             if ($hasFutureEnrollment) {
                 return 'calon_siswa';
             }
         }
 
-        $hasLulus = $this->enrollments()
-            ->where('status', 'lulus')
-            ->exists();
+        if ($this->relationLoaded('enrollments')) {
+            $hasLulus = $this->enrollmentsForAcademicDisplay()->contains(
+                fn (StudentAcademicEnrollment $enrollment): bool => $enrollment->status === 'lulus'
+            );
+        } else {
+            $hasLulus = $this->enrollments()
+                ->where('status', 'lulus')
+                ->exists();
+        }
 
         if ($hasLulus) {
             return StudentStatus::Graduated->value;
@@ -195,6 +242,7 @@ class Student extends Model
             StudentStatus::Active->value => 'Aktif',
             StudentStatus::Graduated->value => 'Lulus',
             StudentStatus::Transferred->value => 'Pindah',
+            StudentStatus::Withdrawn->value => 'Drop Out',
             'calon_siswa' => 'Calon Siswa',
             default => 'Aktif',
         };
@@ -207,21 +255,29 @@ class Student extends Model
     public function academicClassLabel(): string
     {
         $status = $this->academicStatus();
-        $activeYear = AcademicYear::active();
+        $activeYear = $this->resolvedAcademicYearForDisplay();
 
         if ($status === 'calon_siswa' && $activeYear !== null) {
-            $futureEnrollment = $this->enrollments()
-                ->with('schoolClass')
-                ->whereHas('academicYear', function ($query) use ($activeYear) {
-                    $query->whereDate('start_date', '>', $activeYear->start_date);
-                })
-                ->orderBy(
-                    AcademicYear::query()
-                        ->select('start_date')
-                        ->whereColumn('academic_years.id', 'student_academic_enrollments.academic_year_id')
-                        ->limit(1)
-                )
-                ->first();
+            if ($this->relationLoaded('enrollments')) {
+                $futureEnrollment = $this->enrollmentsForAcademicDisplay()
+                    ->filter(fn (StudentAcademicEnrollment $enrollment): bool => $enrollment->academicYear !== null
+                        && $enrollment->academicYear->start_date->toDateString() > $activeYear->start_date->toDateString())
+                    ->sortBy(fn (StudentAcademicEnrollment $enrollment): string => $enrollment->academicYear->start_date->toDateString())
+                    ->first();
+            } else {
+                $futureEnrollment = $this->enrollments()
+                    ->with('schoolClass')
+                    ->whereHas('academicYear', function ($query) use ($activeYear) {
+                        $query->whereDate('start_date', '>', $activeYear->start_date);
+                    })
+                    ->orderBy(
+                        AcademicYear::query()
+                            ->select('start_date')
+                            ->whereColumn('academic_years.id', 'student_academic_enrollments.academic_year_id')
+                            ->limit(1)
+                    )
+                    ->first();
+            }
 
             return $futureEnrollment?->schoolClass?->name ?? $this->schoolClass?->name ?? '-';
         }
@@ -259,10 +315,8 @@ class Student extends Model
     public function academicYearContextLabel(): ?string
     {
         /** @var Collection<int, StudentAcademicEnrollment> $enrollments */
-        $enrollments = $this->relationLoaded('enrollments')
-            ? $this->enrollments
-            : $this->enrollments()->with('academicYear')->get();
-        $activeYear = AcademicYear::active();
+        $enrollments = $this->enrollmentsForAcademicDisplay();
+        $activeYear = $this->resolvedAcademicYearForDisplay();
 
         if ($activeYear && $enrollments->contains(
             fn (StudentAcademicEnrollment $enrollment): bool => $enrollment->academic_year_id === $activeYear->id

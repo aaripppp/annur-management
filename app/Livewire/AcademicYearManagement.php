@@ -392,7 +392,10 @@ class AcademicYearManagement extends Component
 
     public function render()
     {
-        $academicYears = AcademicYear::orderBy('start_date')->get();
+        $academicYears = AcademicYear::query()
+            ->withCount('enrollments')
+            ->orderBy('start_date')
+            ->get();
 
         return view('livewire.academic-year.index', [
             'academicYears' => $academicYears,

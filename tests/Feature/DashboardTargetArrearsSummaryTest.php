@@ -2,15 +2,19 @@
 
 use App\Enums\SchoolLevel;
 use App\Livewire\Dashboard;
+use App\Models\AcademicYear;
 use App\Models\Bank;
+use App\Models\BillAdjustment;
 use App\Models\DaycarePayment;
 use App\Models\DaycarePaymentDetail;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
+use App\Models\SchoolClass;
 use App\Models\StudentBill;
 use App\Models\User;
 use App\Services\StudentTargetArrearsReportService;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 function createDashboardTargetAllocation(
@@ -241,4 +245,210 @@ it('links the target report with the selected month, year, and jenjang', functio
         'target_year' => 2026,
         'jenjang' => 'SD',
     ]));
+});
+
+it('shows yearly achievement from the canonical summary with historical level and active allocations', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create(['is_active' => true]);
+    [$student] = makeEnrolledStudent(SchoolLevel::SMP);
+    $student->update(['class_id' => SchoolClass::factory()->create(['level' => 10])->id]);
+    $type = makeBillType('Tahunan Dashboard Lengkap');
+    $bill = makeYearlyBill($student, $type, 1_000_000, '2026/2027');
+    makeYearlyBill($student, $type, 2_000_000, '2025/2026');
+
+    BillAdjustment::query()->create([
+        'bill_id' => $bill->id,
+        'type' => BillAdjustment::TYPE_DISCOUNT,
+        'amount' => -100_000,
+        'reason' => 'Diskon tahunan Dashboard',
+        'created_by' => $user->id,
+    ]);
+    createDashboardTargetAllocation($bill, $user, $bank, 300_000, '2028-08-10', '2028-08-10 09:00:00');
+    createDashboardTargetAllocation($bill, $user, $bank, 200_000, '2028-08-11', '2028-08-11 09:00:00', Payment::STATUS_CANCELLED);
+
+    $canonical = app(StudentTargetArrearsReportService::class)->generate(
+        StudentTargetArrearsReportService::MODE_YEARLY,
+        9,
+        2026,
+        '2026/2027',
+        SchoolLevel::SMP,
+    );
+
+    $component = Livewire::test(Dashboard::class)
+        ->call('setTargetMode', StudentTargetArrearsReportService::MODE_YEARLY)
+        ->set('targetAcademicYear', '2026/2027')
+        ->set('targetJenjang', SchoolLevel::SMP->value)
+        ->assertSee('Capaian Tagihan Tahunan')
+        ->assertSee('Tahun Ajaran 2026/2027')
+        ->assertSee('Rp 900.000')
+        ->assertSee('Rp 300.000')
+        ->assertSee('Rp 600.000')
+        ->assertSee('33,3%')
+        ->assertDontSeeHtml('wire:model.live="targetMonth"');
+
+    expect($component->viewData('targetArrearsSummary')['totals'])->toBe($canonical['totals'])
+        ->and($component->viewData('targetArrearsSummary')['bill_count'])->toBe(1)
+        ->and($component->viewData('targetArrearsUrl'))->toBe(route('laporan.index', [
+            'tab' => 'target',
+            'target_mode' => 'yearly',
+            'target_academic_year' => '2026/2027',
+            'jenjang' => 'SMP',
+        ]));
+});
+
+it('shows one-time achievement only in the originating academic year', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create(['is_active' => true]);
+    [$student] = makeEnrolledStudent(SchoolLevel::SD);
+    AcademicYear::query()->create([
+        'year' => '2025/2026',
+        'is_active' => false,
+        'start_date' => '2025-07-01',
+        'end_date' => '2026-06-30',
+    ]);
+    $type = makeBillType('Sekali Bayar Dashboard Asal');
+    $originBill = makeOneTimeBill($student, $type, 1_200_000, '2026/2027');
+    makeOneTimeBill($student, $type, 900_000, '2025/2026');
+    createDashboardTargetAllocation($originBill, $user, $bank, 400_000, '2029-01-10', '2029-01-10 09:00:00');
+
+    $canonical = app(StudentTargetArrearsReportService::class)->generate(
+        StudentTargetArrearsReportService::MODE_ONE_TIME,
+        9,
+        2026,
+        '2026/2027',
+        SchoolLevel::SD,
+    );
+
+    $component = Livewire::test(Dashboard::class)
+        ->call('setTargetMode', StudentTargetArrearsReportService::MODE_ONE_TIME)
+        ->set('targetAcademicYear', '2026/2027')
+        ->set('targetJenjang', SchoolLevel::SD->value)
+        ->assertSee('Capaian Tagihan Sekali Bayar')
+        ->assertSee('TAHUN AJARAN ASAL TAGIHAN')
+        ->assertSee('Rp 1.200.000')
+        ->assertSee('Rp 400.000')
+        ->assertSee('Rp 800.000')
+        ->assertSee('33,3%');
+
+    expect($component->viewData('targetArrearsSummary')['totals'])->toBe($canonical['totals'])
+        ->and($component->viewData('targetArrearsSummary')['bill_count'])->toBe(1)
+        ->and($component->viewData('targetArrearsUrl'))->toBe(route('laporan.index', [
+            'tab' => 'target',
+            'target_mode' => 'one_time',
+            'target_academic_year' => '2026/2027',
+            'jenjang' => 'SD',
+        ]));
+
+    $component
+        ->set('targetJenjang', 'all')
+        ->set('targetAcademicYear', '2025/2026')
+        ->assertViewHas('targetArrearsSummary', fn (array $summary): bool => $summary['totals']['target'] === 900_000.0);
+});
+
+it('reports zero achievement for a zero effective one-time target', function () {
+    $user = User::factory()->create();
+    [$student] = makeEnrolledStudent(SchoolLevel::TK);
+    $type = makeBillType('Sekali Bayar Target Nol');
+    $bill = makeOneTimeBill($student, $type, 500_000);
+    BillAdjustment::query()->create([
+        'bill_id' => $bill->id,
+        'type' => BillAdjustment::TYPE_DISCOUNT,
+        'amount' => -500_000,
+        'reason' => 'Pembebasan penuh',
+        'created_by' => $user->id,
+    ]);
+
+    $component = Livewire::test(Dashboard::class)
+        ->call('setTargetMode', StudentTargetArrearsReportService::MODE_ONE_TIME);
+    $summary = $component->viewData('targetArrearsSummary');
+
+    expect($summary['bill_count'])->toBe(1)
+        ->and($summary['totals']['target'])->toBe(0.0)
+        ->and($summary['totals']['paid'])->toBe(0.0)
+        ->and($summary['totals']['outstanding'])->toBe(0.0)
+        ->and($summary['totals']['achievement_percentage'])->toBe(0.0)
+        ->and($summary['totals']['achievement_label'])->toBe('0%');
+});
+
+it('renders mode-specific empty states for yearly and one-time tabs', function () {
+    makeEnrolledStudent(SchoolLevel::SMA);
+
+    Livewire::test(Dashboard::class)
+        ->call('setTargetMode', StudentTargetArrearsReportService::MODE_YEARLY)
+        ->assertSee('Belum ada tagihan tahunan untuk Tahun Ajaran 2026/2027.')
+        ->call('setTargetMode', StudentTargetArrearsReportService::MODE_ONE_TIME)
+        ->assertSee('Belum ada tagihan sekali bayar dengan asal Tahun Ajaran 2026/2027.');
+});
+
+it('preserves monthly and academic-year filters while switching billing modes', function () {
+    makeEnrolledStudent(SchoolLevel::SD);
+
+    Livewire::test(Dashboard::class)
+        ->set('targetMonth', 10)
+        ->set('targetYear', 2027)
+        ->set('targetAcademicYear', '2026/2027')
+        ->set('targetJenjang', SchoolLevel::SD->value)
+        ->call('setTargetMode', StudentTargetArrearsReportService::MODE_YEARLY)
+        ->assertSet('targetMonth', 10)
+        ->assertSet('targetYear', 2027)
+        ->assertSet('targetAcademicYear', '2026/2027')
+        ->assertSet('targetJenjang', SchoolLevel::SD->value)
+        ->call('setTargetMode', StudentTargetArrearsReportService::MODE_ONE_TIME)
+        ->call('setTargetMode', StudentTargetArrearsReportService::MODE_MONTHLY)
+        ->assertSet('targetMonth', 10)
+        ->assertSet('targetYear', 2027)
+        ->assertSet('targetAcademicYear', '2026/2027')
+        ->assertSet('targetJenjang', SchoolLevel::SD->value)
+        ->assertSeeHtml('wire:model.live="targetMonth"');
+});
+
+it('defaults the target academic year to active then falls back to the latest available year', function () {
+    AcademicYear::query()->update(['is_active' => false]);
+    AcademicYear::query()->create([
+        'year' => '2027/2028',
+        'is_active' => true,
+        'start_date' => '2027-07-01',
+        'end_date' => '2028-06-30',
+    ]);
+
+    Livewire::test(Dashboard::class)
+        ->assertSet('targetMode', StudentTargetArrearsReportService::MODE_MONTHLY)
+        ->assertSet('targetAcademicYear', '2027/2028');
+
+    AcademicYear::query()->update(['is_active' => false]);
+    AcademicYear::query()->create([
+        'year' => '2028/2029',
+        'is_active' => false,
+        'start_date' => '2028-07-01',
+        'end_date' => '2029-06-30',
+    ]);
+
+    Livewire::test(Dashboard::class)
+        ->assertSet('targetAcademicYear', '2028/2029');
+});
+
+it('queries only the selected billing frequency summary', function () {
+    [$student] = makeEnrolledStudent(SchoolLevel::SMP);
+    makeMonthlyBill($student, makeBillType('Bulanan Batas Query Dashboard'), 100_000, 9, 2026);
+    makeYearlyBill($student, makeBillType('Tahunan Batas Query Dashboard'), 200_000);
+    makeOneTimeBill($student, makeBillType('Sekali Batas Query Dashboard'), 300_000);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    Livewire::withQueryParams([
+        'target_mode' => StudentTargetArrearsReportService::MODE_ONE_TIME,
+        'target_academic_year' => '2026/2027',
+    ])->test(Dashboard::class);
+
+    $frequencyQueries = collect(DB::getQueryLog())
+        ->filter(fn (array $query): bool => str_contains($query['query'], 'student_bills')
+            && str_contains($query['query'], 'billing_frequency'));
+
+    DB::disableQueryLog();
+
+    expect($frequencyQueries)->toHaveCount(1)
+        ->and($frequencyQueries->first()['bindings'])->toContain(StudentTargetArrearsReportService::MODE_ONE_TIME)
+        ->and($frequencyQueries->first()['bindings'])->not->toContain(StudentTargetArrearsReportService::MODE_MONTHLY)
+        ->and($frequencyQueries->first()['bindings'])->not->toContain(StudentTargetArrearsReportService::MODE_YEARLY);
 });

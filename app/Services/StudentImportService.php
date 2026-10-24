@@ -34,7 +34,17 @@ class StudentImportService
             ->filter(fn (string $key): bool => $key !== '|')
             ->countBy();
 
-        $previewRows = collect($rows)->map(function (array $row) use ($academicYear, $classes, $nisCounts, $nameClassCounts): array {
+        $nisListForBatch = collect($rows)
+            ->map(fn (array $r): string => is_string($r['nis'] ?? null) ? trim($r['nis']) : '')
+            ->filter(fn (string $v): bool => $v !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        $conflictMap = $this->studentNisConflictService->findConflicts($nisListForBatch, $academicYear);
+        $previousLevelsMap = $this->studentNisConflictService->getPreviousSchoolLevelsForNisList($nisListForBatch);
+
+        $previewRows = collect($rows)->map(function (array $row) use ($academicYear, $classes, $nisCounts, $nameClassCounts, $conflictMap, $previousLevelsMap): array {
             $errors = $this->rowErrors($row);
             $schoolClass = $classes->get($this->normalizeClassName($row['kelas']));
             $warnings = [];
@@ -57,14 +67,20 @@ class StudentImportService
             $statusLabel = 'Siswa Baru';
             $previousSchoolLevels = [];
 
-            if ($schoolClass && is_string($row['nis']) && $row['nis'] !== '') {
-                $conflict = $this->studentNisConflictService->findConflict($row['nis'], $academicYear, $schoolClass);
+            if ($schoolClass && is_string($row['nis']) && trim($row['nis']) !== '') {
+                $nisNorm = trim($row['nis']);
+                $targetSchoolLevel = $schoolClass->schoolLevel?->value;
+                $conflict = null;
+
+                if ($targetSchoolLevel !== null && $targetSchoolLevel !== '') {
+                    $key = $nisNorm.'|'.$targetSchoolLevel;
+                    $conflict = $conflictMap->get($key);
+                }
 
                 if ($conflict) {
-                    $errors[] = "NIS {$row['nis']} sudah terdaftar pada jenjang {$schoolClass->schoolLevel?->value} di tahun ajaran {$academicYear->year}.";
+                    $errors[] = "NIS {$nisNorm} sudah terdaftar pada jenjang {$schoolClass->schoolLevel?->value} di tahun ajaran {$academicYear->year}.";
                 } else {
-                    $previousSchoolLevels = $this->studentNisConflictService->previousSchoolLevels($row['nis']);
-
+                    $previousSchoolLevels = $previousLevelsMap[$nisNorm] ?? [];
                     if ($previousSchoolLevels !== []) {
                         $statusLabel = 'Siswa Baru Jenjang — NIS pernah digunakan di '.implode(', ', $previousSchoolLevels);
                     }

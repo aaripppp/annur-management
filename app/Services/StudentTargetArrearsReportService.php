@@ -56,7 +56,22 @@ class StudentTargetArrearsReportService
     /** @return array<string, mixed> */
     public function generateMonthlySummary(int $month, int $year, ?SchoolLevel $schoolLevel = null): array
     {
-        return $this->build(self::MODE_MONTHLY, $month, $year, '', $schoolLevel, false);
+        return $this->generateSummary(self::MODE_MONTHLY, $month, $year, '', $schoolLevel);
+    }
+
+    /** @return array<string, mixed> */
+    public function generateSummary(
+        string $mode,
+        int $month,
+        int $year,
+        string $academicYear,
+        ?SchoolLevel $schoolLevel = null,
+    ): array {
+        if (! in_array($mode, [self::MODE_MONTHLY, self::MODE_YEARLY, self::MODE_ONE_TIME], true)) {
+            throw new InvalidArgumentException('Mode ringkasan target tidak valid.');
+        }
+
+        return $this->build($mode, $month, $year, $academicYear, $schoolLevel, false);
     }
 
     /** @return array<string, mixed> */

@@ -41,6 +41,9 @@ class BillGenerationService
     /** @var array<string, bool> */
     private array $billbookTypeCache = [];
 
+    /** @var array<int, PaymentType|null> */
+    private array $paymentTypeCache = [];
+
     /** @var array<int, array{monthly: array<string, true>, yearly: array<string, true>, one_time: array<string, true>}> */
     private array $existingBillKeys = [];
 
@@ -135,8 +138,8 @@ class BillGenerationService
 
             $settings = $student->paymentSettings()
                 ->where('is_active', true)
-                ->with('paymentType')
                 ->get();
+            $this->loadPaymentTypesForSettings($settings);
 
             $defaultTypeIds = $this->levelDefaultTypeIds($student);
 
@@ -307,6 +310,32 @@ class BillGenerationService
         }
 
         return $this->defaultTypeIdsCache[$cacheKey];
+    }
+
+    /** @param Collection<int, StudentPaymentSetting> $settings */
+    private function loadPaymentTypesForSettings(Collection $settings): void
+    {
+        $missingTypeIds = $settings
+            ->pluck('payment_type_id')
+            ->map(fn ($paymentTypeId): int => (int) $paymentTypeId)
+            ->unique()
+            ->reject(fn (int $paymentTypeId): bool => array_key_exists($paymentTypeId, $this->paymentTypeCache))
+            ->values();
+
+        if ($missingTypeIds->isNotEmpty()) {
+            $paymentTypes = PaymentType::query()
+                ->whereIntegerInRaw('id', $missingTypeIds->all())
+                ->get()
+                ->keyBy('id');
+
+            foreach ($missingTypeIds as $paymentTypeId) {
+                $this->paymentTypeCache[$paymentTypeId] = $paymentTypes->get($paymentTypeId);
+            }
+        }
+
+        foreach ($settings as $setting) {
+            $setting->setRelation('paymentType', $this->paymentTypeCache[$setting->payment_type_id] ?? null);
+        }
     }
 
     /**
@@ -1334,6 +1363,7 @@ class BillGenerationService
         $this->defaultTypeIdsWithRatesCache = [];
         $this->rateCache = [];
         $this->billbookTypeCache = [];
+        $this->paymentTypeCache = [];
         $this->existingBillKeys = [];
     }
 

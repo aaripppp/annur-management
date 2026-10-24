@@ -41,6 +41,11 @@
                             <span class="material-symbols-outlined text-[14px]">move_item</span>
                             Pindah
                         </span>
+                    @elseif($academicStatus === 'keluar')
+                        <span class="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-error-container text-on-error-container">
+                            <span class="material-symbols-outlined text-[14px]">person_off</span>
+                            Drop Out
+                        </span>
                     @elseif($academicStatus === 'calon_siswa')
                         <span class="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-primary-fixed text-on-primary-fixed">
                             <span class="material-symbols-outlined text-[14px]">person_add</span>
@@ -61,7 +66,7 @@
                         Rencana Masuk : {{ $entryYear ?? '-' }} &bull;
                         Kelas Masuk : {{ $student->academicClassLabel() }}
                     </p>
-                @elseif(in_array($academicStatus, ['lulus', 'pindah'], true))
+                @elseif(in_array($academicStatus, ['lulus', 'pindah', 'keluar'], true))
                     <p class="text-body-sm text-on-surface-variant mt-1">
                         Kelas Terakhir : {{ $student->academicClassLabel() }}
                     </p>

@@ -174,6 +174,7 @@
                     <option value="calon_siswa">Calon Siswa</option>
                     <option value="lulus">Lulus</option>
                     <option value="pindah">Pindah</option>
+                    <option value="keluar">Drop Out</option>
                 </select>
                 <select wire:model.live="filterCategory" class="w-full sm:w-44 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2" aria-label="Filter kategori siswa">
                     <option value="">Semua Kategori</option>
@@ -228,6 +229,11 @@
                                 @elseif($academicStatus === 'pindah')
                                     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-error-container text-on-error-container">
                                         <span class="material-symbols-outlined text-[14px]">move_item</span>
+                                        {{ $academicStatusLabel }}
+                                    </span>
+                                @elseif($academicStatus === 'keluar')
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label-sm bg-error-container text-on-error-container">
+                                        <span class="material-symbols-outlined text-[14px]">person_off</span>
                                         {{ $academicStatusLabel }}
                                     </span>
                                 @elseif($academicStatus === 'calon_siswa')
@@ -315,7 +321,28 @@
                 <div class="p-6 overflow-y-auto">
                     <form wire:submit="save" class="flex flex-col gap-5">
                         
-                        @if(!$isEditing)
+                        @if($isEditing)
+                            <div>
+                                <label for="status" class="block text-label-md font-label-md text-on-surface mb-1">Status Siswa <span class="text-error">*</span></label>
+                                @if($status === 'lulus')
+                                    <div class="w-full border border-outline-variant rounded-lg px-3 py-2 bg-surface-container-low text-on-surface">Lulus</div>
+                                    <p class="text-body-sm text-on-surface-variant mt-1">Status Lulus hanya dapat diubah melalui proses akademik yang berlaku.</p>
+                                @else
+                                    @can('change-student-status')
+                                        <select id="status" wire:model="status" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm" required>
+                                            <option value="aktif">Aktif</option>
+                                            <option value="pindah">Pindah</option>
+                                            <option value="keluar">Drop Out</option>
+                                        </select>
+                                    @else
+                                        <div class="w-full border border-outline-variant rounded-lg px-3 py-2 bg-surface-container-low text-on-surface">
+                                            {{ App\Enums\StudentStatus::tryFrom($status)?->label() ?? '-' }}
+                                        </div>
+                                    @endcan
+                                @endif
+                                @error('status') <span class="text-error text-body-sm mt-1 block">{{ $message }}</span> @enderror
+                            </div>
+                        @else
                             <div>
                                 <label for="status" class="block text-label-md font-label-md text-on-surface mb-1">Status <span class="text-error">*</span></label>
                                 <select id="status" wire:model.live="status" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm" required>

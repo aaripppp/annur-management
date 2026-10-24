@@ -127,7 +127,7 @@
                                 @endif
                             </td>
                             <td class="py-3 px-4 text-body-md text-on-surface-variant text-center font-numeric-data whitespace-nowrap">
-                                {{ $year->enrollments()->count() }} Siswa
+                                {{ $year->enrollments_count }} Siswa
                             </td>
                             <td class="py-3 px-4 text-right align-middle">
                                 <button wire:click="openMonthlyPreview({{ $year->id }})" class="text-label-md font-label-md text-primary hover:underline transition-colors whitespace-nowrap">

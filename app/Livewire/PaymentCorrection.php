@@ -66,20 +66,25 @@ class PaymentCorrection extends Component
         $payment = Payment::with('details')->findOrFail($this->paymentId);
         $currentByBill = $payment->details->keyBy('bill_id');
 
-        $bills = StudentBill::with('paymentType')
-            ->where('student_id', $payment->student_id)
-            ->whereIn('id', $selectedIds)
-            ->get()
-            ->keyBy('id');
-
         foreach (array_keys($this->selectedBillAmounts) as $id) {
             if (! in_array((int) $id, $selectedIds, true)) {
                 unset($this->selectedBillAmounts[$id]);
             }
         }
 
-        foreach ($selectedIds as $id) {
-            if (! array_key_exists($id, $this->selectedBillAmounts)) {
+        $missingIds = array_values(array_filter(
+            $selectedIds,
+            fn (int $id) => ! array_key_exists($id, $this->selectedBillAmounts),
+        ));
+
+        if ($missingIds !== []) {
+            $bills = StudentBill::with(['paymentType', 'adjustments', 'paymentDetails.payment'])
+                ->where('student_id', $payment->student_id)
+                ->whereIn('id', $missingIds)
+                ->get()
+                ->keyBy('id');
+
+            foreach ($missingIds as $id) {
                 $bill = $bills->get($id);
                 if ($bill) {
                     $current = $currentByBill->get($id);
@@ -102,7 +107,7 @@ class PaymentCorrection extends Component
     {
         $currentByBill = $payment->details->keyBy('bill_id');
 
-        $bills = StudentBill::with('paymentType')
+        $bills = StudentBill::with(['paymentType', 'adjustments', 'paymentDetails.payment'])
             ->where('student_id', $payment->student_id)
             ->get()
             ->filter(fn (StudentBill $bill) => $bill->remaining_amount > 0 || $currentByBill->has($bill->id));
@@ -194,7 +199,7 @@ class PaymentCorrection extends Component
 
             // Baca ulang dari database (jangan hanya andalkan state komponen).
             $currentDetails = $payment->details()->get()->keyBy('bill_id');
-            $bills = StudentBill::with('paymentType')
+            $bills = StudentBill::with(['paymentType', 'adjustments', 'paymentDetails.payment'])
                 ->where('student_id', $payment->student_id)
                 ->get()
                 ->keyBy('id');

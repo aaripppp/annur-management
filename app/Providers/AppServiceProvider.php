@@ -27,7 +27,8 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
-        Gate::define('manage-accounts', static fn(User $user): bool => $user->isSuperAdmin());
+        Gate::define('manage-accounts', static fn (User $user): bool => $user->isSuperAdmin());
+        Gate::define('change-student-status', static fn (User $user): bool => $user->isAdmin() || $user->isSuperAdmin());
     }
 
     /**
@@ -41,6 +42,6 @@ class AppServiceProvider extends ServiceProvider
             app()->isProduction(),
         );
 
-        Password::defaults(fn(): ?Password => null);
+        Password::defaults(fn (): ?Password => null);
     }
 }

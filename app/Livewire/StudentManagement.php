@@ -210,6 +210,7 @@ class StudentManagement extends Component
         $this->nama_lengkap = $student->nama_lengkap;
         $this->nama_panggilan = $student->nama_panggilan;
         $this->class_id = $updater->representedClassId($student);
+        $this->status = (string) $student->getRawOriginal('status');
         $this->jenis_kelamin = $student->jenis_kelamin;
         $this->alamat = $student->alamat;
         $this->nama_ayah = $student->nama_ayah ?? '';
@@ -242,10 +243,25 @@ class StudentManagement extends Component
             $student = Student::query()->findOrFail((int) $this->studentId);
             $updater = app(StudentProfileUpdater::class);
             $photoService = app(StudentPhotoService::class);
+            $storedStatus = StudentStatus::tryFrom((string) $student->getRawOriginal('status'));
+            $allowedStatuses = $storedStatus === StudentStatus::Graduated
+                ? [StudentStatus::Graduated->value]
+                : [StudentStatus::Active->value, StudentStatus::Transferred->value, StudentStatus::Withdrawn->value];
             $validatedData = $this->validate([
                 ...$updater->rules($student),
+                'status' => ['required', Rule::in($allowedStatuses)],
                 ...$this->categoryRules(),
-            ], $updater->messages());
+            ], [
+                ...$updater->messages(),
+                'status.required' => 'Status siswa wajib dipilih.',
+                'status.in' => 'Status siswa tidak valid.',
+            ]);
+            $statusChanged = $student->getRawOriginal('status') !== $validatedData['status'];
+
+            if ($statusChanged) {
+                $this->authorize('change-student-status');
+            }
+
             $newPhotoPath = null;
 
             try {
@@ -256,7 +272,11 @@ class StudentManagement extends Component
                     $validatedData['foto'] = null;
                 }
 
-                DB::transaction(function () use ($updater, $student, $validatedData): void {
+                DB::transaction(function () use ($updater, $student, $validatedData, $statusChanged): void {
+                    if ($statusChanged) {
+                        $student->status = $validatedData['status'];
+                    }
+
                     $updater->update($student, $validatedData);
                     $student->categories()->sync($this->categoryIdsForSync($student, $validatedData['categoryIds'] ?? []));
                 });
@@ -357,7 +377,7 @@ class StudentManagement extends Component
 
     public function render()
     {
-        $query = Student::with(['schoolClass', 'enrollments.academicYear', 'categories'])->latest();
+        $query = Student::with(['schoolClass', 'enrollments.academicYear', 'enrollments.schoolClass', 'categories'])->latest();
 
         if ($this->filterLevel !== '') {
             $level = SchoolLevel::tryFrom($this->filterLevel);
@@ -414,6 +434,8 @@ class StudentManagement extends Component
             $query->where('status', StudentStatus::Graduated->value);
         } elseif ($this->filterStatus === 'pindah') {
             $query->where('status', StudentStatus::Transferred->value);
+        } elseif ($this->filterStatus === 'keluar') {
+            $query->where('status', StudentStatus::Withdrawn->value);
         } elseif ($this->filterStatus === 'calon_siswa') {
             $query->where('status', StudentStatus::Active->value);
 
@@ -456,8 +478,14 @@ class StudentManagement extends Component
             ->orderBy('name')
             ->get();
 
+        $students = $query->paginate(10);
+
+        foreach ($students as $student) {
+            $student->setRelation('academicContextActiveYear', $activeYear);
+        }
+
         return view('livewire.student.index', [
-            'students' => $query->paginate(10),
+            'students' => $students,
             'classes' => SchoolClass::orderBy('level')->orderBy('name')->get(),
             'levels' => SchoolLevel::cases(),
             'academicYears' => $academicYears,

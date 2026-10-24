@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Models\AcademicYear;
 use App\Models\DaycarePayment;
 use App\Models\Payment;
 use App\Models\ProspectiveStudentPayment;
@@ -56,6 +57,12 @@ class Dashboard extends Component
     #[Url(as: 'target_jenjang')]
     public string $targetJenjang = SchoolReportLevel::OPTION_ALL;
 
+    #[Url(as: 'target_mode')]
+    public string $targetMode = StudentTargetArrearsReportService::MODE_MONTHLY;
+
+    #[Url(as: 'target_academic_year')]
+    public string $targetAcademicYear = '';
+
     public function mount(): void
     {
         $today = $this->now()->toDateString();
@@ -94,6 +101,12 @@ class Dashboard extends Component
         if (! array_key_exists($this->targetJenjang, SchoolReportLevel::options())) {
             $this->targetJenjang = SchoolReportLevel::OPTION_ALL;
         }
+
+        if (! in_array($this->targetMode, $this->targetModes(), true)) {
+            $this->targetMode = StudentTargetArrearsReportService::MODE_MONTHLY;
+        }
+
+        $this->targetAcademicYear = $this->resolveTargetAcademicYear($this->targetAcademicYear);
     }
 
     public function updatedOperationalUnit(): void
@@ -124,6 +137,18 @@ class Dashboard extends Component
         $this->applyCustomDateRange();
     }
 
+    public function setTargetMode(string $mode): void
+    {
+        if (in_array($mode, $this->targetModes(), true)) {
+            $this->targetMode = $mode;
+        }
+    }
+
+    public function updatedTargetAcademicYear(): void
+    {
+        $this->targetAcademicYear = $this->resolveTargetAcademicYear($this->targetAcademicYear);
+    }
+
     public function render(
         DashboardOperationalMetricsService $operationalMetricsService,
         StudentTargetArrearsReportService $targetArrearsService,
@@ -136,9 +161,11 @@ class Dashboard extends Component
             $operationalEnd,
         );
         $currentMonth = $this->now();
-        $targetArrearsSummary = $targetArrearsService->generateMonthlySummary(
+        $targetArrearsSummary = $targetArrearsService->generateSummary(
+            $this->targetMode,
             $this->targetMonth,
             $this->targetYear,
+            $this->targetAcademicYear,
             SchoolReportLevel::fromValue($this->targetJenjang),
         );
 
@@ -146,7 +173,8 @@ class Dashboard extends Component
             'student' => fn ($query) => $query->with('schoolClass'),
             'bank',
             'user',
-            'details.bill',
+            'details.bill.adjustments',
+            'details.bill.paymentDetails.payment',
         ])
             ->latest('created_at')
             ->latest('id')
@@ -253,17 +281,13 @@ class Dashboard extends Component
             'recentTransactions' => $recentTransactions,
             'targetArrearsSummary' => $targetArrearsSummary,
             'targetCardTitle' => $this->targetCardTitle($targetArrearsSummary['period_label']),
-            'targetArrearsUrl' => route('laporan.index', [
-                'tab' => 'target',
-                'target_mode' => StudentTargetArrearsReportService::MODE_MONTHLY,
-                'target_month' => $this->targetMonth,
-                'target_year' => $this->targetYear,
-                'jenjang' => $this->targetJenjang,
-            ]),
+            'targetCardDescription' => $this->targetCardDescription(),
+            'targetArrearsUrl' => route('laporan.index', $this->targetArrearsRouteParameters()),
             'operationalUnitOptions' => DashboardOperationalMetricsService::unitOptions(),
             'operationalPeriodOptions' => self::periodOptions(),
             'targetMonthOptions' => $this->monthOptions(),
             'targetYearOptions' => $reportYearService->options(),
+            'targetAcademicYearOptions' => $this->targetAcademicYearOptions(),
             'targetLevelOptions' => SchoolReportLevel::options(),
         ]);
     }
@@ -324,6 +348,14 @@ class Dashboard extends Component
 
     private function targetCardTitle(string $periodLabel): string
     {
+        if ($this->targetMode === StudentTargetArrearsReportService::MODE_YEARLY) {
+            return 'Capaian Tagihan Tahunan';
+        }
+
+        if ($this->targetMode === StudentTargetArrearsReportService::MODE_ONE_TIME) {
+            return 'Capaian Tagihan Sekali Bayar';
+        }
+
         $current = $this->now();
 
         $isCurrentPeriod = $this->targetMonth === (int) $current->format('n')
@@ -332,6 +364,66 @@ class Dashboard extends Component
         return $isCurrentPeriod
             ? 'Capaian Tagihan Bulan Ini'
             : 'Capaian Tagihan '.$periodLabel;
+    }
+
+    private function targetCardDescription(): string
+    {
+        return match ($this->targetMode) {
+            StudentTargetArrearsReportService::MODE_YEARLY => 'Target dan tunggakan tagihan tahunan siswa.',
+            StudentTargetArrearsReportService::MODE_ONE_TIME => 'Target dan tunggakan tagihan sekali bayar berdasarkan tahun ajaran asal tagihan.',
+            default => 'Target dan tunggakan tagihan bulanan siswa.',
+        };
+    }
+
+    /** @return array<string, string|int> */
+    private function targetArrearsRouteParameters(): array
+    {
+        $parameters = [
+            'tab' => 'target',
+            'target_mode' => $this->targetMode,
+        ];
+
+        if ($this->targetMode === StudentTargetArrearsReportService::MODE_MONTHLY) {
+            $parameters['target_month'] = $this->targetMonth;
+            $parameters['target_year'] = $this->targetYear;
+        } else {
+            $parameters['target_academic_year'] = $this->targetAcademicYear;
+        }
+
+        $parameters['jenjang'] = $this->targetJenjang;
+
+        return $parameters;
+    }
+
+    /** @return list<string> */
+    private function targetModes(): array
+    {
+        return [
+            StudentTargetArrearsReportService::MODE_MONTHLY,
+            StudentTargetArrearsReportService::MODE_YEARLY,
+            StudentTargetArrearsReportService::MODE_ONE_TIME,
+        ];
+    }
+
+    /** @return list<string> */
+    private function targetAcademicYearOptions(): array
+    {
+        return AcademicYear::query()
+            ->orderByDesc('start_date')
+            ->pluck('year')
+            ->map(fn ($year): string => (string) $year)
+            ->values()
+            ->all();
+    }
+
+    private function resolveTargetAcademicYear(string $candidate): string
+    {
+        if ($candidate !== '' && AcademicYear::query()->where('year', $candidate)->exists()) {
+            return $candidate;
+        }
+
+        return AcademicYear::active()?->year
+            ?? (string) (AcademicYear::query()->orderByDesc('start_date')->value('year') ?? '');
     }
 
     /** @return list<array{value: int, label: string}> */
