@@ -18,6 +18,7 @@ use App\Models\StudentPaymentSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
+use Tests\MysqlConcurrencyTestCase;
 use Tests\TestCase;
 
 /*
@@ -34,6 +35,9 @@ use Tests\TestCase;
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->in('Feature');
+
+pest()->extend(MysqlConcurrencyTestCase::class)
+    ->in('Integration');
 
 /*
 |--------------------------------------------------------------------------

@@ -1,7 +1,6 @@
-
 import Alpine from 'alpinejs';
-
 window.Alpine = Alpine;
+import { createPpdbBiodataAccordions } from './ppdb-biodata-accordions';
 
 const sidebarStorageKeys = {
     siswa: 'sidebar.siswa.open',
@@ -268,6 +267,96 @@ window.classRecapStickyHeader = () => ({
 
         if (this.measureFrame !== null) {
             cancelAnimationFrame(this.measureFrame);
+        }
+    },
+});
+
+window.ppdbDetailTabs = () => ({
+    activeDetailTab: 'biodata',
+    detailTabs: ['biodata', 'documents', 'finance'],
+    selectDetailTab(tab) {
+        if (this.detailTabs.includes(tab)) {
+            this.activeDetailTab = tab;
+        }
+    },
+    moveDetailTab(direction) {
+        const currentIndex = this.detailTabs.indexOf(this.activeDetailTab);
+        const nextIndex = (currentIndex + direction + this.detailTabs.length) % this.detailTabs.length;
+        const nextTab = this.detailTabs[nextIndex];
+
+        this.activeDetailTab = nextTab;
+        this.$nextTick(() => this.$refs[`${nextTab}Tab`]?.focus());
+    },
+});
+
+window.ppdbBiodataAccordions = createPpdbBiodataAccordions;
+
+window.ppdbDocumentPreview = () => ({
+    previewOpen: false,
+    previewUrl: '',
+    downloadUrl: '',
+    previewLabel: '',
+    previewMime: '',
+    previewLoading: false,
+    previewError: false,
+    previousOverflow: '',
+    triggerElement: null,
+    openPreview(event, previewUrl, downloadUrl, label, mimeType) {
+        this.triggerElement = event.currentTarget;
+        this.previewUrl = previewUrl;
+        this.downloadUrl = downloadUrl;
+        this.previewLabel = label;
+        this.previewMime = mimeType;
+        this.previewLoading = true;
+        this.previewError = false;
+        this.previousOverflow = document.documentElement.style.overflow;
+        document.documentElement.style.overflow = 'hidden';
+        this.previewOpen = true;
+        this.$nextTick(() => this.$refs.previewClose?.focus());
+    },
+    closePreview() {
+        if (!this.previewOpen) {
+            return;
+        }
+
+        this.previewOpen = false;
+        this.previewUrl = '';
+        this.previewLoading = false;
+        document.documentElement.style.overflow = this.previousOverflow;
+        this.$nextTick(() => this.triggerElement?.focus());
+    },
+    previewLoaded() {
+        this.previewLoading = false;
+    },
+    previewFailed() {
+        this.previewLoading = false;
+        this.previewError = true;
+    },
+    trapPreviewFocus(event) {
+        const focusable = [...this.$refs.previewDialog.querySelectorAll(
+            'button:not([disabled]), a[href], iframe, [tabindex]:not([tabindex="-1"])',
+        )];
+
+        if (focusable.length === 0) {
+            event.preventDefault();
+
+            return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    },
+    destroy() {
+        if (this.previewOpen) {
+            document.documentElement.style.overflow = this.previousOverflow;
         }
     },
 });

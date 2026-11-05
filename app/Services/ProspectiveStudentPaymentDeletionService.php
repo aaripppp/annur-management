@@ -9,12 +9,16 @@ use Illuminate\Support\Facades\Storage;
 
 class ProspectiveStudentPaymentDeletionService
 {
-    public function delete(int $paymentId): void
+    public function delete(int $paymentId, ?int $expectedProspectiveStudentId = null): void
     {
-        $receiptPath = DB::transaction(function () use ($paymentId): ?string {
-            $payment = ProspectiveStudentPayment::query()
-                ->lockForUpdate()
-                ->findOrFail($paymentId);
+        $receiptPath = DB::transaction(function () use ($paymentId, $expectedProspectiveStudentId): ?string {
+            $query = ProspectiveStudentPayment::query()->lockForUpdate();
+
+            if ($expectedProspectiveStudentId !== null) {
+                $query->where('prospective_student_id', $expectedProspectiveStudentId);
+            }
+
+            $payment = $query->findOrFail($paymentId);
 
             $details = $payment->details()
                 ->lockForUpdate()

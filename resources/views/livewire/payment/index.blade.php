@@ -204,8 +204,24 @@
         <section class="bg-surface-container-lowest border border-outline-variant rounded-2xl px-5 py-5 sm:px-6 shadow-sm mb-stack-lg">
             <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 lg:gap-6">
                 <div class="flex items-center gap-4 min-w-0">
+                    @php
+                        $selectedPasFotoDocument = $selectedStudent->prospectiveStudent?->pasFotoDocument;
+                        $selectedPasFotoUrl = null;
+                        if (! $selectedStudent->foto && $selectedPasFotoDocument && auth()->check()) {
+                            $mime = $selectedPasFotoDocument->mime_type;
+                            if (in_array($mime, ['image/jpeg', 'image/png'], true) && Illuminate\Support\Facades\Gate::allows('view', $selectedPasFotoDocument)) {
+                                $version = $selectedPasFotoDocument->updated_at?->timestamp ?? $selectedPasFotoDocument->id;
+                                $selectedPasFotoUrl = route('ppdb.documents.preview', $selectedPasFotoDocument).'?v='.$version;
+                            }
+                        }
+                    @endphp
                     @if($selectedStudent->foto)
                         <img src="{{ Illuminate\Support\Facades\Storage::disk('public')->url($selectedStudent->foto) }}" alt="Foto {{ $selectedStudent->nama_lengkap }}" class="w-14 h-14 rounded-full object-cover border border-outline-variant shrink-0">
+                    @elseif($selectedPasFotoUrl)
+                        <img src="{{ $selectedPasFotoUrl }}" alt="Foto {{ $selectedStudent->nama_lengkap }}" class="w-14 h-14 rounded-full object-cover border border-outline-variant shrink-0" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="w-14 h-14 rounded-full bg-surface-container-high border border-outline-variant text-on-surface-variant flex items-center justify-center shrink-0" aria-hidden="true" style="display:none;">
+                            <span class="material-symbols-outlined text-[28px]">person</span>
+                        </div>
                     @else
                         <div class="w-14 h-14 rounded-full bg-surface-container-high border border-outline-variant text-on-surface-variant flex items-center justify-center shrink-0" aria-hidden="true">
                             <span class="material-symbols-outlined text-[28px]">person</span>

@@ -131,6 +131,14 @@
                 <span class="material-symbols-outlined text-[20px]" data-icon="rule">rule</span>
                 Aturan Kelas
             </a>
+            <a class="{{ request()->routeIs('ppdb.default-class-mappings.*') ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('ppdb.default-class-mappings.index') }}">
+                <span class="material-symbols-outlined text-[20px]" data-icon="tune">tune</span>
+                Kelas Default PPDB
+            </a>
+            <a class="{{ request()->routeIs('ppdb.academic-year-settings.*') ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('ppdb.academic-year-settings.index') }}">
+                <span class="material-symbols-outlined text-[20px]" data-icon="event_available">event_available</span>
+                Tahun Ajaran PPDB
+            </a>
         </div>
     </div>
 </nav>

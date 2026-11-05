@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Enums\PpdbApplicantCategory;
 use App\Enums\ProspectiveStudentStatus;
 use App\Enums\SchoolLevel;
 use App\Livewire\Concerns\ConvertsProspectiveStudent;
@@ -11,6 +12,7 @@ use App\Models\ProspectiveStudentBill;
 use App\Models\ProspectiveStudentPayment;
 use App\Models\SchoolClass;
 use App\Models\Student;
+use App\Services\PpdbDocumentCleanupService;
 use App\Services\ProspectiveStudentBillGenerationService;
 use App\Services\ProspectiveStudentRegistrationNumberGenerator;
 use Closure;
@@ -37,6 +39,8 @@ class ProspectiveStudentManagement extends Component
     public string $filterStatus = '';
 
     public string $filterBillStatus = '';
+
+    public string $filterCategory = '';
 
     public bool $isModalOpen = false;
 
@@ -103,6 +107,11 @@ class ProspectiveStudentManagement extends Component
         $this->resetPage();
     }
 
+    public function updatedFilterCategory(): void
+    {
+        $this->resetPage();
+    }
+
     public function openModal(): void
     {
         $this->resetForm();
@@ -136,7 +145,7 @@ class ProspectiveStudentManagement extends Component
         $this->reset(['isDeleteModalOpen', 'deletingId', 'deletingName', 'deletingRegistrationNumber']);
     }
 
-    public function delete(): void
+    public function delete(PpdbDocumentCleanupService $documentCleanupService): void
     {
         if ($this->deletingId === null) {
             return;
@@ -160,7 +169,8 @@ class ProspectiveStudentManagement extends Component
 
         $deletedName = $prospectiveStudent->nama_lengkap;
 
-        DB::transaction(function () use ($prospectiveStudent): void {
+        DB::transaction(function () use ($prospectiveStudent, $documentCleanupService): void {
+            $documentCleanupService->scheduleFor($prospectiveStudent);
             $prospectiveStudent->bills()->delete();
             $prospectiveStudent->delete();
         });
@@ -303,13 +313,12 @@ class ProspectiveStudentManagement extends Component
         $this->resetValidation();
     }
 
-    public function render()
+    private function applyProspectiveStudentFilters(Builder $query): Builder
     {
         $term = trim($this->search);
         $filterLevel = $this->filterLevel !== '' ? SchoolLevel::tryFrom($this->filterLevel) : null;
 
-        $query = ProspectiveStudent::query()
-            ->with(['academicYear', 'schoolClass', 'bills.paymentType', 'bills.paymentDetails.payment'])
+        return $query
             ->when($term !== '', function (Builder $query) use ($term): void {
                 $pattern = '%'.$term.'%';
                 $query->where(function (Builder $query) use ($pattern): void {
@@ -353,8 +362,54 @@ class ProspectiveStudentManagement extends Component
             ->when($this->filterBillStatus !== '', function (Builder $query): void {
                 $this->applyBillStatusFilter($query, $this->filterBillStatus);
             })
+            ->when($this->filterCategory !== '', function (Builder $query): void {
+                match ($this->filterCategory) {
+                    PpdbApplicantCategory::ANNUR_FAMILY->value => $query->where('applicant_category', PpdbApplicantCategory::ANNUR_FAMILY->value),
+                    PpdbApplicantCategory::NON_ANNUR_FAMILY->value => $query->where('applicant_category', PpdbApplicantCategory::NON_ANNUR_FAMILY->value),
+                    'uncategorized' => $query->where(function (Builder $query): void {
+                        $query->whereNull('applicant_category')
+                            ->orWhere('applicant_category', '')
+                            ->orWhereNotIn('applicant_category', [
+                                PpdbApplicantCategory::ANNUR_FAMILY->value,
+                                PpdbApplicantCategory::NON_ANNUR_FAMILY->value,
+                            ]);
+                    }),
+                    default => $query->whereRaw('0 = 1'),
+                };
+            });
+    }
+
+    public function render()
+    {
+        $filterLevel = $this->filterLevel !== '' ? SchoolLevel::tryFrom($this->filterLevel) : null;
+
+        $baseQuery = $this->applyProspectiveStudentFilters(ProspectiveStudent::query());
+
+        $query = (clone $baseQuery)
+            ->with(['academicYear', 'schoolClass', 'bills.paymentType', 'bills.paymentDetails.payment'])
             ->latest()
             ->paginate(10);
+
+        $totalAll = (clone $baseQuery)->count();
+        $totalRegistered = (clone $baseQuery)->where('status', ProspectiveStudentStatus::Registered)->count();
+        $totalConverted = (clone $baseQuery)->where('status', ProspectiveStudentStatus::Converted)->count();
+
+        $totalAllL = (clone $baseQuery)->where('jenis_kelamin', 'L')->count();
+        $totalAllP = (clone $baseQuery)->where('jenis_kelamin', 'P')->count();
+        $totalRegisteredL = (clone $baseQuery)->where('status', ProspectiveStudentStatus::Registered)->where('jenis_kelamin', 'L')->count();
+        $totalRegisteredP = (clone $baseQuery)->where('status', ProspectiveStudentStatus::Registered)->where('jenis_kelamin', 'P')->count();
+        $totalConvertedL = (clone $baseQuery)->where('status', ProspectiveStudentStatus::Converted)->where('jenis_kelamin', 'L')->count();
+        $totalConvertedP = (clone $baseQuery)->where('status', ProspectiveStudentStatus::Converted)->where('jenis_kelamin', 'P')->count();
+
+        $totalAnnurFamily = (clone $baseQuery)->where('applicant_category', PpdbApplicantCategory::ANNUR_FAMILY->value)->count();
+        $totalNonAnnurFamily = (clone $baseQuery)->where('applicant_category', PpdbApplicantCategory::NON_ANNUR_FAMILY->value)->count();
+
+        $totalAnnurFamilyL = (clone $baseQuery)->where('applicant_category', PpdbApplicantCategory::ANNUR_FAMILY->value)->where('jenis_kelamin', 'L')->count();
+        $totalAnnurFamilyP = (clone $baseQuery)->where('applicant_category', PpdbApplicantCategory::ANNUR_FAMILY->value)->where('jenis_kelamin', 'P')->count();
+        $totalNonAnnurFamilyL = (clone $baseQuery)->where('applicant_category', PpdbApplicantCategory::NON_ANNUR_FAMILY->value)->where('jenis_kelamin', 'L')->count();
+        $totalNonAnnurFamilyP = (clone $baseQuery)->where('applicant_category', PpdbApplicantCategory::NON_ANNUR_FAMILY->value)->where('jenis_kelamin', 'P')->count();
+
+        $totalUncategorized = max(0, $totalAll - $totalAnnurFamily - $totalNonAnnurFamily);
 
         $filterClasses = $filterLevel !== null
             ? SchoolClass::query()->whereIn('level', $filterLevel->classLevels())->orderBy('level')->orderBy('name')->get()
@@ -362,8 +417,22 @@ class ProspectiveStudentManagement extends Component
 
         return view('livewire.prospective-student.index', [
             'prospectiveStudents' => $query,
-            'totalRegistered' => ProspectiveStudent::query()->where('status', ProspectiveStudentStatus::Registered)->count(),
-            'totalConverted' => ProspectiveStudent::query()->where('status', ProspectiveStudentStatus::Converted)->count(),
+            'totalAll' => $totalAll,
+            'totalRegistered' => $totalRegistered,
+            'totalConverted' => $totalConverted,
+            'totalAllL' => $totalAllL,
+            'totalAllP' => $totalAllP,
+            'totalRegisteredL' => $totalRegisteredL,
+            'totalRegisteredP' => $totalRegisteredP,
+            'totalConvertedL' => $totalConvertedL,
+            'totalConvertedP' => $totalConvertedP,
+            'totalAnnurFamily' => $totalAnnurFamily,
+            'totalNonAnnurFamily' => $totalNonAnnurFamily,
+            'totalAnnurFamilyL' => $totalAnnurFamilyL,
+            'totalAnnurFamilyP' => $totalAnnurFamilyP,
+            'totalNonAnnurFamilyL' => $totalNonAnnurFamilyL,
+            'totalNonAnnurFamilyP' => $totalNonAnnurFamilyP,
+            'totalUncategorized' => $totalUncategorized,
             'academicYears' => AcademicYear::query()->orderByDesc('start_date')->get(),
             'schoolClasses' => SchoolClass::query()->orderBy('level')->orderBy('name')->get(),
             'levels' => SchoolLevel::cases(),

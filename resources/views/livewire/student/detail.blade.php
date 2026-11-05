@@ -1,4 +1,4 @@
-<div>
+<div x-data="ppdbDetailTabs()">
     @php
         $canGenerateBillsAutomatically = App\Enums\StudentStatus::tryFrom((string) $student->getRawOriginal('status')) === App\Enums\StudentStatus::Active;
         $manualAddBillLabel = $canGenerateBillsAutomatically ? 'Tambah Tagihan' : 'Tambah Tagihan Lama';
@@ -17,8 +17,24 @@
             <a href="{{ route('siswa.index') }}" class="w-10 h-10 rounded-lg bg-surface-container-low border border-outline-variant flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 transition-colors" title="Kembali">
                 <span class="material-symbols-outlined">arrow_back</span>
             </a>
+            @php
+                $pasFotoDocument = $student->prospectiveStudent?->pasFotoDocument;
+                $pasFotoUrl = null;
+                if (! $student->foto && $pasFotoDocument && auth()->check()) {
+                    $mime = $pasFotoDocument->mime_type;
+                    if (in_array($mime, ['image/jpeg', 'image/png'], true) && Illuminate\Support\Facades\Gate::allows('view', $pasFotoDocument)) {
+                        $version = $pasFotoDocument->updated_at?->timestamp ?? $pasFotoDocument->id;
+                        $pasFotoUrl = route('ppdb.documents.preview', $pasFotoDocument).'?v='.$version;
+                    }
+                }
+            @endphp
             @if($student->foto)
                 <img src="{{ Illuminate\Support\Facades\Storage::disk('public')->url($student->foto) }}" alt="Foto {{ $student->nama_lengkap }}" class="w-16 h-16 rounded-2xl object-cover border border-outline-variant shrink-0">
+            @elseif($pasFotoUrl)
+                <img src="{{ $pasFotoUrl }}" alt="Foto {{ $student->nama_lengkap }}" class="w-16 h-16 rounded-2xl object-cover border border-outline-variant shrink-0" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="w-16 h-16 rounded-2xl bg-surface-container-high border border-outline-variant text-on-surface-variant flex items-center justify-center shrink-0" aria-hidden="true" style="display:none;">
+                    <span class="material-symbols-outlined text-[30px]">person</span>
+                </div>
             @else
                 <div class="w-16 h-16 rounded-2xl bg-surface-container-high border border-outline-variant text-on-surface-variant flex items-center justify-center shrink-0" aria-hidden="true">
                     <span class="material-symbols-outlined text-[30px]">person</span>
@@ -141,6 +157,33 @@
         </div>
     @endif
 
+    <x-ppdb.detail-tabs prefix="student" />
+
+    <div x-show="activeDetailTab === 'biodata'" id="student-panel-biodata" role="tabpanel" aria-labelledby="student-tab-biodata" tabindex="0">
+        @if($student->prospectiveStudent)
+            @can('updateBiodata', $student->prospectiveStudent)
+                <livewire:ppdb-applicant-editor :prospective-student="$student->prospectiveStudent" :student-id="$student->id" :key="'ppdb-student-editor-'.$student->id" />
+            @endcan
+        @endif
+        <x-ppdb.applicant-data :applicant="$student->prospectiveStudent" :student="$student" />
+    </div>
+
+    <div x-show="activeDetailTab === 'documents'" x-cloak id="student-panel-documents" role="tabpanel" aria-labelledby="student-tab-documents" tabindex="0">
+        @if($student->prospectiveStudent)
+            <x-ppdb.document-section :applicant="$student->prospectiveStudent" :student="$student" />
+            @can('replace', new App\Models\PpdbDocument())
+                <livewire:ppdb-document-replacer :prospective-student-id="$student->prospectiveStudent->id" :student-id="$student->id" :key="'ppdb-doc-replacer-student-'.$student->id" />
+            @endcan
+        @else
+            <section class="rounded-xl border border-outline-variant bg-surface-container-lowest p-8 text-center text-on-surface-variant" data-ppdb-document-empty>
+                <span class="material-symbols-outlined mb-2 block text-4xl" aria-hidden="true">folder_off</span>
+                <h2 class="text-title-md font-semibold text-on-surface">Tidak ada dokumen PPDB</h2>
+                <p class="mt-1 text-body-sm">Siswa ini tidak berasal dari konversi pendaftaran PPDB online.</p>
+            </section>
+        @endif
+    </div>
+
+    <div x-show="activeDetailTab === 'finance'" x-cloak id="student-panel-finance" role="tabpanel" aria-labelledby="student-tab-finance" tabindex="0">
     <!-- Kartu riwayat konversi calon siswa -->
     <x-student.registration-history-card :prospect="$registeredProspect" :summary="$registrationSummary" />
 
@@ -299,6 +342,7 @@
             </div>
         @endif
     @endif
+    </div>
 
     <!-- Modal Generate Tagihan Sampai -->
     @if($canGenerateBillsAutomatically && $isGenerateUntilOpen)

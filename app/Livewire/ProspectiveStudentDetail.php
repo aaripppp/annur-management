@@ -7,6 +7,7 @@ use App\Models\ProspectiveStudent;
 use App\Models\ProspectiveStudentPayment;
 use App\Services\ProspectiveStudentPaymentDeletionService;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
@@ -26,6 +27,10 @@ class ProspectiveStudentDetail extends Component
             'academicYear',
             'schoolClass',
             'convertedStudent',
+            'ppdbProfile',
+            'ppdbParents',
+            'ppdbSiblings',
+            'ppdbDocuments',
             'bills.paymentType',
             'bills.paymentDetails.payment',
             'payments.bank',
@@ -56,14 +61,41 @@ class ProspectiveStudentDetail extends Component
 
     public function deletePayment(ProspectiveStudentPaymentDeletionService $deletionService): void
     {
-        if (! $this->deletingPaymentId) {
+        if (! $this->deletingPaymentId || ! $this->prospectiveStudent) {
             return;
         }
 
-        $deletionService->delete($this->deletingPaymentId);
+        $deletionService->delete($this->deletingPaymentId, $this->prospectiveStudent->id);
 
         $this->cancelDeletePayment();
         session()->flash('success', 'Transaksi pembayaran berhasil dihapus permanen.');
+    }
+
+    #[On('ppdb-biodata-updated')]
+    #[On('ppdb-documents-updated')]
+    public function refreshPpdbBiodata(?int $prospectiveStudentId = null): void
+    {
+        if ($prospectiveStudentId !== null && $this->prospectiveStudent?->id !== $prospectiveStudentId) {
+            return;
+        }
+        if ($this->prospectiveStudent?->id !== $prospectiveStudentId) {
+            return;
+        }
+
+        $this->prospectiveStudent->refresh()->load([
+            'academicYear',
+            'schoolClass',
+            'convertedStudent',
+            'ppdbProfile',
+            'ppdbParents',
+            'ppdbSiblings',
+            'ppdbDocuments',
+            'bills.paymentType',
+            'bills.paymentDetails.payment',
+            'payments.bank',
+            'payments.details.bill',
+            'payments.details.paymentType',
+        ]);
     }
 
     public function render(): mixed

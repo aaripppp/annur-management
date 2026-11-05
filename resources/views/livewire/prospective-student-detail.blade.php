@@ -1,4 +1,4 @@
-<div>
+<div x-data="ppdbDetailTabs()">
     <div class="flex items-center gap-2 text-body-md text-on-surface-variant mb-4">
         <a href="{{ route('calon-siswa.index') }}" wire:navigate class="hover:text-primary">Calon Siswa</a>
         <span>&rsaquo;</span>
@@ -38,6 +38,12 @@
                         Jadikan Siswa
                     </button>
                 @endif
+                @can('viewBiodata', $prospectiveStudent)
+                    <a href="{{ route('calon-siswa.biodata.pdf', $prospectiveStudent) }}" target="_blank" rel="noopener" class="px-3.5 py-2 text-primary font-label-md border border-primary/40 rounded-xl hover:bg-primary-fixed/50 transition-colors flex items-center justify-center gap-1.5 w-fit">
+                        <span class="material-symbols-outlined text-[18px]">print</span>
+                        Cetak Biodata PDF
+                    </a>
+                @endcan
                 <a href="{{ route('calon-siswa.index') }}" wire:navigate class="px-3.5 py-2 text-primary font-label-md border border-primary/40 rounded-xl hover:bg-primary-fixed/50 transition-colors flex items-center justify-center gap-1.5 w-fit">
                     <span class="material-symbols-outlined text-[18px]">arrow_back</span>
                     Kembali
@@ -90,7 +96,7 @@
             @if($prospectiveStudent->isConverted())
                 <div class="mt-5 px-4 py-3 rounded-lg bg-primary-fixed text-on-primary-fixed text-body-sm flex items-center gap-2">
                     <span class="material-symbols-outlined text-[18px]">link</span>
-                    Calon siswa ini telah dikonversi menjadi siswa. Data bersifat read-only.
+                    Calon siswa ini telah dikonversi menjadi siswa. Perubahan biodata yang sama akan diselaraskan ke data siswa.
                     @if($prospectiveStudent->convertedStudent)
                         <span class="mx-1">&bull;</span>
                         <a href="{{ route('siswa.show', $prospectiveStudent->convertedStudent) }}" wire:navigate class="inline-flex items-center gap-1 font-semibold underline decoration-1 underline-offset-2 hover:opacity-80">
@@ -103,6 +109,23 @@
         </div>
     </section>
 
+    <x-ppdb.detail-tabs prefix="prospective-student" />
+
+    <div x-show="activeDetailTab === 'biodata'" id="prospective-student-panel-biodata" role="tabpanel" aria-labelledby="prospective-student-tab-biodata" tabindex="0">
+        @can('updateBiodata', $prospectiveStudent)
+            <livewire:ppdb-applicant-editor :prospective-student="$prospectiveStudent" :key="'ppdb-applicant-editor-'.$prospectiveStudent->id" />
+        @endcan
+        <x-ppdb.applicant-data :applicant="$prospectiveStudent" />
+    </div>
+
+    <div x-show="activeDetailTab === 'documents'" x-cloak id="prospective-student-panel-documents" role="tabpanel" aria-labelledby="prospective-student-tab-documents" tabindex="0">
+        <x-ppdb.document-section :applicant="$prospectiveStudent" />
+        @can('replace', new App\Models\PpdbDocument())
+            <livewire:ppdb-document-replacer :prospective-student-id="$prospectiveStudent->id" :key="'ppdb-doc-replacer-prospective-'.$prospectiveStudent->id" />
+        @endcan
+    </div>
+
+    <div x-show="activeDetailTab === 'finance'" x-cloak id="prospective-student-panel-finance" role="tabpanel" aria-labelledby="prospective-student-tab-finance" tabindex="0">
     <section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden mb-6">
         <div class="p-5 border-b border-outline-variant">
             <h2 class="text-headline-sm font-headline-sm text-on-surface">Tagihan Pendaftaran</h2>
@@ -213,6 +236,7 @@
             @endif
         </div>
     </section>
+    </div>
 
     @if($isDeletePaymentModalOpen && $deletingPayment)
         <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="delete-payment-title">

@@ -205,3 +205,59 @@ it('menghapus diskon mengembalikan tagihan efektif ke nominal awal', function ()
         ->and((float) $bill->remaining_amount)->toBe(5000000.0)
         ->and($bill->status)->toBe(StudentBill::STATUS_UNPAID);
 });
+
+it('siswa tidak dapat mengedit diskon tagihan siswa lain', function () {
+    Livewire::actingAs(User::factory()->create());
+
+    $studentA = makeBillStudent(8);
+    $studentB = makeBillStudent(9);
+    $type = makeBillType('SPP', auto: true, required: true);
+    $billB = makeMonthlyBill($studentB, $type, 5000000);
+
+    Livewire::test(StudentDetail::class, ['student' => $studentA])
+        ->call('editAdjustment', $billB->id)
+        ->assertSet('isAdjustmentOpen', false);
+
+    expect(BillAdjustment::where('bill_id', $billB->id)->count())->toBe(0)
+        ->and($billB->fresh()->amount)->toBe('5000000.00');
+});
+
+it('siswa tidak dapat menyimpan diskon ke tagihan siswa lain', function () {
+    Livewire::actingAs(User::factory()->create());
+
+    $studentA = makeBillStudent(8);
+    $studentB = makeBillStudent(9);
+    $type = makeBillType('SPP', auto: true, required: true);
+    $billB = makeMonthlyBill($studentB, $type, 5000000);
+
+    $test = Livewire::test(StudentDetail::class, ['student' => $studentA]);
+    $test->instance()->adjustmentBillId = $billB->id;
+    $test->set('adjustmentType', 'discount')
+        ->set('adjustmentAmount', '500000')
+        ->set('adjustmentReason', 'Coba silang')
+        ->call('saveAdjustment');
+
+    expect(BillAdjustment::where('bill_id', $billB->id)->count())->toBe(0)
+        ->and($billB->fresh()->amount)->toBe('5000000.00');
+});
+
+it('siswa tidak dapat menghapus diskon tagihan siswa lain', function () {
+    Livewire::actingAs(User::factory()->create());
+
+    $studentA = makeBillStudent(8);
+    $studentB = makeBillStudent(9);
+    $type = makeBillType('SPP', auto: true, required: true);
+    $billB = makeMonthlyBill($studentB, $type, 5000000);
+
+    BillAdjustment::create([
+        'bill_id' => $billB->id,
+        'type' => BillAdjustment::TYPE_DISCOUNT,
+        'amount' => -500000,
+    ]);
+
+    $test = Livewire::test(StudentDetail::class, ['student' => $studentA]);
+    $test->instance()->adjustmentBillId = $billB->id;
+    $test->call('removeAdjustment');
+
+    expect(BillAdjustment::where('bill_id', $billB->id)->count())->toBe(1);
+});

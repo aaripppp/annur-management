@@ -2,13 +2,17 @@
 
 namespace App\Models;
 
+use App\Enums\PpdbApplicantCategory;
+use App\Enums\PpdbDocumentType;
 use App\Enums\ProspectiveStudentStatus;
 use App\Enums\SchoolLevel;
+use App\Support\PersonNameNormalizer;
 use Database\Factories\ProspectiveStudentFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * @property int $id
@@ -19,6 +23,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $nama_orang_tua
  * @property string|null $no_telp_orang_tua
  * @property string|null $alamat
+ * @property PpdbApplicantCategory|null $applicant_category
  * @property int $academic_year_id
  * @property int|null $school_class_id
  * @property ProspectiveStudentStatus $status
@@ -30,6 +35,17 @@ class ProspectiveStudent extends Model
 {
     /** @use HasFactory<ProspectiveStudentFactory> */
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::saving(function (ProspectiveStudent $prospectiveStudent): void {
+            foreach (['nama_lengkap', 'nama_panggilan', 'nama_orang_tua'] as $field) {
+                if (array_key_exists($field, $prospectiveStudent->getDirty())) {
+                    $prospectiveStudent->{$field} = PersonNameNormalizer::normalize($prospectiveStudent->{$field});
+                }
+            }
+        });
+    }
 
     public const STATUS_REGISTERED = 'registered';
 
@@ -45,6 +61,7 @@ class ProspectiveStudent extends Model
         'nama_orang_tua',
         'no_telp_orang_tua',
         'alamat',
+        'applicant_category',
         'academic_year_id',
         'school_class_id',
         'status',
@@ -57,6 +74,7 @@ class ProspectiveStudent extends Model
     protected function casts(): array
     {
         return [
+            'applicant_category' => PpdbApplicantCategory::class,
             'status' => ProspectiveStudentStatus::class,
             'converted_at' => 'datetime',
         ];
@@ -168,6 +186,46 @@ class ProspectiveStudent extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(ProspectiveStudentPayment::class);
+    }
+
+    /**
+     * @return HasOne<PpdbProfile, $this>
+     */
+    public function ppdbProfile(): HasOne
+    {
+        return $this->hasOne(PpdbProfile::class);
+    }
+
+    /**
+     * @return HasMany<PpdbParent, $this>
+     */
+    public function ppdbParents(): HasMany
+    {
+        return $this->hasMany(PpdbParent::class);
+    }
+
+    /**
+     * @return HasMany<PpdbSibling, $this>
+     */
+    public function ppdbSiblings(): HasMany
+    {
+        return $this->hasMany(PpdbSibling::class)->orderBy('sort_order');
+    }
+
+    /**
+     * @return HasMany<PpdbDocument, $this>
+     */
+    public function ppdbDocuments(): HasMany
+    {
+        return $this->hasMany(PpdbDocument::class);
+    }
+
+    /**
+     * @return HasOne<PpdbDocument, $this>
+     */
+    public function pasFotoDocument(): HasOne
+    {
+        return $this->hasOne(PpdbDocument::class)->where('document_type', PpdbDocumentType::PasFoto);
     }
 
     public function getTargetLevelLabelAttribute(): ?string

@@ -5,6 +5,8 @@ use App\Http\Controllers\DaycareDailyReportHistoryPdfController;
 use App\Http\Controllers\DaycareDailyReportPdfController;
 use App\Http\Controllers\DaycareMonthlyReportExportController;
 use App\Http\Controllers\DaycareMonthlyReportPdfController;
+use App\Http\Controllers\PpdbBiodataPdfController;
+use App\Http\Controllers\PpdbDocumentController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReceiptPrintController;
 use App\Http\Controllers\SchoolBankRecapExportController;
@@ -23,6 +25,7 @@ use App\Http\Controllers\StudentClassPaymentRecapExportController;
 use App\Http\Controllers\StudentTargetArrearsReportExportController;
 use App\Http\Controllers\StudentTargetArrearsReportPdfController;
 use App\Http\Controllers\StudentUnitClassPaymentRecapExportController;
+use App\Http\Middleware\AddPrivateResponseHeaders;
 use App\Livewire\AcademicYearManagement;
 use App\Livewire\AccountManagement;
 use App\Livewire\BankManagement;
@@ -44,6 +47,10 @@ use App\Livewire\PaymentIndex;
 use App\Livewire\PaymentRateManagement;
 use App\Livewire\PaymentShow;
 use App\Livewire\PaymentTypeManagement;
+use App\Livewire\PpdbAcademicYearSettingsManagement;
+use App\Livewire\PpdbDefaultClassMappingManagement;
+use App\Livewire\PpdbPublicRegistration;
+use App\Livewire\PpdbPublicRegistrationSuccess;
 use App\Livewire\ProspectivePaymentCreate;
 use App\Livewire\ProspectivePaymentEdit;
 use App\Livewire\ProspectivePaymentShow;
@@ -67,6 +74,23 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return view('welcome');
 });
+
+Route::get('/ppdb/daftar', PpdbPublicRegistration::class)
+    ->middleware(AddPrivateResponseHeaders::class, 'throttle:ppdb-public-register')
+    ->name('ppdb.public.register');
+
+Route::get('/ppdb/berhasil/{reference}', PpdbPublicRegistrationSuccess::class)
+    ->middleware(AddPrivateResponseHeaders::class, 'throttle:ppdb-public-success')
+    ->where('reference', '[a-f0-9]{64}')
+    ->name('ppdb.public.success');
+
+Route::get('/ppdb/documents/{ppdbDocument}/preview', [PpdbDocumentController::class, 'preview'])
+    ->middleware(['auth', AddPrivateResponseHeaders::class])
+    ->name('ppdb.documents.preview');
+
+Route::get('/ppdb/documents/{ppdbDocument}/download', [PpdbDocumentController::class, 'download'])
+    ->middleware(['auth', AddPrivateResponseHeaders::class])
+    ->name('ppdb.documents.download');
 
 Route::get('/dashboard', Dashboard::class)
     ->middleware('auth')
@@ -115,6 +139,10 @@ Route::get('/calon-siswa/update', ProspectiveStudentBulkUpdate::class)
 Route::get('/calon-siswa/{prospectiveStudent}', ProspectiveStudentDetail::class)
     ->middleware('auth')
     ->name('calon-siswa.show');
+
+Route::get('/calon-siswa/{prospectiveStudent}/biodata/pdf', PpdbBiodataPdfController::class)
+    ->middleware(['auth', AddPrivateResponseHeaders::class])
+    ->name('calon-siswa.biodata.pdf');
 
 Route::get('/daycare', DaycareManagement::class)
     ->middleware('auth')
@@ -191,6 +219,14 @@ Route::get('/tahun-ajaran', AcademicYearManagement::class)
 Route::get('/aturan-kenaikan-kelas', ClassPromotionRuleManagement::class)
     ->middleware('auth')
     ->name('aturan-kenaikan-kelas.index');
+
+Route::get('/pengaturan/ppdb/kelas-default', PpdbDefaultClassMappingManagement::class)
+    ->middleware('auth')
+    ->name('ppdb.default-class-mappings.index');
+
+Route::get('/pengaturan/ppdb/tahun-ajaran', PpdbAcademicYearSettingsManagement::class)
+    ->middleware('auth')
+    ->name('ppdb.academic-year-settings.index');
 
 Route::get('/bank', BankManagement::class)
     ->middleware('auth')

@@ -459,6 +459,7 @@ class PaymentIndex extends Component
         $this->tanggal_lahir = $student->tanggal_lahir ? Carbon::parse($student->tanggal_lahir)->format('Y-m-d') : '';
         $this->entry_date = $student->entry_date ? Carbon::parse($student->entry_date)->format('Y-m-d') : '';
         $this->existing_foto = $student->foto;
+        $student->loadMissing('prospectiveStudent.pasFotoDocument');
         $this->foto_upload = null;
         $this->remove_foto = false;
         $this->resetValidation();
@@ -550,7 +551,7 @@ class PaymentIndex extends Component
         $selectedStudent = $this->selectedStudentId === null
             ? null
             : Student::query()
-                ->with(['schoolClass', 'enrollments.academicYear', 'categories'])
+                ->with(['schoolClass', 'enrollments.academicYear', 'categories', 'prospectiveStudent.pasFotoDocument'])
                 ->find($this->selectedStudentId);
 
         $academicYearContext = null;

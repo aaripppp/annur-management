@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -38,6 +40,24 @@ class AcademicYear extends Model
     public function enrollments(): HasMany
     {
         return $this->hasMany(StudentAcademicEnrollment::class);
+    }
+
+    /** @return HasOne<PpdbAcademicYearSetting, $this> */
+    public function ppdbSetting(): HasOne
+    {
+        return $this->hasOne(PpdbAcademicYearSetting::class);
+    }
+
+    /**
+     * Limit the query to years explicitly opened for PPDB registration.
+     * A missing settings row is therefore always treated as closed.
+     */
+    public function scopeOpenForPpdb(Builder $query): Builder
+    {
+        return $query->whereHas(
+            'ppdbSetting',
+            fn (Builder $settingQuery): Builder => $settingQuery->where('is_open', true)
+        );
     }
 
     public static function active(): ?self

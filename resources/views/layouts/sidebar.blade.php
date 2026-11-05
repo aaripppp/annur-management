@@ -23,6 +23,7 @@
         || request()->routeIs('tarif-pembayaran.*')
         || request()->routeIs('kelas.*')
         || request()->routeIs('tahun-ajaran.*')
+        || request()->routeIs('ppdb.*')
         || request()->routeIs('aturan-kenaikan-kelas.*');
 
     $isAccountActive = request()->routeIs('akun.*');

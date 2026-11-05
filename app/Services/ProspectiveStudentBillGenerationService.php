@@ -26,6 +26,39 @@ class ProspectiveStudentBillGenerationService
      */
     public function generateFor(ProspectiveStudent $prospectiveStudent): Collection
     {
+        $created = [];
+
+        foreach ($this->applicableBillsFor($prospectiveStudent) as $applicableBill) {
+            $type = $applicableBill['payment_type'];
+            $bill = ProspectiveStudentBill::query()->firstOrCreate(
+                [
+                    'prospective_student_id' => $prospectiveStudent->id,
+                    'payment_type_id' => $type->id,
+                    'academic_year' => $applicableBill['academic_year'],
+                ],
+                [
+                    'amount' => $applicableBill['amount'],
+                    'billing_frequency' => BillFrequency::OneTime->value,
+                    'due_date' => null,
+                    'created_by' => auth()->id(),
+                ]
+            );
+
+            if ($bill->wasRecentlyCreated) {
+                $created[] = $bill;
+            }
+        }
+
+        return collect($created);
+    }
+
+    /**
+     * Resolve the bills generateFor() would create without writing records.
+     *
+     * @return Collection<int, array{payment_type: PaymentType, amount: float, academic_year: string}>
+     */
+    public function applicableBillsFor(ProspectiveStudent $prospectiveStudent): Collection
+    {
         $prospectiveStudent->unsetRelation('academicYear')->unsetRelation('schoolClass');
 
         $academicYear = $prospectiveStudent->academicYear;
@@ -46,7 +79,7 @@ class ProspectiveStudentBillGenerationService
                 ->where('is_active', true))
             ->pluck('payment_type_id');
 
-        $created = [];
+        $applicableBills = [];
 
         foreach ($typeIds as $typeId) {
             $type = PaymentType::query()->find($typeId);
@@ -61,26 +94,14 @@ class ProspectiveStudentBillGenerationService
                 continue;
             }
 
-            $bill = ProspectiveStudentBill::query()->firstOrCreate(
-                [
-                    'prospective_student_id' => $prospectiveStudent->id,
-                    'payment_type_id' => $type->id,
-                    'academic_year' => $academicYear->year,
-                ],
-                [
-                    'amount' => (float) $rate->amount,
-                    'billing_frequency' => BillFrequency::OneTime->value,
-                    'due_date' => null,
-                    'created_by' => auth()->id(),
-                ]
-            );
-
-            if ($bill->wasRecentlyCreated) {
-                $created[] = $bill;
-            }
+            $applicableBills[] = [
+                'payment_type' => $type,
+                'amount' => (float) $rate->amount,
+                'academic_year' => $academicYear->year,
+            ];
         }
 
-        return collect($created);
+        return collect($applicableBills);
     }
 
     /**

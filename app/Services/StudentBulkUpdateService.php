@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AcademicYear;
 use App\Models\Student;
 use App\Models\StudentAcademicEnrollment;
+use App\Support\PersonNameNormalizer;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -245,6 +246,10 @@ class StudentBulkUpdateService
             $current = $this->currentValue($student, $field);
 
             $normalized = $this->normalizeField($field, $incoming);
+
+            if (in_array($field, ['nama_lengkap', 'nama_panggilan', 'nama_ayah', 'nama_ibu'], true)) {
+                $normalized = PersonNameNormalizer::normalize($normalized) ?? $normalized;
+            }
 
             $fieldError = $this->validateField($field, $normalized);
             if ($fieldError !== null) {

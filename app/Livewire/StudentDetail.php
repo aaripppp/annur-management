@@ -65,7 +65,17 @@ class StudentDetail extends Component
 
     public function mount(Student $student): void
     {
-        $this->student = $student->load('categories');
+        $this->student = $student->load([
+            'categories',
+            'prospectiveStudent.academicYear',
+            'prospectiveStudent.schoolClass',
+            'prospectiveStudent.ppdbProfile',
+            'prospectiveStudent.ppdbParents',
+            'prospectiveStudent.ppdbSiblings',
+            'prospectiveStudent.ppdbDocuments',
+            'prospectiveStudent.pasFotoDocument',
+            'prospectiveStudent.bills.paymentDetails.payment',
+        ]);
 
         $latestEnrollment = $student->enrollments()
             ->with('academicYear')
@@ -198,7 +208,9 @@ class StudentDetail extends Component
 
     public function editAdjustment(int $billId): void
     {
-        $bill = StudentBill::with(['adjustments.creator', 'paymentType'])->find($billId);
+        $bill = $this->student->bills()
+            ->with(['adjustments.creator', 'paymentType'])
+            ->find($billId);
 
         if (! $bill) {
             return;
@@ -233,7 +245,15 @@ class StudentDetail extends Component
             'adjustmentReason.max' => 'Alasan tidak boleh lebih dari 255 karakter.',
         ]);
 
-        $bill = StudentBill::with('adjustments')->findOrFail($this->adjustmentBillId);
+        if (! $this->adjustmentBillId) {
+            return;
+        }
+
+        $bill = $this->student->bills()->with('adjustments')->find($this->adjustmentBillId);
+
+        if (! $bill) {
+            return;
+        }
 
         $proposed = -abs((float) $this->adjustmentAmount);
 
@@ -282,7 +302,15 @@ class StudentDetail extends Component
 
     public function removeAdjustment(): void
     {
-        $bill = StudentBill::with('adjustments')->findOrFail($this->adjustmentBillId);
+        if (! $this->adjustmentBillId) {
+            return;
+        }
+
+        $bill = $this->student->bills()->with('adjustments')->find($this->adjustmentBillId);
+
+        if (! $bill) {
+            return;
+        }
 
         $discount = $bill->adjustments->firstWhere('type', BillAdjustment::TYPE_DISCOUNT);
 
@@ -323,6 +351,31 @@ class StudentDetail extends Component
         $this->student->unsetRelation('bills');
     }
 
+    #[On('ppdb-biodata-updated')]
+    #[On('ppdb-documents-updated')]
+    public function refreshPpdbBiodata(?int $prospectiveStudentId = null): void
+    {
+        if (! $this->student->prospectiveStudent) {
+            return;
+        }
+
+        if ($prospectiveStudentId !== null && $this->student->prospectiveStudent->id !== $prospectiveStudentId) {
+            return;
+        }
+
+        $this->student->refresh()->load([
+            'categories',
+            'prospectiveStudent.academicYear',
+            'prospectiveStudent.schoolClass',
+            'prospectiveStudent.ppdbProfile',
+            'prospectiveStudent.ppdbParents',
+            'prospectiveStudent.ppdbSiblings',
+            'prospectiveStudent.ppdbDocuments',
+            'prospectiveStudent.pasFotoDocument',
+            'prospectiveStudent.bills.paymentDetails.payment',
+        ]);
+    }
+
     protected function managedBillStudent(): ?Student
     {
         return $this->student;
@@ -340,7 +393,17 @@ class StudentDetail extends Component
 
     public function render(): View
     {
-        $this->student->loadMissing('categories');
+        $this->student->loadMissing([
+            'categories',
+            'prospectiveStudent.academicYear',
+            'prospectiveStudent.schoolClass',
+            'prospectiveStudent.ppdbProfile',
+            'prospectiveStudent.ppdbParents',
+            'prospectiveStudent.ppdbSiblings',
+            'prospectiveStudent.ppdbDocuments',
+            'prospectiveStudent.pasFotoDocument',
+            'prospectiveStudent.bills.paymentDetails.payment',
+        ]);
 
         $billbook = StudentBillbook::build(
             $this->student,

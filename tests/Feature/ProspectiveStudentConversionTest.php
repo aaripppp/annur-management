@@ -2,6 +2,7 @@
 
 use App\Enums\BillFrequency;
 use App\Enums\PaymentTypeAudience;
+use App\Enums\PpdbDocumentType;
 use App\Enums\ProspectiveStudentStatus;
 use App\Enums\SchoolLevel;
 use App\Enums\StudentStatus;
@@ -14,6 +15,7 @@ use App\Models\Bank;
 use App\Models\Payment;
 use App\Models\PaymentRate;
 use App\Models\PaymentType;
+use App\Models\PpdbDocument;
 use App\Models\ProspectiveStudent;
 use App\Models\ProspectiveStudentBill;
 use App\Models\ProspectiveStudentPayment;
@@ -848,4 +850,27 @@ it('converts a prospect from the list, stays on the page, refreshes the row, and
 
     expect(Student::where('nis', '2027-L0009')->count())->toBe(1)
         ->and($prospect->fresh()->converted_student_id)->toBe($student->id);
+});
+
+it('preserves the original PPDB document records and paths during conversion', function () {
+    $catalog = prepareConversionSetup();
+    $prospect = createRegisteredProspect($catalog);
+    $document = PpdbDocument::query()->create([
+        'prospective_student_id' => $prospect->id,
+        'document_type' => PpdbDocumentType::BuktiTransfer->value,
+        'disk' => 'local',
+        'path' => 'ppdb/documents/2026/10/conversion/bukti.pdf',
+        'original_name' => 'bukti.pdf',
+        'mime_type' => 'application/pdf',
+        'size_bytes' => 100,
+        'uploaded_by' => null,
+    ]);
+
+    $student = app(ProspectiveStudentConversionService::class)->convert($prospect);
+
+    expect(PpdbDocument::query()->count())->toBe(1)
+        ->and($document->fresh()->prospective_student_id)->toBe($prospect->id)
+        ->and($document->fresh()->path)->toBe('ppdb/documents/2026/10/conversion/bukti.pdf')
+        ->and($student->fresh()->prospectiveStudent?->id)->toBe($prospect->id)
+        ->and($student->prospectiveStudent?->ppdbDocuments()->sole()->id)->toBe($document->id);
 });

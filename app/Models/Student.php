@@ -5,12 +5,14 @@ namespace App\Models;
 use App\Enums\PaymentTypeAudience;
 use App\Enums\SchoolLevel;
 use App\Enums\StudentStatus;
+use App\Support\PersonNameNormalizer;
 use Database\Factories\StudentFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Collection;
 
 class Student extends Model
@@ -47,6 +49,14 @@ class Student extends Model
 
     protected static function booted(): void
     {
+        static::saving(function (Student $student): void {
+            foreach (['nama_lengkap', 'nama_panggilan', 'nama_ayah', 'nama_ibu'] as $field) {
+                if (array_key_exists($field, $student->getDirty())) {
+                    $student->{$field} = PersonNameNormalizer::normalize($student->{$field});
+                }
+            }
+        });
+
         static::created(function (Student $student) {
             $persistedStatus = $student->getAttributes()['status'] ?? null;
 
@@ -90,6 +100,14 @@ class Student extends Model
     public function schoolClass(): BelongsTo
     {
         return $this->belongsTo(SchoolClass::class, 'class_id');
+    }
+
+    /**
+     * @return HasOne<ProspectiveStudent, $this>
+     */
+    public function prospectiveStudent(): HasOne
+    {
+        return $this->hasOne(ProspectiveStudent::class, 'converted_student_id');
     }
 
     /**

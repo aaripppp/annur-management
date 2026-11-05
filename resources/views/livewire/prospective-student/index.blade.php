@@ -34,13 +34,23 @@
         </div>
     @endif
 
-    <section class="grid grid-cols-1 sm:grid-cols-3 gap-gutter mb-stack-lg">
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-gutter mb-stack-lg">
         <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md">
             <div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary">
                 <span class="material-symbols-outlined">person_add</span>
             </div>
             <p class="text-on-surface-variant text-body-md mt-4">Total Calon Siswa</p>
-            <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data">{{ number_format((\App\Models\ProspectiveStudent::query()->count()), 0, ',', '.') }}</p>
+            <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data">{{ number_format($totalAll, 0, ',', '.') }}</p>
+            <div class="mt-3 pt-3 border-t border-outline-variant/60 space-y-1">
+                <div class="flex items-center justify-between text-body-sm">
+                    <span class="text-on-surface-variant">Laki-laki</span>
+                    <span class="font-numeric-data text-on-surface">{{ number_format($totalAllL, 0, ',', '.') }}</span>
+                </div>
+                <div class="flex items-center justify-between text-body-sm">
+                    <span class="text-on-surface-variant">Perempuan</span>
+                    <span class="font-numeric-data text-on-surface">{{ number_format($totalAllP, 0, ',', '.') }}</span>
+                </div>
+            </div>
         </div>
         <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md">
             <div class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary">
@@ -48,6 +58,16 @@
             </div>
             <p class="text-on-surface-variant text-body-md mt-4">Terdaftar</p>
             <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data">{{ number_format($totalRegistered, 0, ',', '.') }}</p>
+            <div class="mt-3 pt-3 border-t border-outline-variant/60 space-y-1">
+                <div class="flex items-center justify-between text-body-sm">
+                    <span class="text-on-surface-variant">Laki-laki</span>
+                    <span class="font-numeric-data text-on-surface">{{ number_format($totalRegisteredL, 0, ',', '.') }}</span>
+                </div>
+                <div class="flex items-center justify-between text-body-sm">
+                    <span class="text-on-surface-variant">Perempuan</span>
+                    <span class="font-numeric-data text-on-surface">{{ number_format($totalRegisteredP, 0, ',', '.') }}</span>
+                </div>
+            </div>
         </div>
         <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md">
             <div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-on-surface-variant">
@@ -55,14 +75,61 @@
             </div>
             <p class="text-on-surface-variant text-body-md mt-4">Dikonversi</p>
             <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data">{{ number_format($totalConverted, 0, ',', '.') }}</p>
+            <div class="mt-3 pt-3 border-t border-outline-variant/60 space-y-1">
+                <div class="flex items-center justify-between text-body-sm">
+                    <span class="text-on-surface-variant">Laki-laki</span>
+                    <span class="font-numeric-data text-on-surface">{{ number_format($totalConvertedL, 0, ',', '.') }}</span>
+                </div>
+                <div class="flex items-center justify-between text-body-sm">
+                    <span class="text-on-surface-variant">Perempuan</span>
+                    <span class="font-numeric-data text-on-surface">{{ number_format($totalConvertedP, 0, ',', '.') }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md">
+            <div class="w-10 h-10 rounded-full bg-primary-fixed/70 flex items-center justify-center text-primary">
+                <span class="material-symbols-outlined">family_restroom</span>
+            </div>
+            <p class="text-on-surface-variant text-body-md mt-4">Keluarga Annur</p>
+            <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data">{{ number_format($totalAnnurFamily, 0, ',', '.') }}</p>
+            <div class="mt-3 pt-3 border-t border-outline-variant/60 space-y-1">
+                <div class="flex items-center justify-between text-body-sm">
+                    <span class="text-on-surface-variant">Laki-laki</span>
+                    <span class="font-numeric-data text-on-surface">{{ number_format($totalAnnurFamilyL, 0, ',', '.') }}</span>
+                </div>
+                <div class="flex items-center justify-between text-body-sm">
+                    <span class="text-on-surface-variant">Perempuan</span>
+                    <span class="font-numeric-data text-on-surface">{{ number_format($totalAnnurFamilyP, 0, ',', '.') }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-stack-md">
+            <div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-on-surface-variant">
+                <span class="material-symbols-outlined">groups</span>
+            </div>
+            <p class="text-on-surface-variant text-body-md mt-4">Non-Keluarga Annur</p>
+            <p class="text-headline-md font-headline-md text-on-surface mt-1 font-numeric-data">{{ number_format($totalNonAnnurFamily, 0, ',', '.') }}</p>
+            <div class="mt-3 pt-3 border-t border-outline-variant/60 space-y-1">
+                <div class="flex items-center justify-between text-body-sm">
+                    <span class="text-on-surface-variant">Laki-laki</span>
+                    <span class="font-numeric-data text-on-surface">{{ number_format($totalNonAnnurFamilyL, 0, ',', '.') }}</span>
+                </div>
+                <div class="flex items-center justify-between text-body-sm">
+                    <span class="text-on-surface-variant">Perempuan</span>
+                    <span class="font-numeric-data text-on-surface">{{ number_format($totalNonAnnurFamilyP, 0, ',', '.') }}</span>
+                </div>
+            </div>
         </div>
     </section>
+    @if($totalUncategorized > 0)
+        <p class="text-body-sm text-on-surface-variant -mt-6 mb-stack-lg">Belum Dikategorikan: {{ number_format($totalUncategorized, 0, ',', '.') }}</p>
+    @endif
 
     <div class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm">
 <div class="p-5 border-b border-outline-variant flex flex-col gap-4">
                 <div>
                     <h3 class="text-headline-sm font-headline-sm text-on-surface">Cari & Filter Calon Siswa</h3>
-                    <p class="text-body-sm text-on-surface-variant mt-1">Cari atau filter berdasarkan tahun ajaran, jenjang, kelas tujuan, status pendaftaran, dan status tagihan.</p>
+                    <p class="text-body-sm text-on-surface-variant mt-1">Cari atau filter berdasarkan tahun ajaran, jenjang, kelas tujuan, kategori pendaftaran, status pendaftaran, dan status tagihan.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
                     <div class="relative flex-1 sm:flex-initial sm:w-64">
@@ -87,6 +154,12 @@
                             <option value="{{ $class->id }}">{{ $class->name }} (Tingkat {{ $class->level }})</option>
                         @endforeach
                     </select>
+                    <select wire:model.live="filterCategory" class="w-full sm:w-52 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2">
+                        <option value="">Semua Kategori</option>
+                        <option value="{{ \App\Enums\PpdbApplicantCategory::ANNUR_FAMILY->value }}">Keluarga Annur</option>
+                        <option value="{{ \App\Enums\PpdbApplicantCategory::NON_ANNUR_FAMILY->value }}">Non-Keluarga Annur</option>
+                        <option value="uncategorized">Belum Dikategorikan</option>
+                    </select>
                     <select wire:model.live="filterStatus" class="w-full sm:w-44 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2">
                         <option value="">Semua Status</option>
                         @foreach($registrationStatuses as $status)
@@ -102,12 +175,13 @@
                 </div>
             </div>
         <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse min-w-[1100px]">
+            <table class="w-full text-left border-collapse min-w-[1100px] whitespace-nowrap">
                 <thead>
                     <tr class="bg-surface border-b border-outline-variant text-body-sm font-label-md text-on-surface-variant uppercase tracking-wider">
                         <th class="p-4 w-14 text-center">No.</th>
                         <th class="p-4">No. Pendaftaran</th>
                         <th class="p-4">Nama</th>
+                        <th class="p-4">Kategori Pendaftaran</th>
                         <th class="p-4">Tahun Ajaran Tujuan</th>
                         <th class="p-4">Kelas Tujuan</th>
                         <th class="p-4">Status</th>
@@ -126,6 +200,18 @@
                                 <p class="font-semibold">{{ $prospectiveStudent->nama_lengkap }}</p>
                                 @if($prospectiveStudent->nama_panggilan)
                                     <p class="text-body-sm text-on-surface-variant">{{ $prospectiveStudent->nama_panggilan }}</p>
+                                @endif
+                            </td>
+                            <td class="p-4">
+                                @php
+                                    $applicantCategory = $prospectiveStudent->getRawOriginal('applicant_category');
+                                @endphp
+                                @if($applicantCategory === \App\Enums\PpdbApplicantCategory::ANNUR_FAMILY->value)
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-label-sm bg-primary-fixed text-on-primary-fixed">Keluarga Annur</span>
+                                @elseif($applicantCategory === \App\Enums\PpdbApplicantCategory::NON_ANNUR_FAMILY->value)
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-label-sm bg-secondary-fixed text-on-secondary-fixed">Non-Keluarga Annur</span>
+                                @else
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-label-sm bg-surface-container-high text-on-surface-variant">Belum Dikategorikan</span>
                                 @endif
                             </td>
                             <td class="p-4 text-on-surface-variant">{{ $prospectiveStudent->academicYear?->year ?? '—' }}</td>
@@ -179,7 +265,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="10" class="p-10 text-center text-on-surface-variant">
+                            <td colspan="11" class="p-10 text-center text-on-surface-variant">
                                 <span class="material-symbols-outlined text-4xl block mb-2">person_search</span>
                                 Tidak ada calon siswa yang ditemukan.
                             </td>

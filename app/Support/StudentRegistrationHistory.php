@@ -25,14 +25,17 @@ final class StudentRegistrationHistory
      */
     public static function forStudent(Student $student): array
     {
-        $prospect = ProspectiveStudent::query()
-            ->with(['academicYear', 'bills.paymentDetails.payment'])
-            ->where('converted_student_id', $student->id)
-            ->first();
+        $prospect = $student->relationLoaded('prospectiveStudent')
+            ? $student->prospectiveStudent
+            : ProspectiveStudent::query()
+                ->where('converted_student_id', $student->id)
+                ->first();
 
         if ($prospect === null) {
             return ['prospect' => null, 'summary' => null];
         }
+
+        $prospect->loadMissing(['academicYear', 'bills.paymentDetails.payment']);
 
         $summary = [
             'total' => $prospect->bills->sum(fn (ProspectiveStudentBill $bill): float => (float) $bill->amount),

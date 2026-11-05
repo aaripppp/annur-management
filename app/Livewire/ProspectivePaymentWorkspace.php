@@ -215,11 +215,11 @@ class ProspectivePaymentWorkspace extends Component
 
     public function deletePayment(ProspectiveStudentPaymentDeletionService $deletionService): void
     {
-        if (! $this->deletingPaymentId) {
+        if (! $this->deletingPaymentId || ! $this->prospectiveStudent) {
             return;
         }
 
-        $deletionService->delete($this->deletingPaymentId);
+        $deletionService->delete($this->deletingPaymentId, $this->prospectiveStudent->id);
 
         $this->cancelDeletePayment();
         session()->flash('success', 'Transaksi pembayaran berhasil dihapus permanen.');

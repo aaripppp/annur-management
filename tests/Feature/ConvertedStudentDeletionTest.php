@@ -35,7 +35,6 @@ use App\Services\TransactionHistoryService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
-use RuntimeException;
 
 /**
  * Katalog minimal: tahun ajaran aktif 2026/2027, tahun ajaran tujuan (future)

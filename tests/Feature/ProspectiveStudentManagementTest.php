@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\PpdbApplicantCategory;
 use App\Enums\ProspectiveStudentStatus;
 use App\Enums\SchoolLevel;
 use App\Livewire\ProspectiveStudentDetail;
@@ -17,6 +18,7 @@ use App\Models\User;
 use App\Services\ProspectiveStudentPaymentCancellationService;
 use App\Services\ProspectiveStudentRegistrationNumberGenerator;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use ValueError;
 
@@ -430,6 +432,17 @@ it('daftar calon siswa menampilkan Belum Bayar untuk tagihan tanpa pembayaran', 
         ->assertSeeHtml('bg-error-container text-on-error-container');
 });
 
+it('daftar calon siswa mempertahankan isi tabel satu baris dengan scroll horizontal', function () {
+    [$prospectiveStudent] = makeListedProspectiveBillFixture();
+    $prospectiveStudent->update(['nama_orang_tua' => 'Arif Hamdani']);
+
+    Livewire::test(ProspectiveStudentManagement::class)
+        ->assertSee('Arif Hamdani')
+        ->assertSee('Belum Bayar')
+        ->assertSeeHtml('<div class="overflow-x-auto">')
+        ->assertSeeHtml('<table class="w-full text-left border-collapse min-w-[1100px] whitespace-nowrap">');
+});
+
 it('daftar calon siswa menampilkan Sebagian untuk tagihan berbayar sebagian', function () {
     [$ps, $bill] = makeListedProspectiveBillFixture();
 
@@ -515,4 +528,176 @@ it('badge Lunas memakai warna hijau di daftar dan detail', function () {
 
     Livewire::test(ProspectiveStudentDetail::class, ['prospectiveStudent' => $ps])
         ->assertSeeHtml('bg-tertiary-fixed text-on-tertiary-fixed');
+});
+
+it('menampilkan badge kategori pendaftaran dengan aman untuk data lama', function () {
+    $annur = ProspectiveStudent::factory()->create([
+        'nama_lengkap' => 'Badge Keluarga Annur',
+        'applicant_category' => PpdbApplicantCategory::ANNUR_FAMILY->value,
+    ]);
+    $nonAnnur = ProspectiveStudent::factory()->create([
+        'nama_lengkap' => 'Badge Non Keluarga Annur',
+        'applicant_category' => PpdbApplicantCategory::NON_ANNUR_FAMILY->value,
+    ]);
+    $nullCategory = ProspectiveStudent::factory()->create(['nama_lengkap' => 'Badge Kategori Null']);
+    $emptyCategory = ProspectiveStudent::factory()->create(['nama_lengkap' => 'Badge Kategori Kosong']);
+    $unknownCategory = ProspectiveStudent::factory()->create(['nama_lengkap' => 'Badge Kategori Lama']);
+
+    DB::table('prospective_students')->where('id', $emptyCategory->id)->update(['applicant_category' => '']);
+    DB::table('prospective_students')->where('id', $unknownCategory->id)->update(['applicant_category' => 'legacy_family']);
+
+    Livewire::test(ProspectiveStudentManagement::class)
+        ->assertSeeInOrder([$annur->nama_lengkap, 'Keluarga Annur'])
+        ->assertSeeInOrder([$nonAnnur->nama_lengkap, 'Non-Keluarga Annur'])
+        ->assertSeeInOrder([$nullCategory->nama_lengkap, 'Belum Dikategorikan'])
+        ->assertSeeInOrder([$emptyCategory->nama_lengkap, 'Belum Dikategorikan'])
+        ->assertSeeInOrder([$unknownCategory->nama_lengkap, 'Belum Dikategorikan']);
+});
+
+it('menyesuaikan colspan keadaan kosong untuk kolom kategori', function () {
+    Livewire::test(ProspectiveStudentManagement::class)
+        ->assertSeeHtml('colspan="11"');
+});
+
+it('memfilter kategori pendaftaran termasuk nilai lama yang belum dikategorikan', function () {
+    $annur = ProspectiveStudent::factory()->create([
+        'nama_lengkap' => 'Filter Keluarga Annur',
+        'applicant_category' => PpdbApplicantCategory::ANNUR_FAMILY->value,
+    ]);
+    $nonAnnur = ProspectiveStudent::factory()->create([
+        'nama_lengkap' => 'Filter Non Keluarga Annur',
+        'applicant_category' => PpdbApplicantCategory::NON_ANNUR_FAMILY->value,
+    ]);
+    $nullCategory = ProspectiveStudent::factory()->create(['nama_lengkap' => 'Filter Kategori Null']);
+    $emptyCategory = ProspectiveStudent::factory()->create(['nama_lengkap' => 'Filter Kategori Kosong']);
+    $unknownCategory = ProspectiveStudent::factory()->create(['nama_lengkap' => 'Filter Kategori Lama']);
+
+    DB::table('prospective_students')->where('id', $emptyCategory->id)->update(['applicant_category' => '']);
+    DB::table('prospective_students')->where('id', $unknownCategory->id)->update(['applicant_category' => 'legacy_family']);
+
+    $component = Livewire::test(ProspectiveStudentManagement::class)
+        ->assertSee([$annur->nama_lengkap, $nonAnnur->nama_lengkap, $nullCategory->nama_lengkap]);
+
+    $component->set('filterCategory', PpdbApplicantCategory::ANNUR_FAMILY->value)
+        ->assertSee($annur->nama_lengkap)
+        ->assertDontSee([$nonAnnur->nama_lengkap, $nullCategory->nama_lengkap, $emptyCategory->nama_lengkap, $unknownCategory->nama_lengkap]);
+
+    $component->set('filterCategory', PpdbApplicantCategory::NON_ANNUR_FAMILY->value)
+        ->assertSee($nonAnnur->nama_lengkap)
+        ->assertDontSee([$annur->nama_lengkap, $nullCategory->nama_lengkap, $emptyCategory->nama_lengkap, $unknownCategory->nama_lengkap]);
+
+    $component->set('filterCategory', 'uncategorized')
+        ->assertSee([$nullCategory->nama_lengkap, $emptyCategory->nama_lengkap, $unknownCategory->nama_lengkap])
+        ->assertDontSee([$annur->nama_lengkap, $nonAnnur->nama_lengkap]);
+
+    $component->set('filterCategory', 'invalid-filter')
+        ->assertDontSee([$annur->nama_lengkap, $nonAnnur->nama_lengkap, $nullCategory->nama_lengkap]);
+});
+
+it('menggabungkan filter kategori dengan semua filter daftar yang sudah ada', function () {
+    $academicYear = AcademicYear::create([
+        'year' => '2031/2032',
+        'is_active' => false,
+        'start_date' => '2031-07-01',
+        'end_date' => '2032-06-30',
+    ]);
+    $otherAcademicYear = AcademicYear::create([
+        'year' => '2032/2033',
+        'is_active' => false,
+        'start_date' => '2032-07-01',
+        'end_date' => '2033-06-30',
+    ]);
+    $targetClass = SchoolClass::factory()->create(['level' => 7]);
+    $otherClass = SchoolClass::factory()->create(['level' => 8]);
+
+    $matching = ProspectiveStudent::factory()->create([
+        'nama_lengkap' => 'Dika Kategori Cocok',
+        'academic_year_id' => $academicYear->id,
+        'school_class_id' => $targetClass->id,
+        'status' => ProspectiveStudentStatus::Registered,
+        'applicant_category' => PpdbApplicantCategory::ANNUR_FAMILY->value,
+    ]);
+    ProspectiveStudentBill::factory()->create(['prospective_student_id' => $matching->id]);
+
+    ProspectiveStudent::factory()->create([
+        'nama_lengkap' => 'Dika Kategori Berbeda',
+        'academic_year_id' => $academicYear->id,
+        'school_class_id' => $targetClass->id,
+        'applicant_category' => PpdbApplicantCategory::NON_ANNUR_FAMILY->value,
+    ]);
+    ProspectiveStudent::factory()->create([
+        'nama_lengkap' => 'Dika Tahun Berbeda',
+        'academic_year_id' => $otherAcademicYear->id,
+        'school_class_id' => $targetClass->id,
+        'applicant_category' => PpdbApplicantCategory::ANNUR_FAMILY->value,
+    ]);
+    ProspectiveStudent::factory()->create([
+        'nama_lengkap' => 'Dika Kelas Berbeda',
+        'academic_year_id' => $academicYear->id,
+        'school_class_id' => $otherClass->id,
+        'applicant_category' => PpdbApplicantCategory::ANNUR_FAMILY->value,
+    ]);
+
+    Livewire::test(ProspectiveStudentManagement::class)
+        ->set('search', 'Dika')
+        ->set('filterAcademicYearId', (string) $academicYear->id)
+        ->set('filterLevel', SchoolLevel::SMP->value)
+        ->set('filterClassId', (string) $targetClass->id)
+        ->set('filterStatus', ProspectiveStudentStatus::Registered->value)
+        ->set('filterBillStatus', ProspectiveStudentBill::STATUS_UNPAID)
+        ->set('filterCategory', PpdbApplicantCategory::ANNUR_FAMILY->value)
+        ->assertSee($matching->nama_lengkap)
+        ->assertDontSee(['Dika Kategori Berbeda', 'Dika Tahun Berbeda', 'Dika Kelas Berbeda']);
+});
+
+it('menerapkan filter kategori pada statistik gender dan kategori', function () {
+    ProspectiveStudent::factory()->create([
+        'nama_lengkap' => 'Stat Annur L',
+        'jenis_kelamin' => 'L',
+        'status' => ProspectiveStudentStatus::Registered,
+        'applicant_category' => PpdbApplicantCategory::ANNUR_FAMILY->value,
+    ]);
+    ProspectiveStudent::factory()->converted()->create([
+        'nama_lengkap' => 'Stat Annur P',
+        'jenis_kelamin' => 'P',
+        'applicant_category' => PpdbApplicantCategory::ANNUR_FAMILY->value,
+    ]);
+    ProspectiveStudent::factory()->create([
+        'nama_lengkap' => 'Stat Non Annur',
+        'jenis_kelamin' => 'L',
+        'applicant_category' => PpdbApplicantCategory::NON_ANNUR_FAMILY->value,
+    ]);
+    $uncategorized = ProspectiveStudent::factory()->create([
+        'nama_lengkap' => 'Stat Belum Kategori',
+        'jenis_kelamin' => null,
+    ]);
+    DB::table('prospective_students')->where('id', $uncategorized->id)->update(['applicant_category' => 'legacy_family']);
+
+    Livewire::test(ProspectiveStudentManagement::class)
+        ->set('filterCategory', PpdbApplicantCategory::ANNUR_FAMILY->value)
+        ->assertSeeInOrder(['Total Calon Siswa', '2', 'Laki-laki', '1', 'Perempuan', '1'])
+        ->assertSeeInOrder(['Terdaftar', '1', 'Laki-laki', '1', 'Perempuan', '0'])
+        ->assertSeeInOrder(['Dikonversi', '1', 'Laki-laki', '0', 'Perempuan', '1'])
+        ->assertSeeInOrder(['Keluarga Annur', '2', 'Laki-laki', '1', 'Perempuan', '1'])
+        ->assertSeeInOrder(['Non-Keluarga Annur', '0', 'Laki-laki', '0', 'Perempuan', '0'])
+        ->assertDontSee('Belum Dikategorikan:')
+        ->set('filterCategory', 'uncategorized')
+        ->assertSeeInOrder(['Total Calon Siswa', '1', 'Laki-laki', '0', 'Perempuan', '0'])
+        ->assertSeeInOrder(['Keluarga Annur', '0', 'Non-Keluarga Annur', '0'])
+        ->assertSee('Belum Dikategorikan: 1');
+});
+
+it('mengubah filter kategori mereset pagination dan mempertahankan aksi baris', function () {
+    $student = ProspectiveStudent::factory()->create([
+        'applicant_category' => PpdbApplicantCategory::ANNUR_FAMILY->value,
+    ]);
+    ProspectiveStudent::factory()->count(20)->create();
+
+    Livewire::test(ProspectiveStudentManagement::class)
+        ->set('paginators.page', 2)
+        ->assertSet('paginators.page', 2)
+        ->set('filterCategory', PpdbApplicantCategory::ANNUR_FAMILY->value)
+        ->assertSet('paginators.page', 1)
+        ->assertSee(route('calon-siswa.show', $student), false)
+        ->assertSee('Lihat Detail');
 });

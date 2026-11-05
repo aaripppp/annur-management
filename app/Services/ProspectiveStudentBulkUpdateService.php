@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\ProspectiveStudentStatus;
 use App\Models\ProspectiveStudent;
+use App\Support\PersonNameNormalizer;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -230,6 +231,10 @@ class ProspectiveStudentBulkUpdateService
             $spec = self::FIELD_SPECS[$field];
             $current = $this->currentValue($prospect, $field);
             $normalized = $this->normalizeField($field, $incoming);
+
+            if (in_array($field, ['nama_lengkap', 'nama_panggilan', 'nama_orang_tua'], true)) {
+                $normalized = PersonNameNormalizer::normalize($normalized) ?? $normalized;
+            }
 
             $fieldError = $this->validateField($field, $normalized);
             if ($fieldError !== null) {

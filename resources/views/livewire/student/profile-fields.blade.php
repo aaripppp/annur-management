@@ -1,4 +1,6 @@
-@php($fieldPrefix = $fieldPrefix ?? 'student-profile')
+@php
+    $fieldPrefix = $fieldPrefix ?? 'student-profile';
+@endphp
 
 <div class="border-t border-outline-variant pt-5">
     <h4 class="text-title-md font-title-md text-on-surface">Biodata Tambahan</h4>
@@ -47,8 +49,30 @@
 <div>
     <label for="{{ $fieldPrefix }}-foto" class="block text-label-md font-label-md text-on-surface mb-1">Foto Siswa</label>
     <div class="flex flex-col sm:flex-row sm:items-center gap-4 rounded-xl border border-outline-variant bg-surface-container-low p-4">
+        @php
+            $studentModel = null;
+            if (property_exists($this, 'studentId') && $this->studentId) {
+                $studentModel = \App\Models\Student::query()->with('prospectiveStudent.pasFotoDocument')->find($this->studentId);
+            } elseif (property_exists($this, 'selectedStudentId') && $this->selectedStudentId) {
+                $studentModel = \App\Models\Student::query()->with('prospectiveStudent.pasFotoDocument')->find($this->selectedStudentId);
+            }
+            $pasFotoDocument = $studentModel?->prospectiveStudent?->pasFotoDocument;
+            $pasFotoUrl = null;
+            if ((!$existing_foto || $remove_foto) && $pasFotoDocument && auth()->check()) {
+                $mime = $pasFotoDocument->mime_type;
+                if (in_array($mime, ['image/jpeg', 'image/png'], true) && Illuminate\Support\Facades\Gate::allows('view', $pasFotoDocument)) {
+                    $version = $pasFotoDocument->updated_at?->timestamp ?? $pasFotoDocument->id;
+                    $pasFotoUrl = route('ppdb.documents.preview', $pasFotoDocument).'?v='.$version;
+                }
+            }
+        @endphp
         @if($existing_foto && !$remove_foto)
             <img src="{{ Illuminate\Support\Facades\Storage::disk('public')->url($existing_foto) }}" alt="Foto siswa" class="w-16 h-16 rounded-xl object-cover border border-outline-variant shrink-0">
+        @elseif($pasFotoUrl)
+            <img src="{{ $pasFotoUrl }}" alt="Foto siswa" class="w-16 h-16 rounded-xl object-cover border border-outline-variant shrink-0" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            <div class="w-16 h-16 rounded-xl bg-surface-container-high border border-outline-variant text-on-surface-variant flex items-center justify-center shrink-0" aria-hidden="true" style="display:none;">
+                <span class="material-symbols-outlined text-[30px]">person</span>
+            </div>
         @else
             <div class="w-16 h-16 rounded-xl bg-surface-container-high border border-outline-variant text-on-surface-variant flex items-center justify-center shrink-0" aria-hidden="true">
                 <span class="material-symbols-outlined text-[30px]">person</span>

@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\ProspectiveStudent;
 use App\Models\Student;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Menghapus siswa beserta seluruh data operasionalnya.
@@ -31,11 +30,13 @@ class StudentDeletionService
 {
     public function __construct(
         private readonly StudentPhotoService $studentPhotoService,
+        private readonly PpdbDocumentCleanupService $ppdbDocumentCleanupService,
+        private readonly PaymentReceiptFileCleanupService $paymentReceiptFileCleanupService,
     ) {}
 
     public function delete(int $studentId): void
     {
-        $paths = DB::transaction(function () use ($studentId): array {
+        DB::transaction(function () use ($studentId): void {
             $student = Student::query()
                 ->with(['payments.details', 'bills.adjustments', 'paymentSettings'])
                 ->lockForUpdate()
@@ -50,19 +51,14 @@ class StudentDeletionService
                 ? $this->deleteProspectiveData($linkedProspect)
                 : [];
 
-            $photoPath = $this->deleteStudentOwnedData($student);
+            $studentOwnedFiles = $this->deleteStudentOwnedData($student);
 
-            return [
-                'prospective_receipts' => $prospectiveReceiptPaths,
-                'photo' => $photoPath,
-            ];
+            $this->paymentReceiptFileCleanupService->scheduleAfterCommit([
+                ...$prospectiveReceiptPaths,
+                ...$studentOwnedFiles['receipts'],
+            ]);
+            $this->studentPhotoService->scheduleDeletionAfterCommit($studentOwnedFiles['photo']);
         });
-
-        foreach ($paths['prospective_receipts'] as $receiptPath) {
-            Storage::disk('public')->delete($receiptPath);
-        }
-
-        $this->studentPhotoService->delete($paths['photo']);
     }
 
     /**
@@ -73,6 +69,8 @@ class StudentDeletionService
      */
     private function deleteProspectiveData(ProspectiveStudent $prospect): array
     {
+        $this->ppdbDocumentCleanupService->scheduleFor($prospect);
+
         $payments = $prospect->payments()->lockForUpdate()->get();
         $prospect->bills()->lockForUpdate()->get();
 
@@ -96,9 +94,17 @@ class StudentDeletionService
      * Hapus data milik siswa dengan urutan yang sama seperti alur lama:
      * payment_details → payments → bill_adjustments → student_bills →
      * student_payment_settings → student.
+     *
+     * @return array{receipts: list<string>, photo: string|null}
      */
-    private function deleteStudentOwnedData(Student $student): ?string
+    private function deleteStudentOwnedData(Student $student): array
     {
+        $receiptPaths = $student->payments
+            ->pluck('receipt')
+            ->filter(fn (?string $path): bool => $path !== null && $path !== '')
+            ->values()
+            ->all();
+
         foreach ($student->payments as $payment) {
             $payment->details()->delete();
         }
@@ -113,6 +119,9 @@ class StudentDeletionService
         $photoPath = $student->foto;
         $student->delete();
 
-        return $photoPath;
+        return [
+            'receipts' => $receiptPaths,
+            'photo' => $photoPath,
+        ];
     }
 }
