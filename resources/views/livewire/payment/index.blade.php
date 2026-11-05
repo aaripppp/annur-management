@@ -121,7 +121,9 @@
             @if($searchResults->isNotEmpty() || $prospectiveSearchResults->isNotEmpty())
                 <div class="mt-3 border border-outline-variant rounded-xl overflow-hidden divide-y divide-outline-variant shadow-sm">
                     @foreach($searchResults as $student)
-                        @php($academicStatus = $student->academicStatus())
+                        @php
+                            $academicStatus = $student->academicStatus();
+                        @endphp
                         <button
                             type="button"
                             wire:key="student-result-{{ $student->id }}"
@@ -200,7 +202,9 @@
     </div>
 
     @if($selectedStudent)
-        @php($academicStatus = $selectedStudent->academicStatus())
+        @php
+            $academicStatus = $selectedStudent->academicStatus();
+        @endphp
         <section class="bg-surface-container-lowest border border-outline-variant rounded-2xl px-5 py-5 sm:px-6 shadow-sm mb-stack-lg">
             <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 lg:gap-6">
                 <div class="flex items-center gap-4 min-w-0">
