@@ -23,6 +23,7 @@ class PpdbParent extends Model
     protected $fillable = [
         'prospective_student_id',
         'role',
+        'status_hidup',
         'nik',
         'tempat_lahir',
         'tanggal_lahir',

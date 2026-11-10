@@ -15,9 +15,11 @@ use App\Models\Student;
 use App\Services\PpdbDocumentCleanupService;
 use App\Services\ProspectiveStudentBillGenerationService;
 use App\Services\ProspectiveStudentRegistrationNumberGenerator;
+use App\Services\ProspectiveStudentUnitScope;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -76,6 +78,13 @@ class ProspectiveStudentManagement extends Component
 
     public string $deletingRegistrationNumber = '';
 
+    public function mount(): void
+    {
+        if (auth()->check()) {
+            $this->authorize('viewAny', ProspectiveStudent::class);
+        }
+    }
+
     public function updatedSearch(): void
     {
         $this->resetPage();
@@ -114,6 +123,8 @@ class ProspectiveStudentManagement extends Component
 
     public function openModal(): void
     {
+        $this->authorizeProspectiveStudentActionWhenAuthenticated('create', ProspectiveStudent::class);
+
         $this->resetForm();
         $this->isModalOpen = true;
     }
@@ -127,6 +138,7 @@ class ProspectiveStudentManagement extends Component
     public function confirmDelete(int $id): void
     {
         $prospectiveStudent = ProspectiveStudent::query()->findOrFail($id);
+        $this->authorizeProspectiveStudentActionWhenAuthenticated('delete', $prospectiveStudent);
 
         if ($prospectiveStudent->isConverted()) {
             session()->flash('error', 'Calon siswa yang sudah dikonversi tidak dapat dihapus.');
@@ -151,43 +163,44 @@ class ProspectiveStudentManagement extends Component
             return;
         }
 
-        $prospectiveStudent = ProspectiveStudent::query()->findOrFail($this->deletingId);
+        try {
+            $deletedName = DB::transaction(function () use ($documentCleanupService): string {
+                $prospectiveStudent = ProspectiveStudent::query()
+                    ->lockForUpdate()
+                    ->findOrFail($this->deletingId);
+                $this->authorizeProspectiveStudentActionWhenAuthenticated('delete', $prospectiveStudent);
 
-        if ($prospectiveStudent->isConverted()) {
-            session()->flash('error', 'Calon siswa yang sudah dikonversi tidak dapat dihapus.');
+                if ($prospectiveStudent->isConverted()) {
+                    throw ValidationException::withMessages(['delete' => 'Calon siswa yang sudah dikonversi tidak dapat dihapus.']);
+                }
+
+                if ($prospectiveStudent->payments()->lockForUpdate()->get()->isNotEmpty()) {
+                    throw ValidationException::withMessages(['delete' => 'Calon siswa dengan catatan pembayaran tidak dapat dihapus.']);
+                }
+
+                $documentCleanupService->scheduleFor($prospectiveStudent);
+                $prospectiveStudent->bills()->lockForUpdate()->get();
+                $prospectiveStudent->bills()->delete();
+                $prospectiveStudent->delete();
+
+                return $prospectiveStudent->nama_lengkap;
+            });
+        } catch (ValidationException $exception) {
+            session()->flash('error', $exception->errors()['delete'][0]);
             $this->cancelDelete();
 
             return;
         }
-
-        if ($this->hasRecordedPayments($prospectiveStudent)) {
-            session()->flash('error', 'Calon siswa dengan catatan pembayaran tidak dapat dihapus.');
-            $this->cancelDelete();
-
-            return;
-        }
-
-        $deletedName = $prospectiveStudent->nama_lengkap;
-
-        DB::transaction(function () use ($prospectiveStudent, $documentCleanupService): void {
-            $documentCleanupService->scheduleFor($prospectiveStudent);
-            $prospectiveStudent->bills()->delete();
-            $prospectiveStudent->delete();
-        });
 
         $this->cancelDelete();
         $this->resetPage();
         session()->flash('success', "Calon siswa {$deletedName} berhasil dihapus.");
     }
 
-    private function hasRecordedPayments(ProspectiveStudent $prospectiveStudent): bool
-    {
-        return $prospectiveStudent->payments()->exists();
-    }
-
     public function edit(int $id): void
     {
         $prospectiveStudent = ProspectiveStudent::query()->findOrFail($id);
+        $this->authorizeProspectiveStudentActionWhenAuthenticated('update', $prospectiveStudent);
 
         if ($prospectiveStudent->isConverted()) {
             session()->flash('error', 'Calon siswa yang sudah dikonversi tidak dapat diubah.');
@@ -235,11 +248,18 @@ class ProspectiveStudentManagement extends Component
         ProspectiveStudentRegistrationNumberGenerator $registrationNumberGenerator,
         ProspectiveStudentBillGenerationService $billGenerationService,
     ): void {
+        if (! $this->isEditing) {
+            $this->authorizeProspectiveStudentActionWhenAuthenticated('create', ProspectiveStudent::class);
+        }
+
+        $this->authorizeClassAssignmentForTu($this->school_class_id);
+
         $validated = $this->validate($this->rules(), $this->messages());
         $validated = $this->normalizeNullableFields($validated);
 
         if ($this->isEditing) {
             $prospectiveStudent = ProspectiveStudent::query()->findOrFail($this->prospectiveStudentId);
+            $this->authorizeProspectiveStudentActionWhenAuthenticated('update', $prospectiveStudent);
 
             if ($prospectiveStudent->isConverted()) {
                 session()->flash('error', 'Calon siswa yang sudah dikonversi tidak dapat diubah.');
@@ -313,7 +333,7 @@ class ProspectiveStudentManagement extends Component
         $this->resetValidation();
     }
 
-    private function applyProspectiveStudentFilters(Builder $query): Builder
+    private function applyProspectiveStudentFilters(Builder $query, bool $isTuUnit): Builder
     {
         $term = trim($this->search);
         $filterLevel = $this->filterLevel !== '' ? SchoolLevel::tryFrom($this->filterLevel) : null;
@@ -359,7 +379,7 @@ class ProspectiveStudentManagement extends Component
 
                 $query->where('status', $status->value);
             })
-            ->when($this->filterBillStatus !== '', function (Builder $query): void {
+            ->when(! $isTuUnit && $this->filterBillStatus !== '', function (Builder $query): void {
                 $this->applyBillStatusFilter($query, $this->filterBillStatus);
             })
             ->when($this->filterCategory !== '', function (Builder $query): void {
@@ -381,13 +401,30 @@ class ProspectiveStudentManagement extends Component
 
     public function render()
     {
+        $user = auth()->user();
+
+        if ($user !== null) {
+            $this->authorize('viewAny', ProspectiveStudent::class);
+        }
+
+        $isTuUnit = $user?->isTuUnit() ?? false;
         $filterLevel = $this->filterLevel !== '' ? SchoolLevel::tryFrom($this->filterLevel) : null;
 
-        $baseQuery = $this->applyProspectiveStudentFilters(ProspectiveStudent::query());
+        $baseQuery = ProspectiveStudent::query();
+        app(ProspectiveStudentUnitScope::class)->applyForUser($baseQuery, $user);
+        $baseQuery = $this->applyProspectiveStudentFilters($baseQuery, $isTuUnit);
+
+        $relations = ['academicYear', 'schoolClass'];
+
+        if (! $isTuUnit) {
+            $relations[] = 'bills.paymentType';
+            $relations[] = 'bills.paymentDetails.payment';
+        }
 
         $query = (clone $baseQuery)
-            ->with(['academicYear', 'schoolClass', 'bills.paymentType', 'bills.paymentDetails.payment'])
+            ->with($relations)
             ->latest()
+            ->orderByDesc('id')
             ->paginate(10);
 
         $totalAll = (clone $baseQuery)->count();
@@ -411,12 +448,24 @@ class ProspectiveStudentManagement extends Component
 
         $totalUncategorized = max(0, $totalAll - $totalAnnurFamily - $totalNonAnnurFamily);
 
-        $filterClasses = $filterLevel !== null
-            ? SchoolClass::query()->whereIn('level', $filterLevel->classLevels())->orderBy('level')->orderBy('name')->get()
-            : SchoolClass::query()->orderBy('level')->orderBy('name')->get();
+        $unitLevels = $isTuUnit ? ($user->school_level?->classLevels() ?? []) : null;
+
+        $filterClasses = SchoolClass::query()
+            ->when($isTuUnit, fn (Builder $query) => $query->whereIn('level', $unitLevels))
+            ->when($filterLevel !== null, fn (Builder $query) => $query->whereIn('level', $filterLevel->classLevels()))
+            ->orderBy('level')
+            ->orderBy('name')
+            ->get();
+
+        $schoolClasses = SchoolClass::query()
+            ->when($isTuUnit, fn (Builder $query) => $query->whereIn('level', $unitLevels))
+            ->orderBy('level')
+            ->orderBy('name')
+            ->get();
 
         return view('livewire.prospective-student.index', [
             'prospectiveStudents' => $query,
+            'isTuUnit' => $isTuUnit,
             'totalAll' => $totalAll,
             'totalRegistered' => $totalRegistered,
             'totalConverted' => $totalConverted,
@@ -434,10 +483,10 @@ class ProspectiveStudentManagement extends Component
             'totalNonAnnurFamilyP' => $totalNonAnnurFamilyP,
             'totalUncategorized' => $totalUncategorized,
             'academicYears' => AcademicYear::query()->orderByDesc('start_date')->get(),
-            'schoolClasses' => SchoolClass::query()->orderBy('level')->orderBy('name')->get(),
-            'levels' => SchoolLevel::cases(),
+            'schoolClasses' => $schoolClasses,
+            'levels' => $isTuUnit ? [$user->school_level] : SchoolLevel::cases(),
             'registrationStatuses' => ProspectiveStudentStatus::cases(),
-            'billStatusOptions' => [
+            'billStatusOptions' => $isTuUnit ? [] : [
                 'none' => 'Belum Ada Tagihan',
                 ProspectiveStudentBill::STATUS_UNPAID => 'Belum Bayar',
                 ProspectiveStudentBill::STATUS_PARTIAL => 'Sebagian',
@@ -445,6 +494,29 @@ class ProspectiveStudentManagement extends Component
             ],
             'filterClasses' => $filterClasses,
         ]);
+    }
+
+    private function authorizeProspectiveStudentActionWhenAuthenticated(string $ability, ProspectiveStudent|string $subject): void
+    {
+        if (auth()->check()) {
+            $this->authorize($ability, $subject);
+        }
+    }
+
+    private function authorizeClassAssignmentForTu(mixed $schoolClassId): void
+    {
+        $user = auth()->user();
+
+        if ($user === null || ! $user->isTuUnit()) {
+            return;
+        }
+
+        $classId = filter_var($schoolClassId, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE);
+
+        abort_unless(
+            app(ProspectiveStudentUnitScope::class)->classBelongsToUser($classId, $user),
+            403,
+        );
     }
 
     /**

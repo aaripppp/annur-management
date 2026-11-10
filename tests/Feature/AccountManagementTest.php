@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\SchoolLevel;
 use App\Livewire\AccountManagement;
 use App\Models\Bank;
 use App\Models\Payment;
@@ -112,6 +113,32 @@ it('blocks an Admin from tampering with Account Management via Livewire', functi
     Livewire::test(AccountManagement::class)->assertForbidden();
 
     expect(User::count())->toBe(1);
+});
+
+it('shows only role badges in account listings while retaining the TU unit in the edit form', function () {
+    $superAdmin = accountManagementUser(User::ROLE_SUPER_ADMIN, ['name' => 'Super Utama']);
+    accountManagementUser(User::ROLE_ADMIN, ['name' => 'Admin Biasa']);
+    $tu = accountManagementUser(User::ROLE_TU_UNIT, [
+        'name' => 'Petugas TU',
+        'school_level' => SchoolLevel::SMP,
+    ]);
+
+    $this->actingAs($superAdmin);
+
+    $component = Livewire::test(AccountManagement::class)
+        ->assertSee('Super Admin')
+        ->assertSee('Admin')
+        ->assertSee('TU Unit');
+
+    expect($component->html())
+        ->not->toContain('Unit SMP')
+        ->not->toMatch('/text-label-sm text-on-surface-variant">SMP<\/span>/');
+
+    $component
+        ->call('edit', $tu->id)
+        ->assertSet('school_level', 'SMP')
+        ->assertSee('Unit Sekolah')
+        ->assertSeeHtml('wire:model="school_level"');
 });
 
 /*

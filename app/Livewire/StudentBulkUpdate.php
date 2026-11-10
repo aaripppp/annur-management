@@ -4,9 +4,11 @@ namespace App\Livewire;
 
 use App\Enums\SchoolLevel;
 use App\Models\SchoolClass;
+use App\Models\Student;
 use App\Services\StudentBulkUpdateService;
 use App\Services\StudentBulkUpdateSpreadsheet;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -40,8 +42,14 @@ class StudentBulkUpdate extends Component
     /** @var array<string, mixed> */
     public array $result = [];
 
+    public function mount(): void
+    {
+        $this->authorizeAccess();
+    }
+
     public function downloadTemplate(StudentBulkUpdateSpreadsheet $spreadsheet): BinaryFileResponse
     {
+        $this->authorizeAccess();
         $level = $this->filterLevel !== '' ? SchoolLevel::tryFrom($this->filterLevel) : null;
         $classId = $this->filterClassId !== '' ? (int) $this->filterClassId : null;
 
@@ -56,6 +64,7 @@ class StudentBulkUpdate extends Component
 
     public function previewUpdate(StudentBulkUpdateSpreadsheet $spreadsheet, StudentBulkUpdateService $service): void
     {
+        $this->authorizeAccess();
         $this->validate([
             'file' => ['required', 'file', 'mimes:xlsx', 'max:12288'],
         ], [
@@ -91,6 +100,7 @@ class StudentBulkUpdate extends Component
 
     public function confirmUpdate(StudentBulkUpdateService $service): void
     {
+        $this->authorizeAccess();
         if ($this->fileRows === []) {
             return;
         }
@@ -112,6 +122,8 @@ class StudentBulkUpdate extends Component
 
     public function backToSetup(): void
     {
+        $this->authorizeAccess();
+
         $this->step = 1;
         $this->fileRows = [];
         $this->rows = [];
@@ -123,11 +135,14 @@ class StudentBulkUpdate extends Component
 
     public function updatedFilterLevel(): void
     {
+        $this->authorizeAccess();
+
         $this->filterClassId = '';
     }
 
     public function render(): View
     {
+        $this->authorizeAccess();
         $level = $this->filterLevel !== '' ? SchoolLevel::tryFrom($this->filterLevel) : null;
 
         $classes = SchoolClass::query()
@@ -142,5 +157,12 @@ class StudentBulkUpdate extends Component
             'levels' => SchoolLevel::cases(),
             'classes' => $classes,
         ]);
+    }
+
+    private function authorizeAccess(): void
+    {
+        if (auth()->check()) {
+            Gate::authorize('bulkUpdate', Student::class);
+        }
     }
 }

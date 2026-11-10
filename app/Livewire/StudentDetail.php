@@ -15,7 +15,9 @@ use App\Support\StudentRegistrationHistory;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -24,6 +26,7 @@ class StudentDetail extends Component
 {
     use ManagesStudentBills;
 
+    #[Locked]
     public Student $student;
 
     public string $selectedAcademicYear = '';
@@ -33,6 +36,12 @@ class StudentDetail extends Component
     // 'all' = semua tagihan, 'monthly' = tagihan bulanan, 'yearly' = tagihan
     // tahunan, 'one_time' = tagihan sekali bayar.
     public string $summaryCategory = 'all';
+
+    #[Locked]
+    public bool $canManageFinance = false;
+
+    #[Locked]
+    public bool $canViewBilling = false;
 
     // Generate Tagihan Sampai
     public bool $isGenerateUntilOpen = false;
@@ -65,7 +74,15 @@ class StudentDetail extends Component
 
     public function mount(Student $student): void
     {
-        $this->student = $student->load([
+        if ($this->shouldAuthorizeSharedDetail()) {
+            $this->authorize('viewStudentBilling', $student);
+            $this->canManageFinance = auth()->user()->can('manageFinance', $student);
+            $this->canViewBilling = true;
+        } else {
+            $this->canManageFinance = true;
+            $this->canViewBilling = true;
+        }
+        $relations = [
             'categories',
             'prospectiveStudent.academicYear',
             'prospectiveStudent.schoolClass',
@@ -74,8 +91,13 @@ class StudentDetail extends Component
             'prospectiveStudent.ppdbSiblings',
             'prospectiveStudent.ppdbDocuments',
             'prospectiveStudent.pasFotoDocument',
-            'prospectiveStudent.bills.paymentDetails.payment',
-        ]);
+        ];
+
+        if ($this->canManageFinance) {
+            $relations[] = 'prospectiveStudent.bills.paymentDetails.payment';
+        }
+
+        $this->student = $student->load($relations);
 
         $latestEnrollment = $student->enrollments()
             ->with('academicYear')
@@ -89,11 +111,24 @@ class StudentDetail extends Component
 
     public function updatedSelectedAcademicYear(): void
     {
+        $this->authorizeBillingRead();
+        $this->validateOnly('selectedAcademicYear', [
+            'selectedAcademicYear' => ['nullable', 'string', 'max:9', Rule::exists('academic_years', 'year')],
+        ]);
         $this->summaryCategory = 'all';
+    }
+
+    public function updatedSummaryCategory(): void
+    {
+        $this->authorizeBillingRead();
+        $this->validateOnly('summaryCategory', [
+            'summaryCategory' => ['required', Rule::in(['all', 'monthly', 'yearly', 'one_time'])],
+        ]);
     }
 
     public function generateBills(): void
     {
+        $this->authorizeFinance();
         if (! $this->canGenerateBillsAutomatically()) {
             return;
         }
@@ -109,6 +144,7 @@ class StudentDetail extends Component
 
     public function openGenerateUntil(): void
     {
+        $this->authorizeFinance();
         if (! $this->canGenerateBillsAutomatically()) {
             return;
         }
@@ -119,12 +155,14 @@ class StudentDetail extends Component
 
     public function closeGenerateUntil(): void
     {
+        $this->authorizeFinance();
         $this->isGenerateUntilOpen = false;
         $this->reset('generateUntilMonth');
     }
 
     public function generateUntilBills(): void
     {
+        $this->authorizeFinance();
         if (! $this->canGenerateBillsAutomatically()) {
             return;
         }
@@ -154,6 +192,7 @@ class StudentDetail extends Component
 
     public function openBillbook(): void
     {
+        $this->authorizeFinance();
         if (! $this->canGenerateBillsAutomatically()) {
             return;
         }
@@ -164,12 +203,14 @@ class StudentDetail extends Component
 
     public function closeBillbook(): void
     {
+        $this->authorizeFinance();
         $this->isBillbookOpen = false;
         $this->reset('billbookStartMonth');
     }
 
     public function generateBillbook(): void
     {
+        $this->authorizeFinance();
         if (! $this->canGenerateBillsAutomatically()) {
             return;
         }
@@ -208,6 +249,7 @@ class StudentDetail extends Component
 
     public function editAdjustment(int $billId): void
     {
+        $this->authorizeFinance();
         $bill = $this->student->bills()
             ->with(['adjustments.creator', 'paymentType'])
             ->find($billId);
@@ -232,6 +274,7 @@ class StudentDetail extends Component
 
     public function saveAdjustment(): void
     {
+        $this->authorizeFinance();
         $this->validate([
             'adjustmentType' => 'required|in:discount',
             'adjustmentAmount' => 'required|numeric|min:0',
@@ -302,6 +345,7 @@ class StudentDetail extends Component
 
     public function removeAdjustment(): void
     {
+        $this->authorizeFinance();
         if (! $this->adjustmentBillId) {
             return;
         }
@@ -326,6 +370,7 @@ class StudentDetail extends Component
 
     public function closeAdjustment(): void
     {
+        $this->authorizeFinance();
         $this->isAdjustmentOpen = false;
         $this->reset([
             'adjustmentBillId',
@@ -348,6 +393,7 @@ class StudentDetail extends Component
     #[On('payment-saved')]
     public function refreshBills(): void
     {
+        $this->authorizeFinance();
         $this->student->unsetRelation('bills');
     }
 
@@ -363,7 +409,10 @@ class StudentDetail extends Component
             return;
         }
 
-        $this->student->refresh()->load([
+        if ($this->shouldAuthorizeSharedDetail()) {
+            $this->authorize('viewStudentBilling', $this->student);
+        }
+        $relations = [
             'categories',
             'prospectiveStudent.academicYear',
             'prospectiveStudent.schoolClass',
@@ -372,8 +421,13 @@ class StudentDetail extends Component
             'prospectiveStudent.ppdbSiblings',
             'prospectiveStudent.ppdbDocuments',
             'prospectiveStudent.pasFotoDocument',
-            'prospectiveStudent.bills.paymentDetails.payment',
-        ]);
+        ];
+
+        if ($this->canManageFinance) {
+            $relations[] = 'prospectiveStudent.bills.paymentDetails.payment';
+        }
+
+        $this->student->refresh()->load($relations);
     }
 
     protected function managedBillStudent(): ?Student
@@ -386,6 +440,11 @@ class StudentDetail extends Component
         session()->now('local_success', $message);
     }
 
+    protected function authorizeManagedBillAction(): void
+    {
+        $this->authorizeFinance();
+    }
+
     public function dehydrate(): void
     {
         session()->forget('local_success');
@@ -393,7 +452,10 @@ class StudentDetail extends Component
 
     public function render(): View
     {
-        $this->student->loadMissing([
+        if ($this->shouldAuthorizeSharedDetail()) {
+            $this->authorize('viewStudentBilling', $this->student);
+        }
+        $relations = [
             'categories',
             'prospectiveStudent.academicYear',
             'prospectiveStudent.schoolClass',
@@ -402,13 +464,39 @@ class StudentDetail extends Component
             'prospectiveStudent.ppdbSiblings',
             'prospectiveStudent.ppdbDocuments',
             'prospectiveStudent.pasFotoDocument',
-            'prospectiveStudent.bills.paymentDetails.payment',
-        ]);
+        ];
+
+        if ($this->canManageFinance) {
+            $relations[] = 'prospectiveStudent.bills.paymentDetails.payment';
+        }
+
+        $this->student->loadMissing($relations);
+
+        if (! $this->canViewBilling) {
+            return view('livewire.student.detail', [
+                'groupedMonthlyBills' => collect(),
+                'groupedYearlyBills' => collect(),
+                'oneTimeBills' => collect(),
+                'oneTimeStatus' => null,
+                'totalTagihan' => 0,
+                'totalDibayar' => 0,
+                'totalTunggakan' => 0,
+                'academicYearSelectorOptions' => [],
+                'registeredProspect' => null,
+                'registrationSummary' => null,
+                'manualAddPaymentTypes' => collect(),
+                'manualBillIsHistorical' => false,
+                'addMonthOptions' => collect(),
+                'addYearOptions' => [],
+                'addAcademicYearOptions' => [],
+            ]);
+        }
 
         $billbook = StudentBillbook::build(
             $this->student,
             $this->selectedAcademicYear,
-            'all'
+            'all',
+            $this->canManageFinance,
         );
 
         $totals = $this->resolvedSummaryTotals($billbook);
@@ -428,8 +516,35 @@ class StudentDetail extends Component
             'academicYearSelectorOptions' => $academicYearSelectorOptions,
             'registeredProspect' => $registrationHistory['prospect'],
             'registrationSummary' => $registrationHistory['summary'],
-            ...$this->manualBillFormData(),
+            ...($this->canManageFinance ? $this->manualBillFormData() : [
+                'manualAddPaymentTypes' => collect(),
+                'manualBillIsHistorical' => false,
+                'addMonthOptions' => collect(),
+                'addYearOptions' => [],
+                'addAcademicYearOptions' => [],
+            ]),
         ]);
+    }
+
+    private function authorizeFinance(): void
+    {
+        if (auth()->check()) {
+            $this->authorize('manageFinance', $this->student);
+        }
+    }
+
+    private function authorizeBillingRead(): void
+    {
+        if (auth()->check()) {
+            $this->authorize('viewStudentBilling', $this->student);
+        }
+    }
+
+    private function shouldAuthorizeSharedDetail(): bool
+    {
+        $user = auth()->user();
+
+        return $user !== null && ($user->isAdmin() || $user->isSuperAdmin() || $user->isTuUnit());
     }
 
     /**

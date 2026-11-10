@@ -70,14 +70,15 @@ class PpdbDocumentReplacer extends Component
             }
         }
 
-        Gate::authorize('replace', $this->documentId ? PpdbDocument::find($this->documentId) : new PpdbDocument);
+        Gate::authorize('replaceDocument', $prospectiveStudent);
 
         if ($this->documentId) {
-            $document = PpdbDocument::query()->find($this->documentId);
-            if ($document && (int) $document->prospective_student_id === (int) $prospectiveStudent->id) {
-                $this->currentOriginalName = $document->original_name;
-                $this->documentType = $document->document_type instanceof PpdbDocumentType ? $document->document_type->value : (string) $document->document_type;
-            }
+            $document = PpdbDocument::query()->findOrFail($this->documentId);
+            abort_unless((int) $document->prospective_student_id === (int) $prospectiveStudent->id, 403);
+            Gate::authorize('replace', $document);
+
+            $this->currentOriginalName = $document->original_name;
+            $this->documentType = $document->document_type instanceof PpdbDocumentType ? $document->document_type->value : (string) $document->document_type;
         }
 
         $this->isOpen = true;
@@ -138,7 +139,11 @@ class PpdbDocumentReplacer extends Component
             }
         }
 
-        Gate::authorize('replace', $documentForAuth ?? new PpdbDocument);
+        Gate::authorize('replaceDocument', $prospectiveStudent);
+
+        if ($documentForAuth !== null) {
+            Gate::authorize('replace', $documentForAuth);
+        }
 
         try {
             $replacer->replaceOrUpload([
@@ -147,7 +152,7 @@ class PpdbDocumentReplacer extends Component
                 'document_id' => $this->documentId,
                 'expected_path' => $expectedPath,
                 'expected_updated_at' => $expectedUpdatedAt,
-            ], $this->file);
+            ], $this->file, auth()->user());
 
             $this->isOpen = false;
             $this->file = null;

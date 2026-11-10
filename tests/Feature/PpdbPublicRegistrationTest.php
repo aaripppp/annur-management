@@ -80,8 +80,16 @@ function fillPublicStudentStep($component, AcademicYear $year, string $level = '
         ->set('birthdate', '2015-01-01')
         ->set('asalSekolah', 'TK ANNUR')
         ->set('nikSiswa', '3201010101010001')
+        ->set('nisn', $level === 'TK' ? '' : '0012345678')
         ->set('nomorKk', '3201010101010002')
+        ->set('nomorAktaKelahiran', 'AKTA/001-2026')
+        ->set('anakKe', '1')
+        ->set('jumlahSaudara', '0')
+        ->set('hobi', 'Membaca')
+        ->set('citaCita', 'Dokter')
         ->set('address', 'Jl. Pendidikan No. 1')
+        ->set('jarakTempuhKategori', 'less_than_1_km')
+        ->set('modaTransportasi', 'jalan_kaki')
         ->set('tinggiBadan', '140')
         ->set('beratBadan', '35')
         ->set('lingkarKepala', '52')
@@ -352,6 +360,139 @@ it('requires the family card number to contain exactly 16 digits', function () {
         ->assertHasErrors(['nomorKk' => 'digits']);
 });
 
+it('requires the approved student biodata fields and rejects whitespace-only text', function () {
+    $year = publicPpdbYear('2054/2055');
+    $component = Livewire::test(PpdbPublicRegistration::class)->set('currentStep', 2);
+
+    fillPublicStudentStep($component, $year)
+        ->set('nomorAktaKelahiran', '   ')
+        ->set('anakKe', '')
+        ->set('jumlahSaudara', '')
+        ->set('hobi', '   ')
+        ->set('citaCita', '   ')
+        ->call('nextStep')
+        ->assertHasErrors([
+            'nomorAktaKelahiran' => 'required',
+            'anakKe' => 'required',
+            'jumlahSaudara' => 'required',
+            'hobi' => 'required',
+            'citaCita' => 'required',
+        ]);
+
+    fillPublicStudentStep($component, $year)
+        ->set('jumlahSaudara', '0')
+        ->call('nextStep')
+        ->assertHasNoErrors()
+        ->assertSet('currentStep', 3);
+});
+
+it('requires an exact ten-digit NISN for non-TK levels', function (string $level) {
+    $year = publicPpdbYear('2054/2055');
+    $component = Livewire::test(PpdbPublicRegistration::class)->set('currentStep', 2);
+
+    fillPublicStudentStep($component, $year, $level)
+        ->set('nisn', '')
+        ->call('nextStep')
+        ->assertHasErrors(['nisn' => 'required']);
+
+    fillPublicStudentStep($component, $year, $level)
+        ->set('nisn', '123456789')
+        ->call('nextStep')
+        ->assertHasErrors(['nisn' => 'digits']);
+})->with(['SD', 'SMP', 'SMA']);
+
+it('hides and clears NISN when the school level changes to TK', function () {
+    $year = publicPpdbYear('2054/2055');
+
+    $component = Livewire::test(PpdbPublicRegistration::class)->set('currentStep', 2);
+    fillPublicStudentStep($component, $year)
+        ->set('nisn', '0012345678')
+        ->set('schoolLevel', 'TK')
+        ->assertSet('nisn', '')
+        ->assertDontSee('NISN')
+        ->call('nextStep')
+        ->assertHasNoErrors();
+});
+
+it('normalizes decimal commas and requires a valid distance above one kilometer', function () {
+    $year = publicPpdbYear('2054/2055');
+    $component = Livewire::test(PpdbPublicRegistration::class)->set('currentStep', 2);
+
+    fillPublicStudentStep($component, $year)
+        ->set('jarakTempuhKategori', 'more_than_1_km')
+        ->set('jarakTempuhDetail', '2,5')
+        ->call('nextStep')
+        ->assertHasNoErrors()
+        ->assertSet('jarakTempuhDetail', '2.50')
+        ->assertSet('currentStep', 3);
+});
+
+it('rejects invalid distance details', function (string $distance) {
+    $year = publicPpdbYear('2054/2055');
+    $component = Livewire::test(PpdbPublicRegistration::class)->set('currentStep', 2);
+
+    fillPublicStudentStep($component, $year)
+        ->set('jarakTempuhKategori', 'more_than_1_km')
+        ->set('jarakTempuhDetail', $distance)
+        ->call('nextStep')
+        ->assertHasErrors('jarakTempuhDetail');
+})->with(['missing' => '', 'one kilometer' => '1', 'too many decimals' => '2.555', 'too large' => '10000', 'invalid text' => 'dua']);
+
+it('clears stale distance and transportation details when their controlling values change', function () {
+    publicPpdbYear('2054/2055');
+
+    Livewire::test(PpdbPublicRegistration::class)
+        ->set('currentStep', 2)
+        ->set('jarakTempuhKategori', 'more_than_1_km')
+        ->set('jarakTempuhDetail', '2.50')
+        ->set('jarakTempuhKategori', 'less_than_1_km')
+        ->assertSet('jarakTempuhDetail', '')
+        ->set('modaTransportasi', 'lainnya')
+        ->set('modaTransportasiLainnya', 'Perahu')
+        ->set('modaTransportasi', 'sepeda')
+        ->assertSet('modaTransportasiLainnya', '');
+});
+
+it('accepts every approved transportation option', function (string $transportation) {
+    $year = publicPpdbYear('2054/2055');
+    $component = Livewire::test(PpdbPublicRegistration::class)->set('currentStep', 2);
+
+    fillPublicStudentStep($component, $year)
+        ->set('modaTransportasi', $transportation)
+        ->set('modaTransportasiLainnya', $transportation === 'lainnya' ? 'Perahu' : '')
+        ->call('nextStep')
+        ->assertHasNoErrors();
+})->with(['jalan_kaki', 'sepeda', 'motor', 'mobil_pribadi', 'angkutan_umum', 'antar_jemput', 'lainnya']);
+
+it('requires nonblank transportation detail only for lainnya', function () {
+    $year = publicPpdbYear('2054/2055');
+    $component = Livewire::test(PpdbPublicRegistration::class)->set('currentStep', 2);
+
+    fillPublicStudentStep($component, $year)
+        ->set('modaTransportasi', 'lainnya')
+        ->set('modaTransportasiLainnya', '   ')
+        ->call('nextStep')
+        ->assertHasErrors(['modaTransportasiLainnya' => 'required_if']);
+});
+
+it('uses independent native radio names and requires both parent living statuses', function () {
+    publicPpdbYear('2054/2055');
+
+    Livewire::test(PpdbPublicRegistration::class)
+        ->set('currentStep', 3)
+        ->assertSeeHtml('name="father[living_status]"')
+        ->assertSeeHtml('name="mother[living_status]"')
+        ->call('nextStep')
+        ->assertHasErrors([
+            'father.living_status' => 'required',
+            'mother.living_status' => 'required',
+        ])
+        ->set('father.living_status', 'wafat')
+        ->call('nextStep')
+        ->assertHasErrors(['mother.living_status' => 'required'])
+        ->assertHasErrors(['father.name' => 'required']);
+});
+
 it('requires health responses and special-needs details when applicable', function () {
     $year = publicPpdbYear('2054/2055');
 
@@ -413,6 +554,7 @@ it('rejects invalid income codes while allowing income to remain unknown', funct
     Livewire::test(PpdbPublicRegistration::class)
         ->set('currentStep', 3)
         ->set('father.name', 'Ayah Ahmad')
+        ->set('father.living_status', 'hidup')
         ->set('father.nik', '3201010101010003')
         ->set('father.birthplace', 'Jakarta')
         ->set('father.birthdate', '1980-01-01')
@@ -421,6 +563,7 @@ it('rejects invalid income codes while allowing income to remain unknown', funct
         ->set('father.phone', '08123456789')
         ->set('father.occupation', 'Wiraswasta')
         ->set('mother.name', 'Ibu Ahmad')
+        ->set('mother.living_status', 'hidup')
         ->set('mother.nik', '3201010101010004')
         ->set('mother.birthplace', 'Bandung')
         ->set('mother.birthdate', '1982-02-02')
@@ -436,6 +579,7 @@ it('rejects invalid income codes while allowing income to remain unknown', funct
     Livewire::test(PpdbPublicRegistration::class)
         ->set('currentStep', 3)
         ->set('father.name', 'Ayah Ahmad')
+        ->set('father.living_status', 'hidup')
         ->set('father.nik', '3201010101010003')
         ->set('father.birthplace', 'Jakarta')
         ->set('father.birthdate', '1980-01-01')
@@ -445,6 +589,7 @@ it('rejects invalid income codes while allowing income to remain unknown', funct
         ->set('father.occupation', 'Wiraswasta')
         ->set('father.income_range', ParentIncomeRange::BelowOneMillion->value)
         ->set('mother.name', 'Ibu Ahmad')
+        ->set('mother.living_status', 'hidup')
         ->set('mother.nik', '3201010101010004')
         ->set('mother.birthplace', 'Bandung')
         ->set('mother.birthdate', '1982-02-02')
@@ -464,12 +609,14 @@ it('keeps guardian optional but requires a name when guardian details are suppli
     Livewire::test(PpdbPublicRegistration::class)
         ->set('currentStep', 3)
         ->set('father.name', 'Ayah Ahmad')
+        ->set('father.living_status', 'hidup')
         ->set('father.birthplace', 'Jakarta')
         ->set('father.birthdate', '1980-01-01')
         ->set('father.phone', '08123456789')
         ->set('father.occupation', 'Wiraswasta')
         ->set('father.income_range', ParentIncomeRange::BelowOneMillion->value)
         ->set('mother.name', 'Ibu Ahmad')
+        ->set('mother.living_status', 'hidup')
         ->set('mother.birthplace', 'Bandung')
         ->set('mother.birthdate', '1982-02-02')
         ->set('mother.phone', '08123456788')
@@ -483,6 +630,7 @@ it('keeps guardian optional but requires a name when guardian details are suppli
     Livewire::test(PpdbPublicRegistration::class)
         ->set('currentStep', 3)
         ->set('father.name', 'Ayah Ahmad')
+        ->set('father.living_status', 'hidup')
         ->set('father.nik', '3201010101010003')
         ->set('father.birthplace', 'Jakarta')
         ->set('father.birthdate', '1980-01-01')
@@ -492,6 +640,7 @@ it('keeps guardian optional but requires a name when guardian details are suppli
         ->set('father.occupation', 'Wiraswasta')
         ->set('father.income_range', ParentIncomeRange::BelowOneMillion->value)
         ->set('mother.name', 'Ibu Ahmad')
+        ->set('mother.living_status', 'hidup')
         ->set('mother.nik', '3201010101010004')
         ->set('mother.birthplace', 'Bandung')
         ->set('mother.birthdate', '1982-02-02')
@@ -520,12 +669,14 @@ it('requires parent birth data while keeping both parent emails optional and val
     $component = Livewire::test(PpdbPublicRegistration::class)
         ->set('currentStep', 3)
         ->set('father.name', 'Ayah Ahmad')
+        ->set('father.living_status', 'hidup')
         ->set('father.nik', '3201010101010003')
         ->set('father.education_last', 'S1')
         ->set('father.phone', '08123456789')
         ->set('father.occupation', 'Wiraswasta')
         ->set('father.income_range', ParentIncomeRange::BelowOneMillion->value)
         ->set('mother.name', 'Ibu Ahmad')
+        ->set('mother.living_status', 'hidup')
         ->set('mother.nik', '3201010101010004')
         ->set('mother.education_last', 'SMA')
         ->set('mother.phone', '08123456788')
@@ -712,6 +863,7 @@ it('preserves sparse sibling paths through validation and backward-forward navig
         ->call('previousStep')
         ->assertSet('currentStep', 3)
         ->set('father.name', 'Ayah Ahmad')
+        ->set('father.living_status', 'hidup')
         ->set('father.nik', '3201010101010003')
         ->set('father.birthplace', 'Jakarta')
         ->set('father.birthdate', '1980-01-01')
@@ -721,6 +873,7 @@ it('preserves sparse sibling paths through validation and backward-forward navig
         ->set('father.occupation', 'Wiraswasta')
         ->set('father.income_range', ParentIncomeRange::BelowOneMillion->value)
         ->set('mother.name', 'Ibu Ahmad')
+        ->set('mother.living_status', 'hidup')
         ->set('mother.nik', '3201010101010004')
         ->set('mother.birthplace', 'Bandung')
         ->set('mother.birthdate', '1982-02-02')
@@ -762,6 +915,7 @@ it('navigates all six steps and provides the final submission action', function 
         ->assertSet('currentStep', 3)
         ->assertDispatched('ppdb-step-changed', step: 3)
         ->set('father.name', 'Ayah Ahmad')
+        ->set('father.living_status', 'hidup')
         ->set('father.nik', '3201010101010003')
         ->set('father.birthplace', 'Jakarta')
         ->set('father.birthdate', '1980-01-01')
@@ -771,6 +925,7 @@ it('navigates all six steps and provides the final submission action', function 
         ->set('father.occupation', 'Wiraswasta')
         ->set('father.income_range', ParentIncomeRange::BelowOneMillion->value)
         ->set('mother.name', 'Ibu Ahmad')
+        ->set('mother.living_status', 'hidup')
         ->set('mother.nik', '3201010101010004')
         ->set('mother.birthplace', 'Bandung')
         ->set('mother.birthdate', '1982-02-02')
@@ -869,10 +1024,12 @@ it('never creates applicants documents bills payments or registration numbers', 
         ->call('nextStep')
         ->call('nextStep')
         ->set('father.name', 'Ayah Ahmad')
+        ->set('father.living_status', 'hidup')
         ->set('father.phone', '08123456789')
         ->set('father.occupation', 'Wiraswasta')
         ->set('father.income_range', ParentIncomeRange::BelowOneMillion->value)
         ->set('mother.name', 'Ibu Ahmad')
+        ->set('mother.living_status', 'hidup')
         ->set('mother.phone', '08123456788')
         ->set('mother.occupation', 'Ibu Rumah Tangga')
         ->set('mother.income_range', ParentIncomeRange::BelowOneMillion->value)

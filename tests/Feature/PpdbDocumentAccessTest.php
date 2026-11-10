@@ -6,6 +6,7 @@ use App\Models\PpdbParent;
 use App\Models\PpdbProfile;
 use App\Models\PpdbSibling;
 use App\Models\ProspectiveStudent;
+use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\User;
 use Illuminate\Support\Facades\Process;
@@ -251,10 +252,17 @@ it('renders PPDB biodata, parents, optional guardian, and siblings on applicant 
         'tanggal_lahir' => '2019-04-12',
         'asal_sekolah' => 'TK AL AZHAR',
         'nik_siswa' => '3201011204190001',
+        'nisn' => '0012345678',
         'nomor_kk' => '3201010101010001',
         'nomor_akta_kelahiran' => 'AKTA-NADIA-01',
         'anak_ke' => 2,
         'jumlah_saudara' => 4,
+        'hobi' => 'Membaca',
+        'cita_cita' => 'Dokter',
+        'jarak_tempuh_kategori' => 'more_than_1_km',
+        'jarak_tempuh_detail' => '2.50',
+        'moda_transportasi' => 'lainnya',
+        'moda_transportasi_lainnya' => 'Perahu sekolah',
         'status_anak' => 'Kandung',
         'agama' => 'Islam',
         'bahasa_sehari_hari' => 'Indonesia',
@@ -274,8 +282,8 @@ it('renders PPDB biodata, parents, optional guardian, and siblings on applicant 
         'keterangan_kebutuhan_khusus' => 'Pendampingan belajar',
     ]);
     foreach ([
-        ['role' => 'father', 'nama' => 'Ayah Nadia', 'nik' => '3201010101010002', 'tempat_lahir' => 'Garut', 'tanggal_lahir' => '1985-02-03', 'pendidikan_terakhir' => 'S1', 'email' => 'ayah.nadia@example.test', 'no_telp' => '0811111111', 'occupation' => 'Guru', 'income_range' => '3m_to_4_999m'],
-        ['role' => 'mother', 'nama' => 'Ibu Nadia', 'nik' => '3201010101010003', 'tempat_lahir' => 'Bandung', 'tanggal_lahir' => '1987-04-05', 'pendidikan_terakhir' => 'S2', 'email' => 'ibu.nadia@example.test', 'no_telp' => '0822222222', 'occupation' => 'Dokter', 'income_range' => '5m_to_7_499m'],
+        ['role' => 'father', 'nama' => 'Ayah Nadia', 'status_hidup' => 'hidup', 'nik' => '3201010101010002', 'tempat_lahir' => 'Garut', 'tanggal_lahir' => '1985-02-03', 'pendidikan_terakhir' => 'S1', 'email' => 'ayah.nadia@example.test', 'no_telp' => '0811111111', 'occupation' => 'Guru', 'income_range' => '3m_to_4_999m'],
+        ['role' => 'mother', 'nama' => 'Ibu Nadia', 'status_hidup' => 'wafat', 'nik' => '3201010101010003', 'tempat_lahir' => 'Bandung', 'tanggal_lahir' => '1987-04-05', 'pendidikan_terakhir' => 'S2', 'email' => 'ibu.nadia@example.test', 'no_telp' => '0822222222', 'occupation' => 'Dokter', 'income_range' => '5m_to_7_499m'],
         ['role' => 'guardian', 'nama' => 'Wali Nadia', 'nik' => '3201010101010004', 'tempat_lahir' => 'Sumedang', 'tanggal_lahir' => '1980-06-07', 'pendidikan_terakhir' => 'SMA', 'email' => 'wali.nadia@example.test', 'no_telp' => '0833333333', 'occupation' => 'Wiraswasta', 'income_range' => '10m_to_14_999m'],
     ] as $parent) {
         PpdbParent::query()->create($parent + ['prospective_student_id' => $prospectiveStudent->id]);
@@ -307,8 +315,18 @@ it('renders PPDB biodata, parents, optional guardian, and siblings on applicant 
             'Bandung',
             'TK AL AZHAR',
             '3201011204190001',
+            '0012345678',
             '3201010101010001',
             'AKTA-NADIA-01',
+            'Anak ke-',
+            'Jumlah Saudara',
+            'Membaca',
+            'Cita-cita',
+            'Dokter',
+            'Lebih dari 1 km',
+            '2,50 km',
+            'Lainnya',
+            'Perahu sekolah',
             'Kandung',
             'Indonesia',
             'Sukamaju',
@@ -331,7 +349,68 @@ it('renders PPDB biodata, parents, optional guardian, and siblings on applicant 
             'ADIK NADIA',
             'Rp10.000.000 – Rp14.999.999',
         ])
+        ->assertSeeTextInOrder(['NIK Siswa', '3201011204190001', 'NISN', '0012345678', 'Nomor KK'])
+        ->assertSee('data-ppdb-parent-status="father"', false)
+        ->assertSee('data-ppdb-parent-status="mother"', false)
+        ->assertSeeTextInOrder(['Data Ayah', 'AYAH NADIA', 'Status Hidup', 'Hidup'])
+        ->assertSeeTextInOrder(['Data Ibu', 'IBU NADIA', 'Status Hidup', 'Wafat'])
+        ->assertDontSee('more_than_1_km')
+        ->assertDontSee('lainnya')
         ->assertSee('data-ppdb-special-needs="Ya"', false);
+});
+
+it('hides NISN and inactive conditional details for TK applicants', function () {
+    $class = SchoolClass::factory()->create(['level' => -1]);
+    $prospectiveStudent = ProspectiveStudent::factory()->create(['school_class_id' => $class->id]);
+    PpdbProfile::query()->create([
+        'prospective_student_id' => $prospectiveStudent->id,
+        'nisn' => '0012345678',
+        'nomor_akta_kelahiran' => 'AKTA-TK-01',
+        'anak_ke' => 1,
+        'jumlah_saudara' => 0,
+        'jarak_tempuh_kategori' => 'less_than_1_km',
+        'jarak_tempuh_detail' => '8.50',
+        'moda_transportasi' => 'motor',
+        'moda_transportasi_lainnya' => 'Tidak boleh tampil',
+    ]);
+
+    $this->actingAs(ppdbDocumentUser())
+        ->get(route('calon-siswa.show', $prospectiveStudent))
+        ->assertOk()
+        ->assertDontSee('data-ppdb-field="nisn"', false)
+        ->assertDontSee('0012345678')
+        ->assertSeeText(['Nomor Akta Kelahiran', 'AKTA-TK-01', 'Anak ke-', 'Jumlah Saudara', 'Kurang dari 1 km', 'Motor'])
+        ->assertDontSee('data-ppdb-field="distance-detail"', false)
+        ->assertDontSee('8,50 km')
+        ->assertDontSee('data-ppdb-field="transportation-detail"', false)
+        ->assertDontSee('Tidak boleh tampil')
+        ->assertDontSee('less_than_1_km');
+});
+
+it('renders legacy null and unknown PPDB biodata safely without raw codes', function () {
+    $prospectiveStudent = ProspectiveStudent::factory()->create();
+    PpdbProfile::query()->create([
+        'prospective_student_id' => $prospectiveStudent->id,
+        'jarak_tempuh_kategori' => 'historical_distance',
+        'moda_transportasi' => 'historical_transport',
+    ]);
+    PpdbParent::query()->create([
+        'prospective_student_id' => $prospectiveStudent->id,
+        'role' => 'father',
+        'status_hidup' => 'historical_status',
+    ]);
+
+    $this->actingAs(ppdbDocumentUser())
+        ->get(route('calon-siswa.show', $prospectiveStudent))
+        ->assertOk()
+        ->assertSeeTextInOrder(['NISN', '-', 'Nomor KK'])
+        ->assertSeeTextInOrder(['Jarak Tempuh', '-', 'Moda Transportasi', '-'])
+        ->assertSee('data-ppdb-parent-status="father"', false)
+        ->assertSee('data-ppdb-parent-status="mother"', false)
+        ->assertDontSee('data-ppdb-parent-status="guardian"', false)
+        ->assertDontSee('historical_distance')
+        ->assertDontSee('historical_transport')
+        ->assertDontSee('historical_status');
 });
 
 it('renders nullable historical PPDB biodata without fabricating special-needs status', function () {
@@ -486,14 +565,21 @@ it('renders linked extended PPDB biodata on converted student detail', function 
     PpdbProfile::query()->create([
         'prospective_student_id' => $prospectiveStudent->id,
         'nik_siswa' => '3201010101010099',
+        'nisn' => '0098765432',
         'nomor_kk' => '3201010101010098',
         'jumlah_saudara' => 3,
+        'hobi' => 'Berenang',
+        'cita_cita' => 'Arsitek',
+        'jarak_tempuh_kategori' => 'more_than_1_km',
+        'jarak_tempuh_detail' => '3.75',
+        'moda_transportasi' => 'antar_jemput',
         'berkebutuhan_khusus' => false,
     ]);
     PpdbParent::query()->create([
         'prospective_student_id' => $prospectiveStudent->id,
         'role' => 'father',
         'nama' => 'Ayah Saat PPDB',
+        'status_hidup' => 'hidup',
         'nik' => '3201010101010097',
         'pendidikan_terakhir' => 'S1',
         'email' => 'ayah.converted@example.test',
@@ -506,12 +592,22 @@ it('renders linked extended PPDB biodata on converted student detail', function 
             'Data pendaftaran PPDB yang tersimpan dan data keluarga.',
             'NAMA SAAT PPDB',
             '3201010101010099',
+            '0098765432',
             '3201010101010098',
+            'Berenang',
+            'Arsitek',
+            'Lebih dari 1 km',
+            '3,75 km',
+            'Antar-jemput',
             'AYAH SAAT PPDB',
             '3201010101010097',
             'ayah.converted@example.test',
             'Jumlah Saudara (data terpisah)',
         ])
+        ->assertSee('data-ppdb-parent-status="father"', false)
+        ->assertSeeTextInOrder(['AYAH SAAT PPDB', 'Status Hidup', 'Hidup'])
+        ->assertDontSee('more_than_1_km')
+        ->assertDontSee('antar_jemput')
         ->assertSee('data-ppdb-special-needs="Tidak"', false);
 });
 

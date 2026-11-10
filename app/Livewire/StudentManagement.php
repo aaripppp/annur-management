@@ -14,6 +14,7 @@ use App\Services\StudentDeletionService;
 use App\Services\StudentPhotoService;
 use App\Services\StudentProfileUpdater;
 use App\Services\StudentStatisticService;
+use App\Services\StudentUnitScope;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -111,6 +112,13 @@ class StudentManagement extends Component
     /** @var array<int, string> */
     public array $inactiveCategoryNames = [];
 
+    public function mount(): void
+    {
+        if (auth()->check()) {
+            $this->authorize('viewAny', Student::class);
+        }
+    }
+
     // Reset pagination when filter changes
     public function updatedFilterClassId()
     {
@@ -163,6 +171,9 @@ class StudentManagement extends Component
 
     public function confirmDelete(int $id)
     {
+        $student = Student::query()->findOrFail($id);
+        $this->authorizeStudentActionWhenAuthenticated('delete', $student);
+
         $this->deletingId = $id;
         $this->deletingIsConverted = ProspectiveStudent::query()
             ->where('converted_student_id', $id)
@@ -179,6 +190,8 @@ class StudentManagement extends Component
 
     public function openModal()
     {
+        $this->authorizeStudentActionWhenAuthenticated('create', Student::class);
+
         $this->resetForm();
         $this->isModalOpen = true;
     }
@@ -202,6 +215,8 @@ class StudentManagement extends Component
 
     public function edit(Student $student)
     {
+        $this->authorizeStudentActionWhenAuthenticated('update', $student);
+
         $updater = app(StudentProfileUpdater::class);
 
         $this->isEditing = true;
@@ -242,6 +257,8 @@ class StudentManagement extends Component
     {
         if ($this->isEditing) {
             $student = Student::query()->findOrFail((int) $this->studentId);
+            $this->authorizeStudentActionWhenAuthenticated('update', $student);
+            $this->authorizeClassAssignmentForTu($this->class_id);
             $updater = app(StudentProfileUpdater::class);
             $photoService = app(StudentPhotoService::class);
             $storedStatus = StudentStatus::tryFrom((string) $student->getRawOriginal('status'));
@@ -274,6 +291,15 @@ class StudentManagement extends Component
                 }
 
                 DB::transaction(function () use ($updater, $student, $validatedData, $statusChanged): void {
+                    $student = Student::query()->lockForUpdate()->findOrFail($student->id);
+                    $student->enrollments()->lockForUpdate()->get();
+                    $this->authorizeStudentActionWhenAuthenticated('update', $student);
+                    $this->authorizeClassAssignmentForTu((int) $validatedData['class_id']);
+
+                    if ($statusChanged && auth()->check()) {
+                        $this->authorize('change-student-status');
+                    }
+
                     if ($statusChanged) {
                         $student->status = $validatedData['status'];
                     }
@@ -296,6 +322,9 @@ class StudentManagement extends Component
 
             return;
         }
+
+        $this->authorizeStudentActionWhenAuthenticated('create', Student::class);
+        $this->authorizeClassAssignmentForTu($this->class_id);
 
         $rules = [
             'nama_lengkap' => 'required|string|max:255',
@@ -341,9 +370,11 @@ class StudentManagement extends Component
         }
         session()->flash(
             'success',
-            $this->status === StudentStatus::Active->value
+            auth()->user()?->isTuUnit()
+                ? 'Data siswa berhasil ditambahkan.'
+                : ($this->status === StudentStatus::Active->value
                 ? 'Siswa baru berhasil ditambahkan; buku tagihan otomatis dibuat.'
-                : 'Data siswa nonaktif dan riwayat akademiknya berhasil ditambahkan.'
+                : 'Data siswa nonaktif dan riwayat akademiknya berhasil ditambahkan.')
         );
 
         $this->closeModal();
@@ -370,7 +401,10 @@ class StudentManagement extends Component
             return;
         }
 
-        $deletionService->delete((int) $this->deletingId);
+        $student = Student::query()->findOrFail((int) $this->deletingId);
+        $this->authorizeStudentActionWhenAuthenticated('delete', $student);
+
+        $deletionService->delete((int) $this->deletingId, auth()->user());
 
         $this->cancelDelete();
         session()->flash('success', 'Data siswa beserta semua pembayaran terkait berhasil dihapus.');
@@ -378,13 +412,30 @@ class StudentManagement extends Component
 
     public function render()
     {
+        $user = auth()->user();
+        $activeYear = AcademicYear::active();
+        $studentUnitScope = app(StudentUnitScope::class);
         $query = Student::with(['schoolClass', 'enrollments.academicYear', 'enrollments.schoolClass', 'categories'])->latest();
+
+        if ($user !== null) {
+            $this->authorize('viewAny', Student::class);
+            $studentUnitScope->applyForUser(
+                $query,
+                $user,
+                $activeYear,
+                $user->isTuUnit() && $this->filterClassId !== '' ? (int) $this->filterClassId : null,
+            );
+        }
 
         if ($this->filterLevel !== '') {
             $level = SchoolLevel::tryFrom($this->filterLevel);
 
             if ($level === null) {
                 $query->whereRaw('0 = 1');
+            } elseif ($user?->isTuUnit()) {
+                if ($user->school_level !== $level) {
+                    $query->whereRaw('0 = 1');
+                }
             } else {
                 $levelClassIds = SchoolClass::query()
                     ->whereIn('level', $level->classLevels())
@@ -394,7 +445,7 @@ class StudentManagement extends Component
             }
         }
 
-        if ($this->filterClassId) {
+        if ($this->filterClassId && ! $user?->isTuUnit()) {
             $query->where('class_id', $this->filterClassId);
         }
 
@@ -419,8 +470,6 @@ class StudentManagement extends Component
                     });
             });
         }
-
-        $activeYear = AcademicYear::active();
 
         if ($this->filterStatus === 'aktif') {
             $query->where('status', StudentStatus::Active->value);
@@ -463,9 +512,17 @@ class StudentManagement extends Component
 
         $statCounts = $statYear === null
             ? ['total' => 0, 'active' => 0, 'prospective' => 0, 'graduated' => 0]
-            : app(StudentStatisticService::class)->counts($statYear, $statLevelValue, $statClassIdValue);
+            : app(StudentStatisticService::class)->counts(
+                $statYear,
+                $statLevelValue,
+                $statClassIdValue,
+                $user?->isTuUnit() ? $user->school_level : null,
+                $activeYear,
+            );
 
         $statClasses = SchoolClass::query()
+            ->when($user?->isTuUnit(), fn (Builder $query) => $query
+                ->whereIn('level', $user->school_level?->classLevels() ?? []))
             ->when($this->statLevel !== '', function (Builder $query): void {
                 $level = SchoolLevel::tryFrom($this->statLevel);
 
@@ -483,12 +540,28 @@ class StudentManagement extends Component
 
         foreach ($students as $student) {
             $student->setRelation('academicContextActiveYear', $activeYear);
+
+            if ($user?->isTuUnit()) {
+                $student->setRelation(
+                    'schoolClass',
+                    $studentUnitScope->resolveEffectiveClassFromLoaded($student, $activeYear),
+                );
+            }
         }
+
+        $classes = SchoolClass::query()
+            ->when($user?->isTuUnit(), fn (Builder $query) => $query
+                ->whereIn('level', $user->school_level?->classLevels() ?? []))
+            ->orderBy('level')
+            ->orderBy('name')
+            ->get();
 
         return view('livewire.student.index', [
             'students' => $students,
-            'classes' => SchoolClass::orderBy('level')->orderBy('name')->get(),
-            'levels' => SchoolLevel::cases(),
+            'classes' => $classes,
+            'levels' => $user?->isTuUnit() && $user->school_level !== null
+                ? [$user->school_level]
+                : SchoolLevel::cases(),
             'academicYears' => $academicYears,
             'statCounts' => $statCounts,
             'statClasses' => $statClasses,
@@ -497,6 +570,29 @@ class StudentManagement extends Component
                 ->orderBy('name')
                 ->get(),
         ]);
+    }
+
+    private function authorizeStudentActionWhenAuthenticated(string $ability, Student|string $student): void
+    {
+        if (auth()->check()) {
+            $this->authorize($ability, $student);
+        }
+    }
+
+    private function authorizeClassAssignmentForTu(mixed $schoolClassId): void
+    {
+        $user = auth()->user();
+
+        if ($user === null || ! $user->isTuUnit()) {
+            return;
+        }
+
+        $classId = filter_var($schoolClassId, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE);
+
+        abort_unless(
+            app(StudentUnitScope::class)->classBelongsToUser($classId, $user),
+            403,
+        );
     }
 
     /**

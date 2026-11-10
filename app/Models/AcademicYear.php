@@ -42,6 +42,12 @@ class AcademicYear extends Model
         return $this->hasMany(StudentAcademicEnrollment::class);
     }
 
+    /** @return HasMany<JemputanDriverAssignment, $this> */
+    public function jemputanDriverAssignments(): HasMany
+    {
+        return $this->hasMany(JemputanDriverAssignment::class);
+    }
+
     /** @return HasOne<PpdbAcademicYearSetting, $this> */
     public function ppdbSetting(): HasOne
     {

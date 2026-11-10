@@ -259,18 +259,39 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                             <div>
                                 <label for="role" class="block text-label-md font-label-md text-on-surface mb-1">Role <span class="text-error">*</span></label>
-                                <select id="role" wire:model="role" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm">
+                                <select id="role" wire:model.live="role" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm">
                                     <option value="{{ \App\Models\User::ROLE_ADMIN }}">Admin</option>
                                     <option value="{{ \App\Models\User::ROLE_SUPER_ADMIN }}">Super Admin</option>
+                                    <option value="{{ \App\Models\User::ROLE_TU_UNIT }}">TU Unit</option>
                                 </select>
                                 @error('role') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
                             </div>
+                            @if ($role === \App\Models\User::ROLE_TU_UNIT)
+                                <div>
+                                    <label for="school_level" class="block text-label-md font-label-md text-on-surface mb-1">Unit Sekolah <span class="text-error">*</span></label>
+                                    <select id="school_level" wire:model="school_level" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm">
+                                        <option value="">Pilih unit</option>
+                                        @foreach (\App\Enums\SchoolLevel::cases() as $schoolLevel)
+                                            <option value="{{ $schoolLevel->value }}">{{ $schoolLevel->value }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('school_level') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
+                                </div>
+                            @else
+                                <div>
+                                    <label for="position" class="block text-label-md font-label-md text-on-surface mb-1">Jabatan</label>
+                                    <input type="text" id="position" wire:model="position" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm" placeholder="Contoh: Direktur Keuangan, Kepala TU Yayasan">
+                                    @error('position') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
+                                </div>
+                            @endif
+                        </div>
+                        @if ($role === \App\Models\User::ROLE_TU_UNIT)
                             <div>
                                 <label for="position" class="block text-label-md font-label-md text-on-surface mb-1">Jabatan</label>
-                                <input type="text" id="position" wire:model="position" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm" placeholder="Contoh: Direktur Keuangan, Kepala TU Yayasan">
+                                <input type="text" id="position" wire:model="position" class="w-full border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm" placeholder="Contoh: TU SMP">
                                 @error('position') <span class="text-error text-body-sm mt-1">{{ $message }}</span> @enderror
                             </div>
-                        </div>
+                        @endif
                         <div>
                             <label class="block text-label-md font-label-md text-on-surface mb-2">Status Aktif <span class="text-error">*</span></label>
                             <div class="flex gap-4 items-center h-[42px]">

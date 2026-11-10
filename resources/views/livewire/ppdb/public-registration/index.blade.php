@@ -247,6 +247,13 @@
                                         <label for="nikSiswa" class="block text-sm font-semibold text-slate-800">NIK siswa <span class="text-red-700">*</span></label>
                                         <input id="nikSiswa" type="text" inputmode="numeric" maxlength="16" wire:model="nikSiswa" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('nikSiswa')]) aria-invalid="{{ $errors->has('nikSiswa') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('nikSiswa') ? 'error-nikSiswa' : '' }}">
                                         @error('nikSiswa') <p id="error-nikSiswa" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
+                                        @if ($schoolLevel !== 'TK')
+                                            <div class="mt-4">
+                                                <label for="nisn" class="block text-sm font-semibold text-slate-800">NISN <span class="text-red-700">*</span></label>
+                                                <input id="nisn" type="text" inputmode="numeric" maxlength="10" wire:model="nisn" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('nisn')]) aria-invalid="{{ $errors->has('nisn') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('nisn') ? 'error-nisn' : '' }}">
+                                                @error('nisn') <p id="error-nisn" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
+                                            </div>
+                                        @endif
                                     </div>
                                     <div>
                                         <label for="nomorKk" class="block text-sm font-semibold text-slate-800">Nomor KK <span class="text-red-700">*</span></label>
@@ -254,8 +261,8 @@
                                         @error('nomorKk') <p id="error-nomorKk" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
                                     </div>
                                     <div>
-                                        <label for="nomorAktaKelahiran" class="block text-sm font-semibold text-slate-800">Nomor akta kelahiran</label>
-                                        <input id="nomorAktaKelahiran" type="text" wire:model="nomorAktaKelahiran" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('nomorAktaKelahiran')]) aria-invalid="{{ $errors->has('nomorAktaKelahiran') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('nomorAktaKelahiran') ? 'error-nomorAktaKelahiran' : '' }}">
+                                        <label for="nomorAktaKelahiran" class="block text-sm font-semibold text-slate-800">No. Akta / No. Registrasi Akta <span class="text-red-700">*</span></label>
+                                        <input id="nomorAktaKelahiran" type="text" maxlength="100" wire:model="nomorAktaKelahiran" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('nomorAktaKelahiran')]) aria-invalid="{{ $errors->has('nomorAktaKelahiran') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('nomorAktaKelahiran') ? 'error-nomorAktaKelahiran' : '' }}">
                                         @error('nomorAktaKelahiran') <p id="error-nomorAktaKelahiran" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
                                     </div>
                                     <div>
@@ -275,15 +282,25 @@
                                         @error('asalSekolah') <p id="error-asalSekolah" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
                                     </div>
                                     <div>
-                                        <label for="anakKe" class="block text-sm font-semibold text-slate-800">Anak ke-</label>
+                                        <label for="anakKe" class="block text-sm font-semibold text-slate-800">Anak ke- <span class="text-red-700">*</span></label>
                                         <input id="anakKe" type="number" min="1" wire:model="anakKe" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('anakKe')]) aria-invalid="{{ $errors->has('anakKe') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('anakKe') ? 'error-anakKe' : '' }}">
                                         @error('anakKe') <p id="error-anakKe" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
                                     </div>
                                     <div>
-                                        <label for="jumlahSaudara" class="block text-sm font-semibold text-slate-800">Jumlah saudara</label>
+                                        <label for="jumlahSaudara" class="block text-sm font-semibold text-slate-800">Jumlah saudara <span class="text-red-700">*</span></label>
                                         <input id="jumlahSaudara" type="number" min="0" wire:model="jumlahSaudara" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('jumlahSaudara')]) aria-invalid="{{ $errors->has('jumlahSaudara') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('jumlahSaudara') ? 'error-jumlahSaudara' : '' }}">
                                         <p class="mt-1 text-xs text-slate-600">Diisi terpisah dari daftar saudara kandung pada langkah berikutnya.</p>
                                         @error('jumlahSaudara') <p id="error-jumlahSaudara" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
+                                    </div>
+                                    <div>
+                                        <label for="hobi" class="block text-sm font-semibold text-slate-800">Hobi <span class="text-red-700">*</span></label>
+                                        <input id="hobi" type="text" maxlength="255" wire:model="hobi" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('hobi')]) aria-invalid="{{ $errors->has('hobi') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('hobi') ? 'error-hobi' : '' }}">
+                                        @error('hobi') <p id="error-hobi" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
+                                    </div>
+                                    <div>
+                                        <label for="citaCita" class="block text-sm font-semibold text-slate-800">Cita-cita <span class="text-red-700">*</span></label>
+                                        <input id="citaCita" type="text" maxlength="255" wire:model="citaCita" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('citaCita')]) aria-invalid="{{ $errors->has('citaCita') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('citaCita') ? 'error-citaCita' : '' }}">
+                                        @error('citaCita') <p id="error-citaCita" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
                                     </div>
                                     <div>
                                         <label for="statusAnak" class="block text-sm font-semibold text-slate-800">Status anak</label>
@@ -346,6 +363,44 @@
                                         <input id="kodePos" type="text" inputmode="numeric" maxlength="5" wire:model="kodePos" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('kodePos')]) aria-invalid="{{ $errors->has('kodePos') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('kodePos') ? 'error-kodePos' : '' }}">
                                         @error('kodePos') <p id="error-kodePos" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
                                     </div>
+                                    <fieldset @class(['rounded-xl p-1 -m-1 md:col-span-2', 'ring-1 ring-red-300' => $errors->has('jarakTempuhKategori')]) aria-invalid="{{ $errors->has('jarakTempuhKategori') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('jarakTempuhKategori') ? 'error-jarakTempuhKategori' : '' }}">
+                                        <legend class="px-1 text-sm font-semibold text-slate-800">Jarak tempuh ke sekolah <span class="text-red-700">*</span></legend>
+                                        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                            @foreach ($distanceOptions as $distanceValue => $distanceLabel)
+                                                <label class="flex min-h-12 cursor-pointer items-center gap-2 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-800 has-[:checked]:border-blue-700 has-[:checked]:bg-blue-50 {{ $errors->has('jarakTempuhKategori') ? 'border-red-400' : '' }}">
+                                                    <input type="radio" name="jarakTempuhKategori" wire:model.live="jarakTempuhKategori" value="{{ $distanceValue }}" class="h-5 w-5 border-slate-400 text-blue-700 focus:ring-blue-700"> {{ $distanceLabel }}
+                                                </label>
+                                            @endforeach
+                                        </div>
+                                        @error('jarakTempuhKategori') <p id="error-jarakTempuhKategori" class="mt-1.5 flex items-center gap-1.5 px-1 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
+                                    </fieldset>
+                                    @if ($jarakTempuhKategori === 'more_than_1_km')
+                                        <div>
+                                            <label for="jarakTempuhDetail" class="block text-sm font-semibold text-slate-800">Detail jarak <span class="text-red-700">*</span></label>
+                                            <div class="mt-2 flex rounded-xl shadow-sm">
+                                                <input id="jarakTempuhDetail" type="text" inputmode="decimal" placeholder="Contoh: 2,5" wire:model="jarakTempuhDetail" @class(['h-12 min-w-0 flex-1 rounded-l-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('jarakTempuhDetail')]) aria-invalid="{{ $errors->has('jarakTempuhDetail') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('jarakTempuhDetail') ? 'error-jarakTempuhDetail' : '' }}">
+                                                <span class="inline-flex items-center rounded-r-xl border border-l-0 border-slate-300 bg-slate-100 px-4 text-sm font-semibold text-slate-700">km</span>
+                                            </div>
+                                            @error('jarakTempuhDetail') <p id="error-jarakTempuhDetail" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
+                                        </div>
+                                    @endif
+                                    <div>
+                                        <label for="modaTransportasi" class="block text-sm font-semibold text-slate-800">Moda transportasi <span class="text-red-700">*</span></label>
+                                        <select id="modaTransportasi" wire:model.live="modaTransportasi" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 bg-white px-3 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('modaTransportasi')]) aria-invalid="{{ $errors->has('modaTransportasi') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('modaTransportasi') ? 'error-modaTransportasi' : '' }}">
+                                            <option value="">Pilih moda transportasi</option>
+                                            @foreach ($transportationOptions as $transportationValue => $transportationLabel)
+                                                <option value="{{ $transportationValue }}">{{ $transportationLabel }}</option>
+                                            @endforeach
+                                        </select>
+                                        @error('modaTransportasi') <p id="error-modaTransportasi" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
+                                    </div>
+                                    @if ($modaTransportasi === 'lainnya')
+                                        <div>
+                                            <label for="modaTransportasiLainnya" class="block text-sm font-semibold text-slate-800">Moda transportasi lainnya <span class="text-red-700">*</span></label>
+                                            <input id="modaTransportasiLainnya" type="text" maxlength="255" wire:model="modaTransportasiLainnya" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has('modaTransportasiLainnya')]) aria-invalid="{{ $errors->has('modaTransportasiLainnya') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('modaTransportasiLainnya') ? 'error-modaTransportasiLainnya' : '' }}">
+                                            @error('modaTransportasiLainnya') <p id="error-modaTransportasiLainnya" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
+                                        </div>
+                                    @endif
                                 </div>
                             </div>
 
@@ -414,6 +469,19 @@
                                             <input id="{{ $parentKey }}-name" type="text" wire:model="{{ $parentKey }}.name" autocomplete="name" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has($parentKey.'.name')]) aria-invalid="{{ $errors->has($parentKey.'.name') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has($parentKey.'.name') ? 'error-'.$parentKey.'-name' : '' }}">
                                             @error($parentKey.'.name') <p id="error-{{ $parentKey }}-name" class="mt-1.5 flex items-center gap-1.5 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
                                         </div>
+                                        @if ($parentKey !== 'guardian')
+                                            <fieldset @class(['rounded-xl p-1 -m-1', 'ring-1 ring-red-300' => $errors->has($parentKey.'.living_status')]) aria-invalid="{{ $errors->has($parentKey.'.living_status') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has($parentKey.'.living_status') ? 'error-'.$parentKey.'-living-status' : '' }}">
+                                                <legend class="px-1 text-sm font-semibold text-slate-800">Status hidup <span class="text-red-700">*</span></legend>
+                                                <div class="mt-2 grid grid-cols-2 gap-3">
+                                                    @foreach (['hidup' => 'Hidup', 'wafat' => 'Wafat'] as $livingStatusValue => $livingStatusLabel)
+                                                        <label class="flex min-h-12 cursor-pointer items-center gap-2 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-800 has-[:checked]:border-blue-700 has-[:checked]:bg-blue-50 {{ $errors->has($parentKey.'.living_status') ? 'border-red-400' : '' }}">
+                                                            <input type="radio" name="{{ $parentKey }}[living_status]" wire:model="{{ $parentKey }}.living_status" value="{{ $livingStatusValue }}" class="h-5 w-5 border-slate-400 text-blue-700 focus:ring-blue-700"> {{ $livingStatusLabel }}
+                                                        </label>
+                                                    @endforeach
+                                                </div>
+                                                @error($parentKey.'.living_status') <p id="error-{{ $parentKey }}-living-status" class="mt-1.5 flex items-center gap-1.5 px-1 text-sm text-red-700" role="alert" data-error-field><span class="material-symbols-outlined text-[16px]" aria-hidden="true">error</span>{{ $message }}</p> @enderror
+                                            </fieldset>
+                                        @endif
                                         <div>
                                             <label for="{{ $parentKey }}-nik" class="block text-sm font-semibold text-slate-800">NIK @if($parentKey !== 'guardian')<span class="text-red-700">*</span>@endif</label>
                                             <input id="{{ $parentKey }}-nik" type="text" inputmode="numeric" maxlength="16" wire:model="{{ $parentKey }}.nik" @class(['mt-2 h-12 w-full rounded-xl border-slate-300 px-4 text-base text-slate-950 focus:border-blue-700 focus:ring-blue-700', 'border-red-500 focus:border-red-600 focus:ring-red-600' => $errors->has($parentKey.'.nik')]) aria-invalid="{{ $errors->has($parentKey.'.nik') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has($parentKey.'.nik') ? 'error-'.$parentKey.'-nik' : '' }}">
@@ -561,15 +629,21 @@
                                     <div class="flex justify-between gap-4"><dt class="text-slate-600">Kategori pendaftar</dt><dd class="break-words text-right font-medium text-slate-950">{{ $selectedApplicantCategoryLabel }}</dd></div>
                                     <div class="flex justify-between gap-4"><dt class="text-slate-600">Nama lengkap</dt><dd class="break-words text-right font-medium text-slate-950">{{ $fullName ?: '-' }}</dd></div>
                                     <div class="flex justify-between gap-4"><dt class="text-slate-600">Jenis kelamin</dt><dd class="text-right font-medium text-slate-950">{{ $gender === 'L' ? 'Laki-laki' : ($gender === 'P' ? 'Perempuan' : '-') }}</dd></div>
+                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">NISN</dt><dd class="text-right font-medium text-slate-950">{{ $schoolLevel === 'TK' ? 'Tidak diperlukan' : ($nisn ?: '-') }}</dd></div>
+                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">No. Akta</dt><dd class="break-words text-right font-medium text-slate-950">{{ $nomorAktaKelahiran ?: '-' }}</dd></div>
+                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">Anak ke- / jumlah saudara</dt><dd class="text-right font-medium text-slate-950">{{ $anakKe ?: '-' }} / {{ $jumlahSaudara === '' ? '-' : $jumlahSaudara }}</dd></div>
+                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">Hobi / cita-cita</dt><dd class="break-words text-right font-medium text-slate-950">{{ $hobi ?: '-' }} / {{ $citaCita ?: '-' }}</dd></div>
+                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">Jarak tempuh</dt><dd class="text-right font-medium text-slate-950">{{ $selectedDistanceLabel }}{{ $jarakTempuhKategori === 'more_than_1_km' && $jarakTempuhDetail !== '' ? ' ('.$jarakTempuhDetail.' km)' : '' }}</dd></div>
+                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">Moda transportasi</dt><dd class="break-words text-right font-medium text-slate-950">{{ $modaTransportasi === 'lainnya' ? ($modaTransportasiLainnya ?: '-') : $selectedTransportationLabel }}</dd></div>
                                 </dl>
                             </div>
                             <div class="rounded-2xl border border-slate-200 p-4 sm:p-5">
                                 <h3 class="font-semibold text-slate-950">Orang Tua dan Saudara</h3>
                                 <dl class="mt-4 space-y-3 text-sm">
-                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">Ayah</dt><dd class="break-words text-right font-medium text-slate-950">{{ $father['name'] ?: '-' }}</dd></div>
-                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">Ibu</dt><dd class="break-words text-right font-medium text-slate-950">{{ $mother['name'] ?: '-' }}</dd></div>
+                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">Ayah</dt><dd class="break-words text-right font-medium text-slate-950">{{ $father['name'] ?: '-' }} ({{ ($father['living_status'] ?? '') === 'hidup' ? 'Hidup' : (($father['living_status'] ?? '') === 'wafat' ? 'Wafat' : '-') }})</dd></div>
+                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">Ibu</dt><dd class="break-words text-right font-medium text-slate-950">{{ $mother['name'] ?: '-' }} ({{ ($mother['living_status'] ?? '') === 'hidup' ? 'Hidup' : (($mother['living_status'] ?? '') === 'wafat' ? 'Wafat' : '-') }})</dd></div>
                                     <div class="flex justify-between gap-4"><dt class="text-slate-600">Wali</dt><dd class="break-words text-right font-medium text-slate-950">{{ $guardian['name'] ?: 'Tidak ada' }}</dd></div>
-                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">Jumlah saudara</dt><dd class="text-right font-medium text-slate-950">{{ count($siblings) }}</dd></div>
+                                    <div class="flex justify-between gap-4"><dt class="text-slate-600">Data saudara rinci</dt><dd class="text-right font-medium text-slate-950">{{ count($siblings) }}</dd></div>
                                 </dl>
                             </div>
                         </div>

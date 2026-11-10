@@ -281,11 +281,12 @@ it('wires every sidebar parent to the persisted state component', function () {
 
     $response = $this->get(route('dashboard'));
 
-    expect(sidebarSeeCount($response, 'x-data="sidebarMenu('))->toBe(3);
+    expect(sidebarSeeCount($response, 'x-data="sidebarMenu('))->toBe(4);
     expect(sidebarSeeCount($response, "x-data=\"sidebarMenu('siswa'"))->toBe(1);
+    expect(sidebarSeeCount($response, "x-data=\"sidebarMenu('jemputan'"))->toBe(1);
     expect(sidebarSeeCount($response, "x-data=\"sidebarMenu('daycare'"))->toBe(1);
     expect(sidebarSeeCount($response, "x-data=\"sidebarMenu('masterData'"))->toBe(1);
-    expect(sidebarSeeCount($response, '@click="toggle()"'))->toBe(3);
+    expect(sidebarSeeCount($response, '@click="toggle()"'))->toBe(4);
 });
 
 it('keeps submenu state independent from active-route highlighting', function () {
@@ -304,6 +305,7 @@ it('persists each sidebar parent under its own storage key', function () {
     $source = file_get_contents(resource_path('js/app.js'));
 
     expect($source)->toContain('sidebar.siswa.open');
+    expect($source)->toContain('sidebar.jemputan.open');
     expect($source)->toContain('sidebar.daycare.open');
     expect($source)->toContain('sidebar.masterData.open');
     expect($source)->toContain('window.sidebarMenu');

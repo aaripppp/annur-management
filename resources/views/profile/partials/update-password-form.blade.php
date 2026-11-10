@@ -1,7 +1,9 @@
+@php($passwordErrors = $errors->getBag('updatePassword'))
+
 <section>
     <header>
         <h2 class="text-headline-sm font-headline-sm text-on-surface">
-            {{ __('Perbarui Password') }}
+            {{ __('Ubah Password') }}
         </h2>
         <p class="mt-1 text-body-sm text-on-surface-variant">
             {{ __('Pastikan akun Anda menggunakan password yang panjang dan acak untuk menjaga keamanan.') }}
@@ -13,37 +15,25 @@
         @method('put')
 
         <div>
-            <x-input-label for="current_password" :value="__('Password Saat Ini')" />
-            <x-text-input id="current_password" name="current_password" type="password" class="mt-1 block w-full" autocomplete="current-password" />
-            <x-input-error :messages="$errors->get('updatePassword.current_password')" class="mt-2" />
+            <x-input-label for="current_password" :value="__('Password Lama')" />
+            <x-text-input id="current_password" name="current_password" type="password" class="mt-1 block w-full {{ $passwordErrors->has('current_password') ? 'border-error focus:border-error focus:ring-error' : '' }}" autocomplete="current-password" :aria-invalid="$passwordErrors->has('current_password') ? 'true' : 'false'" aria-describedby="current-password-error" />
+            <x-input-error id="current-password-error" role="alert" :messages="$passwordErrors->get('current_password')" class="mt-2" />
         </div>
 
         <div>
             <x-input-label for="password" :value="__('Password Baru')" />
-            <x-text-input id="password" name="password" type="password" class="mt-1 block w-full" autocomplete="new-password" />
-            <x-input-error :messages="$errors->get('updatePassword.password')" class="mt-2" />
+            <x-text-input id="password" name="password" type="password" class="mt-1 block w-full {{ $passwordErrors->has('password') ? 'border-error focus:border-error focus:ring-error' : '' }}" autocomplete="new-password" :aria-invalid="$passwordErrors->has('password') ? 'true' : 'false'" aria-describedby="password-error" />
+            <x-input-error id="password-error" role="alert" :messages="$passwordErrors->get('password')" class="mt-2" />
         </div>
 
         <div>
-            <x-input-label for="password_confirmation" :value="__('Konfirmasi Password')" />
-            <x-text-input id="password_confirmation" name="password_confirmation" type="password" class="mt-1 block w-full" autocomplete="new-password" />
-            <x-input-error :messages="$errors->get('updatePassword.password_confirmation')" class="mt-2" />
+            <x-input-label for="password_confirmation" :value="__('Konfirmasi Password Baru')" />
+            <x-text-input id="password_confirmation" name="password_confirmation" type="password" class="mt-1 block w-full {{ $passwordErrors->has('password_confirmation') ? 'border-error focus:border-error focus:ring-error' : '' }}" autocomplete="new-password" :aria-invalid="$passwordErrors->has('password_confirmation') ? 'true' : 'false'" aria-describedby="password-confirmation-error" />
+            <x-input-error id="password-confirmation-error" role="alert" :messages="$passwordErrors->get('password_confirmation')" class="mt-2" />
         </div>
 
         <div class="flex items-center gap-4">
             <x-primary-button>{{ __('Simpan') }}</x-primary-button>
-
-            @if (session('status') === 'password-updated')
-                <p
-                    x-data="{ show: true }"
-                    x-show="show"
-                    x-transition
-                    x-init="setTimeout(() => show = false, 2000)"
-                    class="text-body-sm text-green-600"
-                >
-                    {{ __('Tersimpan.') }}
-                </p>
-            @endif
         </div>
     </form>
 </section>

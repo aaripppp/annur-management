@@ -7,6 +7,7 @@ use App\Models\ProspectiveStudent;
 use App\Models\ProspectiveStudentPayment;
 use App\Services\ProspectiveStudentPaymentDeletionService;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -21,9 +22,19 @@ class ProspectiveStudentDetail extends Component
 
     public ?int $deletingPaymentId = null;
 
+    #[Locked]
+    public bool $canManageFinance = false;
+
     public function mount(ProspectiveStudent $prospectiveStudent): void
     {
-        $this->prospectiveStudent = $prospectiveStudent->load([
+        if ($this->shouldAuthorizeSharedDetail()) {
+            $this->authorize('view', $prospectiveStudent);
+            $this->canManageFinance = auth()->user()->can('manageFinance', $prospectiveStudent);
+        } else {
+            $this->canManageFinance = true;
+        }
+
+        $relations = [
             'academicYear',
             'schoolClass',
             'convertedStudent',
@@ -31,16 +42,24 @@ class ProspectiveStudentDetail extends Component
             'ppdbParents',
             'ppdbSiblings',
             'ppdbDocuments',
-            'bills.paymentType',
-            'bills.paymentDetails.payment',
-            'payments.bank',
-            'payments.details.bill',
-            'payments.details.paymentType',
-        ]);
+        ];
+
+        if ($this->canManageFinance) {
+            $relations = [...$relations,
+                'bills.paymentType',
+                'bills.paymentDetails.payment',
+                'payments.bank',
+                'payments.details.bill',
+                'payments.details.paymentType',
+            ];
+        }
+
+        $this->prospectiveStudent = $prospectiveStudent->load($relations);
     }
 
     public function confirmDeletePayment(int $paymentId): void
     {
+        $this->authorizeFinance();
         $payment = $this->prospectiveStudent->payments()
             ->with('prospectiveStudent')
             ->find($paymentId);
@@ -55,12 +74,14 @@ class ProspectiveStudentDetail extends Component
 
     public function cancelDeletePayment(): void
     {
+        $this->authorizeFinance();
         $this->isDeletePaymentModalOpen = false;
         $this->deletingPaymentId = null;
     }
 
     public function deletePayment(ProspectiveStudentPaymentDeletionService $deletionService): void
     {
+        $this->authorizeFinance();
         if (! $this->deletingPaymentId || ! $this->prospectiveStudent) {
             return;
         }
@@ -82,7 +103,10 @@ class ProspectiveStudentDetail extends Component
             return;
         }
 
-        $this->prospectiveStudent->refresh()->load([
+        if ($this->shouldAuthorizeSharedDetail()) {
+            $this->authorize('view', $this->prospectiveStudent);
+        }
+        $relations = [
             'academicYear',
             'schoolClass',
             'convertedStudent',
@@ -90,22 +114,46 @@ class ProspectiveStudentDetail extends Component
             'ppdbParents',
             'ppdbSiblings',
             'ppdbDocuments',
-            'bills.paymentType',
-            'bills.paymentDetails.payment',
-            'payments.bank',
-            'payments.details.bill',
-            'payments.details.paymentType',
-        ]);
+        ];
+
+        if ($this->canManageFinance) {
+            $relations = [...$relations,
+                'bills.paymentType',
+                'bills.paymentDetails.payment',
+                'payments.bank',
+                'payments.details.bill',
+                'payments.details.paymentType',
+            ];
+        }
+
+        $this->prospectiveStudent->refresh()->load($relations);
     }
 
     public function render(): mixed
     {
-        $deletingPayment = $this->isDeletePaymentModalOpen && $this->deletingPaymentId
+        if ($this->shouldAuthorizeSharedDetail()) {
+            $this->authorize('view', $this->prospectiveStudent);
+        }
+        $deletingPayment = $this->canManageFinance && $this->isDeletePaymentModalOpen && $this->deletingPaymentId
             ? ProspectiveStudentPayment::query()->with('prospectiveStudent')->find($this->deletingPaymentId)
             : null;
 
         return view('livewire.prospective-student-detail', [
             'deletingPayment' => $deletingPayment,
         ]);
+    }
+
+    private function authorizeFinance(): void
+    {
+        if (auth()->check()) {
+            $this->authorize('manageFinance', $this->prospectiveStudent);
+        }
+    }
+
+    private function shouldAuthorizeSharedDetail(): bool
+    {
+        $user = auth()->user();
+
+        return $user !== null && ($user->isAdmin() || $user->isSuperAdmin() || $user->isTuUnit());
     }
 }

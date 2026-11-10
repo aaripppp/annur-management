@@ -1,23 +1,28 @@
 <div>
+    @php
+        $isTuUnit = auth()->user()?->isTuUnit() ?? false;
+    @endphp
     <!-- Header Area -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-stack-lg">
         <div>
             <h1 class="text-display-sm font-display-sm text-on-surface">Data Siswa</h1>
-            <p class="text-body-md text-on-surface-variant mt-1">Kelola data siswa, filter berdasarkan kelas, dan tambah data baru.</p>
+            <p class="text-body-md text-on-surface-variant mt-1">{{ $isTuUnit ? 'Kelola biodata siswa pada unit Anda.' : 'Kelola data siswa, filter berdasarkan kelas, dan tambah data baru.' }}</p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
             <button wire:click="openModal" class="bg-primary hover:bg-primary/90 text-on-primary px-5 py-2.5 rounded-xl font-label-lg transition-colors flex items-center gap-2 w-fit">
                 <span class="material-symbols-outlined text-[20px]">add</span>
                 Tambah Siswa
             </button>
-            <a href="{{ route('siswa.import') }}" wire:navigate class="border border-primary text-primary hover:bg-primary-fixed px-5 py-2.5 rounded-xl font-label-lg transition-colors flex items-center gap-2 w-fit">
-                <span class="material-symbols-outlined text-[20px]">upload_file</span>
-                Import Siswa
-            </a>
-            <a href="{{ route('siswa.update') }}" wire:navigate class="border border-primary text-primary hover:bg-primary-fixed px-5 py-2.5 rounded-xl font-label-lg transition-colors flex items-center gap-2 w-fit">
-                <span class="material-symbols-outlined text-[20px]">edit_note</span>
-                Update Data Siswa
-            </a>
+            @unless($isTuUnit)
+                <a href="{{ route('siswa.import') }}" wire:navigate class="border border-primary text-primary hover:bg-primary-fixed px-5 py-2.5 rounded-xl font-label-lg transition-colors flex items-center gap-2 w-fit">
+                    <span class="material-symbols-outlined text-[20px]">upload_file</span>
+                    Import Siswa
+                </a>
+                <a href="{{ route('siswa.update') }}" wire:navigate class="border border-primary text-primary hover:bg-primary-fixed px-5 py-2.5 rounded-xl font-label-lg transition-colors flex items-center gap-2 w-fit">
+                    <span class="material-symbols-outlined text-[20px]">edit_note</span>
+                    Update Data Siswa
+                </a>
+            @endunless
         </div>
     </div>
 
@@ -37,12 +42,16 @@
                         <option value="">Tidak ada tahun ajaran</option>
                     @endforelse
                 </select>
-                <select wire:model.live="statLevel" class="w-full sm:w-36 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2" aria-label="Jenjang statistik">
-                    <option value="">Semua Jenjang</option>
-                    @foreach($levels as $level)
-                        <option value="{{ $level->value }}">{{ $level->value }}</option>
-                    @endforeach
-                </select>
+                @if($isTuUnit)
+                    <span class="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-body-md">Unit {{ auth()->user()->school_level?->value }}</span>
+                @else
+                    <select wire:model.live="statLevel" class="w-full sm:w-36 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2" aria-label="Jenjang statistik">
+                        <option value="">Semua Jenjang</option>
+                        @foreach($levels as $level)
+                            <option value="{{ $level->value }}">{{ $level->value }}</option>
+                        @endforeach
+                    </select>
+                @endif
                 <select wire:model.live="statClassId" class="w-full sm:w-44 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2" aria-label="Kelas statistik">
                     <option value="">Semua Kelas</option>
                     @foreach($statClasses as $c)
@@ -156,12 +165,14 @@
                            class="w-full sm:w-64 pl-10 pr-4 py-2 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md">
                 </div>
                 <span class="material-symbols-outlined text-on-surface-variant">filter_list</span>
-                <select wire:model.live="filterLevel" class="w-full sm:w-36 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2">
-                    <option value="">Semua Jenjang</option>
-                    @foreach($levels as $level)
-                        <option value="{{ $level->value }}">{{ $level->value }}</option>
-                    @endforeach
-                </select>
+                @unless($isTuUnit)
+                    <select wire:model.live="filterLevel" class="w-full sm:w-36 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2">
+                        <option value="">Semua Jenjang</option>
+                        @foreach($levels as $level)
+                            <option value="{{ $level->value }}">{{ $level->value }}</option>
+                        @endforeach
+                    </select>
+                @endunless
                 <select wire:model.live="filterClassId" class="w-full sm:w-44 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2">
                     <option value="">Semua Kelas</option>
                     @foreach($classes as $c)
@@ -273,7 +284,7 @@
                             <td class="p-4 text-on-surface-variant max-w-[200px] truncate" title="{{ $student->alamat ?? '' }}">{{ $student->alamat ?: '-' }}</td>
                             <td class="p-4 text-right">
                                 <div class="flex justify-end gap-2">
-                                    <a href="{{ route('siswa.show', $student->id) }}" class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg transition-colors" title="Detail & Tagihan">
+                                    <a href="{{ route('siswa.show', $student) }}" class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg transition-colors" title="Lihat Detail">
                                         <span class="material-symbols-outlined text-[20px]">visibility</span>
                                     </a>
                                     <button wire:click="edit({{ $student->id }})" class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg transition-colors" title="Edit">

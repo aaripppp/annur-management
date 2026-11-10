@@ -2,18 +2,23 @@
 
 namespace App\Services;
 
+use App\Enums\SchoolLevel;
 use App\Models\PpdbParent;
 use App\Models\PpdbProfile;
 use App\Models\PpdbSibling;
 use App\Models\ProspectiveStudent;
 use App\Models\Student;
+use App\Models\User;
 use App\Support\PersonNameNormalizer;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
 class PpdbApplicantDataUpdater
 {
+    public function __construct(private readonly PpdbStudentDataSynchronizer $studentDataSynchronizer) {}
+
     /**
      * @param  array{
      *     applicant_category: string|null,
@@ -23,22 +28,32 @@ class PpdbApplicantDataUpdater
      *     siblings: list<array<string, mixed>>
      * }  $data
      */
-    public function update(int $prospectiveStudentId, array $data, ?int $expectedStudentId = null): ProspectiveStudent
+    public function update(int $prospectiveStudentId, array $data, ?int $expectedStudentId = null, ?User $user = null): ProspectiveStudent
     {
-        return DB::transaction(function () use ($prospectiveStudentId, $data, $expectedStudentId): ProspectiveStudent {
+        return DB::transaction(function () use ($prospectiveStudentId, $data, $expectedStudentId, $user): ProspectiveStudent {
             $prospectiveStudent = ProspectiveStudent::query()
                 ->lockForUpdate()
                 ->findOrFail($prospectiveStudentId);
+
+            if ($user !== null) {
+                Gate::forUser($user)->authorize('updateBiodata', $prospectiveStudent);
+            }
 
             if ($expectedStudentId !== null && $prospectiveStudent->converted_student_id !== $expectedStudentId) {
                 throw new AuthorizationException('Relasi siswa dan data PPDB tidak valid.');
             }
 
             $student = $this->lockedConvertedStudent($prospectiveStudent, $expectedStudentId);
-            $father = $this->normalizeParent($data['parents']['father'] ?? []);
-            $mother = $this->normalizeParent($data['parents']['mother'] ?? []);
+
+            if ($user?->isTuUnit() && $student !== null) {
+                Gate::forUser($user)->authorize('view', $student);
+            }
+            $father = $this->normalizeParent($data['parents']['father'] ?? [], true);
+            $mother = $this->normalizeParent($data['parents']['mother'] ?? [], true);
             $guardian = $this->normalizeParent($data['parents']['guardian'] ?? []);
-            $profile = $this->normalizeProfile($data['profile']);
+            $classLevel = $prospectiveStudent->schoolClass?->level;
+            $isTk = $classLevel !== null && SchoolLevel::fromClassLevel((int) $classLevel) === SchoolLevel::TK;
+            $profile = $this->normalizeProfile($data['profile'], $isTk);
 
             $prospectiveStudent->update([
                 'applicant_category' => $this->nullableString($data['applicant_category']),
@@ -57,18 +72,16 @@ class PpdbApplicantDataUpdater
             $this->replaceSiblings($prospectiveStudent, $data['siblings']);
 
             if ($student !== null) {
-                $student->update([
+                $this->studentDataSynchronizer->fillMappedValues($student, [
                     'nama_lengkap' => $prospectiveStudent->nama_lengkap,
                     'nama_panggilan' => $prospectiveStudent->nama_panggilan,
                     'jenis_kelamin' => $prospectiveStudent->jenis_kelamin,
                     'alamat' => $prospectiveStudent->alamat,
-                    'tempat_lahir' => $profile['tempat_lahir'],
-                    'tanggal_lahir' => $profile['tanggal_lahir'],
-                    'nama_ayah' => $father['nama'],
-                    'no_telp_ayah' => $father['no_telp'],
-                    'nama_ibu' => $mother['nama'],
-                    'no_telp_ibu' => $mother['no_telp'],
-                ]);
+                ], $profile, $father, $mother);
+
+                if ($student->isDirty()) {
+                    $student->save();
+                }
             }
 
             return $prospectiveStudent->fresh([
@@ -212,10 +225,11 @@ class PpdbApplicantDataUpdater
     /** @param array<string, mixed> $data
      * @return array<string, mixed>
      */
-    private function normalizeProfile(array $data): array
+    private function normalizeProfile(array $data, bool $isTk): array
     {
         $stringFields = [
-            'tempat_lahir', 'tanggal_lahir', 'asal_sekolah', 'nik_siswa', 'nomor_kk', 'nomor_akta_kelahiran',
+            'tempat_lahir', 'tanggal_lahir', 'asal_sekolah', 'nik_siswa', 'nisn', 'nomor_kk', 'nomor_akta_kelahiran',
+            'hobi', 'cita_cita', 'jarak_tempuh_kategori', 'moda_transportasi', 'moda_transportasi_lainnya',
             'status_anak', 'agama', 'bahasa_sehari_hari', 'rt', 'rw', 'kelurahan', 'kecamatan',
             'kabupaten_kota', 'provinsi', 'kode_pos', 'tinggi_badan', 'berat_badan',
             'lingkar_kepala', 'golongan_darah', 'riwayat_penyakit', 'keterangan_kebutuhan_khusus',
@@ -228,6 +242,13 @@ class PpdbApplicantDataUpdater
 
         $profile['anak_ke'] = $this->nullableInteger($data['anak_ke'] ?? null);
         $profile['jumlah_saudara'] = $this->nullableInteger($data['jumlah_saudara'] ?? null);
+        $profile['nisn'] = $isTk ? null : $profile['nisn'];
+        $profile['jarak_tempuh_detail'] = $profile['jarak_tempuh_kategori'] === 'more_than_1_km'
+            ? $this->normalizeDistance($data['jarak_tempuh_detail'] ?? null)
+            : null;
+        $profile['moda_transportasi_lainnya'] = $profile['moda_transportasi'] === 'lainnya'
+            ? $profile['moda_transportasi_lainnya']
+            : null;
         $profile['berkebutuhan_khusus'] = filled($data['berkebutuhan_khusus'] ?? null)
             ? (bool) ((int) $data['berkebutuhan_khusus'])
             : null;
@@ -238,9 +259,9 @@ class PpdbApplicantDataUpdater
     /** @param array<string, mixed> $data
      * @return array<string, mixed>
      */
-    private function normalizeParent(array $data): array
+    private function normalizeParent(array $data, bool $includeLivingStatus = false): array
     {
-        return [
+        $parent = [
             'nama' => $this->nullableString($data['nama'] ?? null),
             'nik' => $this->nullableString($data['nik'] ?? null),
             'tempat_lahir' => $this->nullableString($data['tempat_lahir'] ?? null),
@@ -251,6 +272,12 @@ class PpdbApplicantDataUpdater
             'occupation' => $this->nullableString($data['occupation'] ?? null),
             'income_range' => $this->nullableString($data['income_range'] ?? null),
         ];
+
+        if ($includeLivingStatus) {
+            $parent['status_hidup'] = $this->nullableString($data['status_hidup'] ?? null);
+        }
+
+        return $parent;
     }
 
     /** @param array<string, mixed> $data */
@@ -268,5 +295,20 @@ class PpdbApplicantDataUpdater
     private function nullableInteger(mixed $value): ?int
     {
         return filled($value) ? (int) $value : null;
+    }
+
+    private function normalizeDistance(mixed $value): ?string
+    {
+        if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+            return null;
+        }
+
+        $normalized = str_replace(',', '.', trim((string) $value));
+
+        if (preg_match('/\A\d{1,4}(?:\.\d{1,2})?\z/', $normalized) !== 1) {
+            return $this->nullableString($normalized);
+        }
+
+        return number_format((float) $normalized, 2, '.', '');
     }
 }

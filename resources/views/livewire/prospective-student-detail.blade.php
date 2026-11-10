@@ -28,6 +28,7 @@
                 </div>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
+                @can('convert', $prospectiveStudent)
                 @if($prospectiveStudent->status === \App\Enums\ProspectiveStudentStatus::Registered)
                     <button
                         type="button"
@@ -38,6 +39,7 @@
                         Jadikan Siswa
                     </button>
                 @endif
+                @endcan
                 @can('viewBiodata', $prospectiveStudent)
                     <a href="{{ route('calon-siswa.biodata.pdf', $prospectiveStudent) }}" target="_blank" rel="noopener" class="px-3.5 py-2 text-primary font-label-md border border-primary/40 rounded-xl hover:bg-primary-fixed/50 transition-colors flex items-center justify-center gap-1.5 w-fit">
                         <span class="material-symbols-outlined text-[18px]">print</span>
@@ -109,7 +111,7 @@
         </div>
     </section>
 
-    <x-ppdb.detail-tabs prefix="prospective-student" />
+    <x-ppdb.detail-tabs prefix="prospective-student" :show-finance="$canManageFinance" />
 
     <div x-show="activeDetailTab === 'biodata'" id="prospective-student-panel-biodata" role="tabpanel" aria-labelledby="prospective-student-tab-biodata" tabindex="0">
         @can('updateBiodata', $prospectiveStudent)
@@ -120,11 +122,12 @@
 
     <div x-show="activeDetailTab === 'documents'" x-cloak id="prospective-student-panel-documents" role="tabpanel" aria-labelledby="prospective-student-tab-documents" tabindex="0">
         <x-ppdb.document-section :applicant="$prospectiveStudent" />
-        @can('replace', new App\Models\PpdbDocument())
+        @can('replaceDocument', $prospectiveStudent)
             <livewire:ppdb-document-replacer :prospective-student-id="$prospectiveStudent->id" :key="'ppdb-doc-replacer-prospective-'.$prospectiveStudent->id" />
         @endcan
     </div>
 
+    @if($canManageFinance)
     <div x-show="activeDetailTab === 'finance'" x-cloak id="prospective-student-panel-finance" role="tabpanel" aria-labelledby="prospective-student-tab-finance" tabindex="0">
     <section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden mb-6">
         <div class="p-5 border-b border-outline-variant">
@@ -260,6 +263,7 @@
                 </div>
             </div>
         </div>
+    @endif
     @endif
 
     @include('livewire.prospective-student.convert-modal', ['prospectiveStudent' => $prospectiveStudent])

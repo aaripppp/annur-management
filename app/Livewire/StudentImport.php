@@ -3,9 +3,11 @@
 namespace App\Livewire;
 
 use App\Models\AcademicYear;
+use App\Models\Student;
 use App\Services\StudentImportService;
 use App\Services\StudentImportSpreadsheet;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -36,8 +38,14 @@ class StudentImport extends Component
     /** @var array<string, mixed> */
     public array $result = [];
 
+    public function mount(): void
+    {
+        $this->authorizeAccess();
+    }
+
     public function downloadTemplate(StudentImportSpreadsheet $spreadsheet): BinaryFileResponse
     {
+        $this->authorizeAccess();
         $path = $spreadsheet->createTemplate();
 
         return response()
@@ -49,6 +57,7 @@ class StudentImport extends Component
 
     public function previewImport(StudentImportSpreadsheet $spreadsheet, StudentImportService $importService): void
     {
+        $this->authorizeAccess();
         $this->validate([
             'academicYearId' => ['required', 'exists:academic_years,id'],
             'importContext' => ['required', 'in:'.StudentImportService::CONTEXT_PROSPECTIVE.','.StudentImportService::CONTEXT_ACTIVE],
@@ -83,6 +92,7 @@ class StudentImport extends Component
 
     public function confirmImport(StudentImportService $importService): void
     {
+        $this->authorizeAccess();
         if ($this->importRows === [] || ($this->preview['has_errors'] ?? true)) {
             $this->addError('import', 'Import tidak dapat diproses selama masih ada baris bermasalah.');
 
@@ -106,6 +116,8 @@ class StudentImport extends Component
 
     public function backToSetup(): void
     {
+        $this->authorizeAccess();
+
         $this->step = 1;
         $this->importRows = [];
         $this->preview = [];
@@ -116,8 +128,17 @@ class StudentImport extends Component
 
     public function render(): View
     {
+        $this->authorizeAccess();
+
         return view('livewire.student-import', [
             'academicYears' => AcademicYear::query()->orderByDesc('start_date')->get(),
         ]);
+    }
+
+    private function authorizeAccess(): void
+    {
+        if (auth()->check()) {
+            Gate::authorize('import', Student::class);
+        }
     }
 }

@@ -4,6 +4,7 @@ import { createPpdbBiodataAccordions } from './ppdb-biodata-accordions';
 
 const sidebarStorageKeys = {
     siswa: 'sidebar.siswa.open',
+    jemputan: 'sidebar.jemputan.open',
     daycare: 'sidebar.daycare.open',
     masterData: 'sidebar.masterData.open',
 };

@@ -71,8 +71,11 @@ trait ManagesStudentBills
 
     abstract protected function managedBillStudent(): ?Student;
 
+    protected function authorizeManagedBillAction(): void {}
+
     public function editBill(int $billId): void
     {
+        $this->authorizeManagedBillAction();
         $bill = $this->managedBillStudent()?->bills()->with('paymentType')->find($billId);
 
         if (! $bill) {
@@ -89,6 +92,7 @@ trait ManagesStudentBills
 
     public function saveEditBill(): void
     {
+        $this->authorizeManagedBillAction();
         $this->validate([
             'editAmount' => 'required|numeric|min:0',
         ], [
@@ -125,12 +129,14 @@ trait ManagesStudentBills
 
     public function closeEdit(): void
     {
+        $this->authorizeManagedBillAction();
         $this->isEditOpen = false;
         $this->reset(['editBillId', 'editAmount', 'editPaidAmount', 'editPeriodLabel', 'editTypeName']);
     }
 
     public function openAddBill(): void
     {
+        $this->authorizeManagedBillAction();
         $this->closeAddBill();
         $student = $this->managedBillStudent();
         $historicalEnrollment = $this->manualBillUsesHistoricalContext($student)
@@ -149,6 +155,7 @@ trait ManagesStudentBills
 
     public function openAddBillForMonth(int $month, int $year): void
     {
+        $this->authorizeManagedBillAction();
         $this->closeAddBill();
         $this->addMonth = (string) $month;
         $this->addYear = (string) $year;
@@ -162,6 +169,7 @@ trait ManagesStudentBills
 
     public function openAddBillForAcademicYear(string $academicYear): void
     {
+        $this->authorizeManagedBillAction();
         $this->closeAddBill();
         $this->addAcademicYear = $academicYear;
         $this->addLockedAcademicYear = $academicYear;
@@ -173,6 +181,7 @@ trait ManagesStudentBills
 
     public function openAddBillForOneTime(): void
     {
+        $this->authorizeManagedBillAction();
         $this->openAddBill();
         $this->addFrequency = BillFrequency::OneTime->value;
         $this->addFrequencyLocked = true;
@@ -184,6 +193,7 @@ trait ManagesStudentBills
 
     public function closeAddBill(): void
     {
+        $this->authorizeManagedBillAction();
         $this->isAddOpen = false;
         $this->reset([
             'addPaymentTypeId',
@@ -202,6 +212,7 @@ trait ManagesStudentBills
 
     public function updatedAddPaymentTypeId(string $value): void
     {
+        $this->authorizeManagedBillAction();
         if ($this->addFrequencyLocked || $this->manualBillUsesHistoricalContext()) {
             return;
         }
@@ -211,6 +222,7 @@ trait ManagesStudentBills
 
     public function saveAddBill(): void
     {
+        $this->authorizeManagedBillAction();
         $student = $this->managedBillStudent();
 
         if (! $student || ! Student::query()->whereKey($student->getKey())->exists()) {
@@ -317,6 +329,7 @@ trait ManagesStudentBills
 
     public function confirmDeleteBill(int $billId): void
     {
+        $this->authorizeManagedBillAction();
         $bill = $this->managedBillStudent()?->bills()->with('paymentType')->find($billId);
 
         if (! $bill) {
@@ -333,6 +346,7 @@ trait ManagesStudentBills
 
     public function deleteBill(): void
     {
+        $this->authorizeManagedBillAction();
         $bill = $this->managedBillStudent()?->bills()->with('adjustments')->findOrFail($this->deleteBillId);
 
         if ((float) $bill->paid_amount > 0) {
@@ -351,6 +365,7 @@ trait ManagesStudentBills
 
     public function closeDelete(): void
     {
+        $this->authorizeManagedBillAction();
         $this->isDeleteOpen = false;
         $this->reset(['deleteBillId', 'deleteAmount', 'deletePaidAmount', 'deletePeriodLabel', 'deleteTypeName']);
     }

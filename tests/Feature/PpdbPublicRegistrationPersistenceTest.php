@@ -11,6 +11,7 @@ use App\Models\PaymentType;
 use App\Models\PaymentTypeSchoolLevel;
 use App\Models\PpdbAcademicYearSetting;
 use App\Models\PpdbDefaultClassMapping;
+use App\Models\PpdbProfile;
 use App\Models\PpdbPublicSubmission;
 use App\Models\ProspectiveStudentBill;
 use App\Models\SchoolClass;
@@ -65,10 +66,13 @@ function persistentPpdbData(AcademicYear $year): array
         'birthdate' => '2015-01-01',
         'asal_sekolah' => 'TK ANNUR',
         'nik_siswa' => '3201010101010001',
+        'nisn' => '0012345678',
         'nomor_kk' => '3201010101010002',
         'nomor_akta_kelahiran' => 'AKTA-001',
         'anak_ke' => 1,
         'jumlah_saudara' => 1,
+        'hobi' => 'Membaca',
+        'cita_cita' => 'Dokter',
         'status_anak' => 'Kandung',
         'agama' => 'Islam',
         'bahasa_sehari_hari' => 'Indonesia',
@@ -80,6 +84,10 @@ function persistentPpdbData(AcademicYear $year): array
         'kabupaten_kota' => 'Bandung',
         'provinsi' => 'Jawa Barat',
         'kode_pos' => '40615',
+        'jarak_tempuh_kategori' => 'more_than_1_km',
+        'jarak_tempuh_detail' => '2,5',
+        'moda_transportasi' => 'antar_jemput',
+        'moda_transportasi_lainnya' => null,
         'tinggi_badan' => 140,
         'berat_badan' => 35,
         'lingkar_kepala' => 52,
@@ -89,6 +97,7 @@ function persistentPpdbData(AcademicYear $year): array
         'keterangan_kebutuhan_khusus' => null,
         'father' => [
             'name' => 'Ayah Ahmad',
+            'living_status' => 'hidup',
             'nik' => '3201010101010003',
             'birthplace' => 'Bandung',
             'birthdate' => '1985-01-01',
@@ -100,6 +109,7 @@ function persistentPpdbData(AcademicYear $year): array
         ],
         'mother' => [
             'name' => 'Ibu Ahmad',
+            'living_status' => 'wafat',
             'nik' => '3201010101010004',
             'birthplace' => 'Bandung',
             'birthdate' => '1987-01-01',
@@ -181,6 +191,95 @@ it('persists the submitted student NIK to the PPDB profile student NIK column', 
     expect(DB::table('ppdb_profiles')
         ->where('prospective_student_id', $prospectiveStudentId)
         ->value('nik_siswa'))->toBe('3201010101010001');
+});
+
+it('accepts and persists every approved transportation option', function (string $transportation) {
+    Storage::fake('local');
+    [$year] = persistentPpdbFixture();
+    $data = persistentPpdbData($year);
+    $data['moda_transportasi'] = $transportation;
+    $data['moda_transportasi_lainnya'] = $transportation === 'lainnya' ? '  Perahu  ' : 'nilai-usang';
+
+    app(PpdbPublicRegistrationService::class)->register($data, persistentPpdbDocuments(), Str::random(64));
+
+    expect(DB::table('ppdb_profiles')->value('moda_transportasi'))->toBe($transportation)
+        ->and(DB::table('ppdb_profiles')->value('moda_transportasi_lainnya'))->toBe($transportation === 'lainnya' ? 'Perahu' : null);
+})->with(['jalan_kaki', 'sepeda', 'motor', 'mobil_pribadi', 'angkutan_umum', 'antar_jemput', 'lainnya']);
+
+it('enforces the additional required biodata at the service boundary', function (string $field, mixed $value) {
+    Storage::fake('local');
+    [$year] = persistentPpdbFixture();
+    $data = persistentPpdbData($year);
+    data_set($data, $field, $value);
+
+    expect(fn () => app(PpdbPublicRegistrationService::class)->register(
+        $data,
+        persistentPpdbDocuments(),
+        Str::random(64),
+    ))->toThrow(ValidationException::class);
+
+    expect(DB::table('prospective_students')->count())->toBe(0);
+})->with([
+    'NISN missing' => ['nisn', null],
+    'NISN not ten digits' => ['nisn', '123456789'],
+    'birth certificate whitespace' => ['nomor_akta_kelahiran', '   '],
+    'child order missing' => ['anak_ke', null],
+    'sibling count missing' => ['jumlah_saudara', null],
+    'hobby whitespace' => ['hobi', '   '],
+    'aspiration whitespace' => ['cita_cita', '   '],
+    'distance category missing' => ['jarak_tempuh_kategori', null],
+    'distance detail missing' => ['jarak_tempuh_detail', null],
+    'distance not above one' => ['jarak_tempuh_detail', '1'],
+    'distance too precise' => ['jarak_tempuh_detail', '2.555'],
+    'distance too large' => ['jarak_tempuh_detail', '10000'],
+    'transportation invalid' => ['moda_transportasi', 'pesawat'],
+    'father living status missing' => ['father.living_status', null],
+    'mother living status missing' => ['mother.living_status', null],
+]);
+
+it('forces inactive conditional values to null at the service boundary', function () {
+    Storage::fake('local');
+    [$year] = persistentPpdbFixture();
+    $data = persistentPpdbData($year);
+    $data['jarak_tempuh_kategori'] = 'less_than_1_km';
+    $data['jarak_tempuh_detail'] = '99.99';
+    $data['moda_transportasi'] = 'motor';
+    $data['moda_transportasi_lainnya'] = 'nilai-usang';
+
+    app(PpdbPublicRegistrationService::class)->register($data, persistentPpdbDocuments(), Str::random(64));
+
+    $profile = DB::table('ppdb_profiles')->sole();
+    expect($profile->jarak_tempuh_detail)->toBeNull()
+        ->and($profile->moda_transportasi_lainnya)->toBeNull();
+});
+
+it('requires nonblank transportation detail for lainnya at the service boundary', function () {
+    Storage::fake('local');
+    [$year] = persistentPpdbFixture();
+    $data = persistentPpdbData($year);
+    $data['moda_transportasi'] = 'lainnya';
+    $data['moda_transportasi_lainnya'] = '   ';
+
+    expect(fn () => app(PpdbPublicRegistrationService::class)->register(
+        $data,
+        persistentPpdbDocuments(),
+        Str::random(64),
+    ))->toThrow(ValidationException::class);
+});
+
+it('allows TK without NISN and forces a stale NISN to null', function () {
+    Storage::fake('local');
+    [$year] = persistentPpdbFixture();
+    $class = SchoolClass::factory()->create(['name' => 'TK B PPDB', 'level' => -1]);
+    PpdbDefaultClassMapping::query()->create(['class_level' => -1, 'school_class_id' => $class->id]);
+    $data = persistentPpdbData($year);
+    $data['school_level'] = 'TK';
+    $data['class_level'] = -1;
+    $data['nisn'] = '0012345678';
+
+    app(PpdbPublicRegistrationService::class)->register($data, persistentPpdbDocuments(), Str::random(64));
+
+    expect(DB::table('ppdb_profiles')->value('nisn'))->toBeNull();
 });
 
 it('requires an approved applicant category at the service boundary', function () {
@@ -266,6 +365,7 @@ it('persists a complete public registration with dynamic bills and no payment wr
         ->and($prospect->jenis_kelamin)->toBe('L')
         ->and($prospect->alamat)->toBe('Jl. Pendidikan No. 1')
         ->and($profile->nik_siswa)->toBe('3201010101010001')
+        ->and($profile->nisn)->toBe('0012345678')
         ->and($profile->nomor_kk)->toBe('3201010101010002')
         ->and($profile->nomor_akta_kelahiran)->toBe('AKTA-001')
         ->and($profile->tempat_lahir)->toBe('Jakarta')
@@ -273,6 +373,8 @@ it('persists a complete public registration with dynamic bills and no payment wr
         ->and($profile->asal_sekolah)->toBe('TK ANNUR')
         ->and($profile->anak_ke)->toBe(1)
         ->and($profile->jumlah_saudara)->toBe(1)
+        ->and($profile->hobi)->toBe('Membaca')
+        ->and($profile->cita_cita)->toBe('Dokter')
         ->and($profile->status_anak)->toBe('Kandung')
         ->and($profile->agama)->toBe('Islam')
         ->and($profile->bahasa_sehari_hari)->toBe('Indonesia')
@@ -283,6 +385,11 @@ it('persists a complete public registration with dynamic bills and no payment wr
         ->and($profile->kabupaten_kota)->toBe('Bandung')
         ->and($profile->provinsi)->toBe('Jawa Barat')
         ->and($profile->kode_pos)->toBe('40615')
+        ->and($profile->jarak_tempuh_kategori)->toBe('more_than_1_km')
+        ->and((float) $profile->jarak_tempuh_detail)->toBe(2.5)
+        ->and(PpdbProfile::query()->find($profile->id)?->jarak_tempuh_detail)->toBe('2.50')
+        ->and($profile->moda_transportasi)->toBe('antar_jemput')
+        ->and($profile->moda_transportasi_lainnya)->toBeNull()
         ->and((float) $profile->tinggi_badan)->toBe(140.0)
         ->and((float) $profile->berat_badan)->toBe(35.0)
         ->and((float) $profile->lingkar_kepala)->toBe(52.0)
@@ -291,6 +398,7 @@ it('persists a complete public registration with dynamic bills and no payment wr
         ->and((bool) $profile->berkebutuhan_khusus)->toBeFalse()
         ->and($profile->keterangan_kebutuhan_khusus)->toBeNull()
         ->and($father->nik)->toBe('3201010101010003')
+        ->and($father->status_hidup)->toBe('hidup')
         ->and($father->tempat_lahir)->toBe('Bandung')
         ->and(Str::before($father->tanggal_lahir, ' '))->toBe('1985-01-01')
         ->and($father->pendidikan_terakhir)->toBe('S1')
@@ -300,6 +408,7 @@ it('persists a complete public registration with dynamic bills and no payment wr
         ->and($father->occupation)->toBe('Wiraswasta')
         ->and($father->income_range)->toBe('5m_to_7_499m')
         ->and($mother->nik)->toBe('3201010101010004')
+        ->and($mother->status_hidup)->toBe('wafat')
         ->and($mother->tempat_lahir)->toBe('Bandung')
         ->and(Str::before($mother->tanggal_lahir, ' '))->toBe('1987-01-01')
         ->and($mother->pendidikan_terakhir)->toBe('SMA')
@@ -450,7 +559,7 @@ it('accepts empty optional student fields, no guardian, and zero sibling rows', 
     [$year] = persistentPpdbFixture();
     $data = persistentPpdbData($year);
 
-    foreach (['nomor_akta_kelahiran', 'anak_ke', 'status_anak', 'agama', 'bahasa_sehari_hari', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kabupaten_kota', 'provinsi', 'kode_pos'] as $field) {
+    foreach (['status_anak', 'agama', 'bahasa_sehari_hari', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kabupaten_kota', 'provinsi', 'kode_pos'] as $field) {
         $data[$field] = null;
     }
     $data['jumlah_saudara'] = 0;
@@ -469,8 +578,8 @@ it('accepts empty optional student fields, no guardian, and zero sibling rows', 
         ->value('id');
     $profile = DB::table('ppdb_profiles')->where('prospective_student_id', $prospectiveStudentId)->sole();
 
-    expect($profile->nomor_akta_kelahiran)->toBeNull()
-        ->and($profile->anak_ke)->toBeNull()
+    expect($profile->nomor_akta_kelahiran)->toBe('AKTA-001')
+        ->and($profile->anak_ke)->toBe(1)
         ->and($profile->status_anak)->toBeNull()
         ->and($profile->agama)->toBeNull()
         ->and($profile->bahasa_sehari_hari)->toBeNull()
@@ -529,8 +638,17 @@ it('allows a completed livewire submission token to recover its original result 
         ->set('birthdate', '2015-01-01')
         ->set('asalSekolah', 'TK ANNUR')
         ->set('nikSiswa', '3201010101010001')
+        ->set('nisn', '0012345678')
         ->set('nomorKk', '3201010101010002')
+        ->set('nomorAktaKelahiran', 'AKTA-001')
+        ->set('anakKe', '1')
+        ->set('jumlahSaudara', '1')
+        ->set('hobi', 'Membaca')
+        ->set('citaCita', 'Dokter')
         ->set('address', 'Jl. Pendidikan No. 1')
+        ->set('jarakTempuhKategori', 'more_than_1_km')
+        ->set('jarakTempuhDetail', '2,5')
+        ->set('modaTransportasi', 'antar_jemput')
         ->set('tinggiBadan', '140')
         ->set('beratBadan', '35')
         ->set('lingkarKepala', '52')
@@ -578,8 +696,17 @@ it('submits the livewire form and redirects to its opaque success URL', function
         ->set('birthdate', '2015-01-01')
         ->set('asalSekolah', 'TK ANNUR')
         ->set('nikSiswa', '3201010101010001')
+        ->set('nisn', '0012345678')
         ->set('nomorKk', '3201010101010002')
+        ->set('nomorAktaKelahiran', 'AKTA-001')
+        ->set('anakKe', '1')
+        ->set('jumlahSaudara', '1')
+        ->set('hobi', 'Membaca')
+        ->set('citaCita', 'Dokter')
         ->set('address', 'Jl. Pendidikan No. 1')
+        ->set('jarakTempuhKategori', 'more_than_1_km')
+        ->set('jarakTempuhDetail', '2,5')
+        ->set('modaTransportasi', 'antar_jemput')
         ->set('tinggiBadan', '140')
         ->set('beratBadan', '35')
         ->set('lingkarKepala', '52')
@@ -587,6 +714,7 @@ it('submits the livewire form and redirects to its opaque success URL', function
         ->set('riwayatPenyakit', 'Tidak Ada')
         ->set('berkebutuhanKhusus', 'Tidak')
         ->set('father.name', 'Ayah Ahmad')
+        ->set('father.living_status', 'hidup')
         ->set('father.nik', '3201010101010003')
         ->set('father.birthplace', 'Bandung')
         ->set('father.birthdate', '1985-01-01')
@@ -596,6 +724,7 @@ it('submits the livewire form and redirects to its opaque success URL', function
         ->set('father.occupation', 'Wiraswasta')
         ->set('father.income_range', '5m_to_7_499m')
         ->set('mother.name', 'Ibu Ahmad')
+        ->set('mother.living_status', 'wafat')
         ->set('mother.nik', '3201010101010004')
         ->set('mother.birthplace', 'Bandung')
         ->set('mother.birthdate', '1987-01-01')

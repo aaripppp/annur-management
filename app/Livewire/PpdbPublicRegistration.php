@@ -36,6 +36,21 @@ class PpdbPublicRegistration extends Component
 
     private const SUBMIT_SESSION_MAX_ATTEMPTS = 5;
 
+    private const DISTANCE_OPTIONS = [
+        'less_than_1_km' => 'Kurang dari 1 km',
+        'more_than_1_km' => 'Lebih dari 1 km',
+    ];
+
+    private const TRANSPORTATION_OPTIONS = [
+        'jalan_kaki' => 'Jalan kaki',
+        'sepeda' => 'Sepeda',
+        'motor' => 'Motor',
+        'mobil_pribadi' => 'Mobil pribadi',
+        'angkutan_umum' => 'Angkutan umum',
+        'antar_jemput' => 'Antar-jemput',
+        'lainnya' => 'Lainnya',
+    ];
+
     public int $currentStep = 1;
 
     public string $academicYearId = '';
@@ -60,6 +75,8 @@ class PpdbPublicRegistration extends Component
 
     public string $nikSiswa = '';
 
+    public string $nisn = '';
+
     public string $nomorKk = '';
 
     public string $nomorAktaKelahiran = '';
@@ -67,6 +84,10 @@ class PpdbPublicRegistration extends Component
     public string $anakKe = '';
 
     public string $jumlahSaudara = '';
+
+    public string $hobi = '';
+
+    public string $citaCita = '';
 
     public string $statusAnak = '';
 
@@ -90,6 +111,14 @@ class PpdbPublicRegistration extends Component
 
     public string $kodePos = '';
 
+    public string $jarakTempuhKategori = '';
+
+    public string $jarakTempuhDetail = '';
+
+    public string $modaTransportasi = '';
+
+    public string $modaTransportasiLainnya = '';
+
     public string $tinggiBadan = '';
 
     public string $beratBadan = '';
@@ -104,11 +133,11 @@ class PpdbPublicRegistration extends Component
 
     public string $keteranganKebutuhanKhusus = '';
 
-    /** @var array{name: string, nik: string, birthplace: string, birthdate: string, education_last: string, email: string, phone: string, occupation: string, income_range: string} */
-    public array $father = ['name' => '', 'nik' => '', 'birthplace' => '', 'birthdate' => '', 'education_last' => '', 'email' => '', 'phone' => '', 'occupation' => '', 'income_range' => ''];
+    /** @var array{name: string, living_status: string, nik: string, birthplace: string, birthdate: string, education_last: string, email: string, phone: string, occupation: string, income_range: string} */
+    public array $father = ['name' => '', 'living_status' => '', 'nik' => '', 'birthplace' => '', 'birthdate' => '', 'education_last' => '', 'email' => '', 'phone' => '', 'occupation' => '', 'income_range' => ''];
 
-    /** @var array{name: string, nik: string, birthplace: string, birthdate: string, education_last: string, email: string, phone: string, occupation: string, income_range: string} */
-    public array $mother = ['name' => '', 'nik' => '', 'birthplace' => '', 'birthdate' => '', 'education_last' => '', 'email' => '', 'phone' => '', 'occupation' => '', 'income_range' => ''];
+    /** @var array{name: string, living_status: string, nik: string, birthplace: string, birthdate: string, education_last: string, email: string, phone: string, occupation: string, income_range: string} */
+    public array $mother = ['name' => '', 'living_status' => '', 'nik' => '', 'birthplace' => '', 'birthdate' => '', 'education_last' => '', 'email' => '', 'phone' => '', 'occupation' => '', 'income_range' => ''];
 
     /** @var array{name: string, nik: string, birthplace: string, birthdate: string, education_last: string, email: string, phone: string, occupation: string, income_range: string} */
     public array $guardian = ['name' => '', 'nik' => '', 'birthplace' => '', 'birthdate' => '', 'education_last' => '', 'email' => '', 'phone' => '', 'occupation' => '', 'income_range' => ''];
@@ -132,6 +161,27 @@ class PpdbPublicRegistration extends Component
     {
         $this->destinationGrade = '';
         $this->resetValidation('destinationGrade');
+
+        if ($this->schoolLevel === SchoolLevel::TK->value) {
+            $this->nisn = '';
+            $this->resetValidation('nisn');
+        }
+    }
+
+    public function updatedJarakTempuhKategori(): void
+    {
+        if ($this->jarakTempuhKategori !== 'more_than_1_km') {
+            $this->jarakTempuhDetail = '';
+            $this->resetValidation('jarakTempuhDetail');
+        }
+    }
+
+    public function updatedModaTransportasi(): void
+    {
+        if ($this->modaTransportasi !== 'lainnya') {
+            $this->modaTransportasiLainnya = '';
+            $this->resetValidation('modaTransportasiLainnya');
+        }
     }
 
     public function addSibling(): void
@@ -199,6 +249,8 @@ class PpdbPublicRegistration extends Component
             return null;
         }
 
+        $this->normalizeStudentInputs();
+
         try {
             $this->validate($this->submissionRules(), $this->validationMessages());
         } catch (ValidationException $exception) {
@@ -218,10 +270,13 @@ class PpdbPublicRegistration extends Component
             'birthdate' => $this->birthdate,
             'asal_sekolah' => trim($this->asalSekolah),
             'nik_siswa' => $this->nikSiswa,
+            'nisn' => $this->schoolLevel === SchoolLevel::TK->value ? null : $this->nisn,
             'nomor_kk' => $this->nomorKk,
             'nomor_akta_kelahiran' => $this->nomorAktaKelahiran,
             'anak_ke' => $this->anakKe,
             'jumlah_saudara' => $this->jumlahSaudara,
+            'hobi' => $this->hobi,
+            'cita_cita' => $this->citaCita,
             'status_anak' => $this->statusAnak,
             'agama' => $this->agama,
             'bahasa_sehari_hari' => $this->bahasaSehariHari,
@@ -233,6 +288,10 @@ class PpdbPublicRegistration extends Component
             'kabupaten_kota' => $this->kabupatenKota,
             'provinsi' => $this->provinsi,
             'kode_pos' => $this->kodePos,
+            'jarak_tempuh_kategori' => $this->jarakTempuhKategori,
+            'jarak_tempuh_detail' => $this->jarakTempuhKategori === 'more_than_1_km' ? $this->jarakTempuhDetail : null,
+            'moda_transportasi' => $this->modaTransportasi,
+            'moda_transportasi_lainnya' => $this->modaTransportasi === 'lainnya' ? $this->modaTransportasiLainnya : null,
             'tinggi_badan' => $this->tinggiBadan,
             'berat_badan' => $this->beratBadan,
             'lingkar_kepala' => $this->lingkarKepala,
@@ -330,6 +389,7 @@ class PpdbPublicRegistration extends Component
             'applicantCategories' => PpdbApplicantCategory::cases(),
             'configuredGrades' => $configuredGrades,
             'documentFields' => $this->documentFields(),
+            'distanceOptions' => self::DISTANCE_OPTIONS,
             'gradeGroups' => $gradeGroups,
             'gradeOptions' => $gradeOptions,
             'incomeOptions' => ParentIncomeRange::options(),
@@ -340,8 +400,11 @@ class PpdbPublicRegistration extends Component
             'registrationFeeTotal' => $registrationFees->sum('amount'),
             'selectedGradeLabel' => $gradeOptions[(int) $this->destinationGrade] ?? '-',
             'selectedApplicantCategoryLabel' => PpdbApplicantCategory::tryFrom($this->applicantCategory)?->label() ?? '-',
+            'selectedDistanceLabel' => self::DISTANCE_OPTIONS[$this->jarakTempuhKategori] ?? '-',
+            'selectedTransportationLabel' => self::TRANSPORTATION_OPTIONS[$this->modaTransportasi] ?? '-',
             'selectedYearLabel' => $selectedYear?->year ?? '-',
             'stepTitles' => $this->stepTitles(),
+            'transportationOptions' => self::TRANSPORTATION_OPTIONS,
         ]);
     }
 
@@ -377,6 +440,8 @@ class PpdbPublicRegistration extends Component
 
     private function validateStudentStep(): void
     {
+        $this->normalizeStudentInputs();
+
         $this->validate([
             'fullName' => ['required', 'string', 'max:255'],
             'nickname' => ['nullable', 'string', 'max:100'],
@@ -385,10 +450,13 @@ class PpdbPublicRegistration extends Component
             'birthdate' => ['required', 'date', 'before:today'],
             'asalSekolah' => ['required', 'string', 'max:255'],
             'nikSiswa' => ['required', 'digits:16'],
+            'nisn' => [Rule::requiredIf($this->schoolLevel !== SchoolLevel::TK->value), 'nullable', 'digits:10'],
             'nomorKk' => ['required', 'digits:16'],
-            'nomorAktaKelahiran' => ['nullable', 'string', 'max:100'],
-            'anakKe' => ['nullable', 'integer', 'min:1'],
-            'jumlahSaudara' => ['nullable', 'integer', 'min:0'],
+            'nomorAktaKelahiran' => ['required', 'string', 'max:100'],
+            'anakKe' => ['required', 'integer', 'min:1'],
+            'jumlahSaudara' => ['required', 'integer', 'min:0'],
+            'hobi' => ['required', 'string', 'max:255'],
+            'citaCita' => ['required', 'string', 'max:255'],
             'statusAnak' => ['nullable', 'string', 'max:30'],
             'agama' => ['nullable', 'string', 'max:50'],
             'bahasaSehariHari' => ['nullable', 'string', 'max:100'],
@@ -400,6 +468,10 @@ class PpdbPublicRegistration extends Component
             'kabupatenKota' => ['nullable', 'string', 'max:150'],
             'provinsi' => ['nullable', 'string', 'max:150'],
             'kodePos' => ['nullable', 'digits:5'],
+            'jarakTempuhKategori' => ['required', Rule::in(array_keys(self::DISTANCE_OPTIONS))],
+            'jarakTempuhDetail' => ['nullable', 'required_if:jarakTempuhKategori,more_than_1_km', 'regex:/\A\d{1,4}(?:\.\d{1,2})?\z/', 'numeric', 'gt:1', 'max:9999.99'],
+            'modaTransportasi' => ['required', Rule::in(array_keys(self::TRANSPORTATION_OPTIONS))],
+            'modaTransportasiLainnya' => ['nullable', 'required_if:modaTransportasi,lainnya', 'string', 'max:255'],
             'tinggiBadan' => ['required', 'numeric', 'min:0', 'max:250'],
             'beratBadan' => ['required', 'numeric', 'min:0', 'max:200'],
             'lingkarKepala' => ['required', 'numeric', 'min:0', 'max:100'],
@@ -450,6 +522,7 @@ class PpdbPublicRegistration extends Component
     {
         $this->validate([
             'father.name' => ['required', 'string', 'max:255'],
+            'father.living_status' => ['required', Rule::in(['hidup', 'wafat'])],
             'father.nik' => ['required', 'digits:16'],
             'father.birthplace' => ['required', 'string', 'max:150'],
             'father.birthdate' => ['required', 'date'],
@@ -459,6 +532,7 @@ class PpdbPublicRegistration extends Component
             'father.occupation' => ['required', 'string', 'max:255'],
             'father.income_range' => ['required', Rule::enum(ParentIncomeRange::class)],
             'mother.name' => ['required', 'string', 'max:255'],
+            'mother.living_status' => ['required', Rule::in(['hidup', 'wafat'])],
             'mother.nik' => ['required', 'digits:16'],
             'mother.birthplace' => ['required', 'string', 'max:150'],
             'mother.birthdate' => ['required', 'date'],
@@ -506,10 +580,13 @@ class PpdbPublicRegistration extends Component
             'birthdate' => ['required', 'date', 'before:today'],
             'asalSekolah' => ['required', 'string', 'max:255'],
             'nikSiswa' => ['required', 'digits:16'],
+            'nisn' => [Rule::requiredIf($this->schoolLevel !== SchoolLevel::TK->value), 'nullable', 'digits:10'],
             'nomorKk' => ['required', 'digits:16'],
-            'nomorAktaKelahiran' => ['nullable', 'string', 'max:100'],
-            'anakKe' => ['nullable', 'integer', 'min:1'],
-            'jumlahSaudara' => ['nullable', 'integer', 'min:0'],
+            'nomorAktaKelahiran' => ['required', 'string', 'max:100'],
+            'anakKe' => ['required', 'integer', 'min:1'],
+            'jumlahSaudara' => ['required', 'integer', 'min:0'],
+            'hobi' => ['required', 'string', 'max:255'],
+            'citaCita' => ['required', 'string', 'max:255'],
             'statusAnak' => ['nullable', 'string', 'max:30'],
             'agama' => ['nullable', 'string', 'max:50'],
             'bahasaSehariHari' => ['nullable', 'string', 'max:100'],
@@ -521,6 +598,10 @@ class PpdbPublicRegistration extends Component
             'kabupatenKota' => ['nullable', 'string', 'max:150'],
             'provinsi' => ['nullable', 'string', 'max:150'],
             'kodePos' => ['nullable', 'digits:5'],
+            'jarakTempuhKategori' => ['required', Rule::in(array_keys(self::DISTANCE_OPTIONS))],
+            'jarakTempuhDetail' => ['nullable', 'required_if:jarakTempuhKategori,more_than_1_km', 'regex:/\A\d{1,4}(?:\.\d{1,2})?\z/', 'numeric', 'gt:1', 'max:9999.99'],
+            'modaTransportasi' => ['required', Rule::in(array_keys(self::TRANSPORTATION_OPTIONS))],
+            'modaTransportasiLainnya' => ['nullable', 'required_if:modaTransportasi,lainnya', 'string', 'max:255'],
             'tinggiBadan' => ['required', 'numeric', 'min:0', 'max:250'],
             'beratBadan' => ['required', 'numeric', 'min:0', 'max:200'],
             'lingkarKepala' => ['required', 'numeric', 'min:0', 'max:100'],
@@ -529,6 +610,7 @@ class PpdbPublicRegistration extends Component
             'berkebutuhanKhusus' => ['required', Rule::in(['0', '1', 'Ya', 'Tidak'])],
             'keteranganKebutuhanKhusus' => ['nullable', 'required_if:berkebutuhanKhusus,1,Ya', 'string', 'max:2000'],
             'father.name' => ['required', 'string', 'max:255'],
+            'father.living_status' => ['required', Rule::in(['hidup', 'wafat'])],
             'father.nik' => ['required', 'digits:16'],
             'father.birthplace' => ['required', 'string', 'max:150'],
             'father.birthdate' => ['required', 'date'],
@@ -538,6 +620,7 @@ class PpdbPublicRegistration extends Component
             'father.occupation' => ['required', 'string', 'max:255'],
             'father.income_range' => ['required', Rule::enum(ParentIncomeRange::class)],
             'mother.name' => ['required', 'string', 'max:255'],
+            'mother.living_status' => ['required', Rule::in(['hidup', 'wafat'])],
             'mother.nik' => ['required', 'digits:16'],
             'mother.birthplace' => ['required', 'string', 'max:150'],
             'mother.birthdate' => ['required', 'date'],
@@ -563,6 +646,31 @@ class PpdbPublicRegistration extends Component
             'siblings.*.education_occupation' => ['required', 'string', 'max:255'],
             'consent' => ['accepted'],
         ], $this->documentRules());
+    }
+
+    private function normalizeStudentInputs(): void
+    {
+        $this->nomorAktaKelahiran = trim($this->nomorAktaKelahiran);
+        $this->hobi = trim($this->hobi);
+        $this->citaCita = trim($this->citaCita);
+        $this->modaTransportasiLainnya = trim($this->modaTransportasiLainnya);
+
+        if ($this->schoolLevel === SchoolLevel::TK->value) {
+            $this->nisn = '';
+        }
+
+        if ($this->jarakTempuhKategori !== 'more_than_1_km') {
+            $this->jarakTempuhDetail = '';
+        } else {
+            $normalizedDistance = str_replace(',', '.', trim($this->jarakTempuhDetail));
+            $this->jarakTempuhDetail = preg_match('/\A\d{1,4}(?:\.\d{1,2})?\z/', $normalizedDistance) === 1
+                ? number_format((float) $normalizedDistance, 2, '.', '')
+                : $normalizedDistance;
+        }
+
+        if ($this->modaTransportasi !== 'lainnya') {
+            $this->modaTransportasiLainnya = '';
+        }
     }
 
     /** @return array<string, mixed> */
@@ -603,6 +711,7 @@ class PpdbPublicRegistration extends Component
             'required_without' => ':attribute wajib diisi.',
             'integer' => ':attribute tidak valid.',
             'numeric' => ':attribute harus berupa angka.',
+            'digits' => ':attribute harus terdiri dari tepat :digits digit.',
             'string' => ':attribute harus berupa teks.',
             'date' => ':attribute harus berupa tanggal yang valid.',
             'before' => ':attribute harus sebelum hari ini.',
@@ -611,6 +720,7 @@ class PpdbPublicRegistration extends Component
             'after_or_equal' => ':attribute harus setelah atau sama dengan tanggal yang ditentukan.',
             'max' => ':attribute melebihi batas yang diperbolehkan.',
             'min' => ':attribute kurang dari batas yang diperbolehkan.',
+            'gt' => ':attribute harus lebih dari :value.',
             'regex' => ':attribute memiliki format yang tidak valid.',
             'enum' => ':attribute tidak valid.',
             'in' => ':attribute tidak valid.',
@@ -706,6 +816,26 @@ class PpdbPublicRegistration extends Component
             'nikSiswa.digits' => 'NIK siswa harus terdiri dari tepat 16 digit.',
             'nomorKk.required' => 'Nomor KK wajib diisi.',
             'nomorKk.digits' => 'Nomor KK harus terdiri dari tepat 16 digit.',
+            'nisn.required' => 'NISN wajib diisi untuk jenjang SD, SMP, dan SMA.',
+            'nisn.digits' => 'NISN harus terdiri dari tepat 10 digit.',
+            'nomorAktaKelahiran.required' => 'No. Akta / No. Registrasi Akta wajib diisi.',
+            'anakKe.required' => 'Anak ke- wajib diisi.',
+            'jumlahSaudara.required' => 'Jumlah saudara wajib diisi.',
+            'hobi.required' => 'Hobi siswa wajib diisi.',
+            'citaCita.required' => 'Cita-cita wajib diisi.',
+            'jarakTempuhKategori.required' => 'Jarak tempuh wajib dipilih.',
+            'jarakTempuhKategori.in' => 'Jarak tempuh tidak valid.',
+            'jarakTempuhDetail.required_if' => 'Detail jarak wajib diisi jika jarak lebih dari 1 km.',
+            'jarakTempuhDetail.regex' => 'Detail jarak harus berupa angka dengan maksimal dua angka desimal.',
+            'jarakTempuhDetail.gt' => 'Detail jarak harus lebih dari 1 km.',
+            'jarakTempuhDetail.max' => 'Detail jarak maksimal 9999,99 km.',
+            'modaTransportasi.required' => 'Moda transportasi wajib dipilih.',
+            'modaTransportasi.in' => 'Moda transportasi tidak valid.',
+            'modaTransportasiLainnya.required_if' => 'Moda transportasi lainnya wajib diisi.',
+            'father.living_status.required' => 'Status hidup Ayah wajib dipilih.',
+            'father.living_status.in' => 'Status hidup Ayah tidak valid.',
+            'mother.living_status.required' => 'Status hidup Ibu wajib dipilih.',
+            'mother.living_status.in' => 'Status hidup Ibu tidak valid.',
             'father.nik.required' => 'NIK Ayah wajib diisi.',
             'father.nik.digits' => 'NIK Ayah harus terdiri dari tepat 16 digit.',
             'mother.nik.required' => 'NIK Ibu wajib diisi.',

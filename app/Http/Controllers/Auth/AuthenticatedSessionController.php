@@ -28,7 +28,9 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->route('dashboard')
+        $landingRoute = $request->user()->isTuUnit() ? 'siswa.index' : 'dashboard';
+
+        return redirect()->route($landingRoute)
             ->with('success', 'Selamat datang, '.$request->user()->name.'!');
     }
 

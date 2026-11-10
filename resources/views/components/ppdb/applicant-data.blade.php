@@ -14,6 +14,26 @@
     $motherPhone = $mother?->no_telp ?? $student?->no_telp_ibu;
     $birthplace = $profile?->tempat_lahir ?? $student?->tempat_lahir;
     $birthdate = $profile?->tanggal_lahir ?? $student?->tanggal_lahir;
+    $isTk = $applicant?->schoolClass?->schoolLevel === \App\Enums\SchoolLevel::TK;
+    $distanceLabels = [
+        'less_than_1_km' => 'Kurang dari 1 km',
+        'more_than_1_km' => 'Lebih dari 1 km',
+    ];
+    $transportationLabels = [
+        'jalan_kaki' => 'Jalan kaki',
+        'sepeda' => 'Sepeda',
+        'motor' => 'Motor',
+        'mobil_pribadi' => 'Mobil pribadi',
+        'angkutan_umum' => 'Angkutan umum',
+        'antar_jemput' => 'Antar-jemput',
+        'lainnya' => 'Lainnya',
+    ];
+    $livingStatusLabels = [
+        'hidup' => 'Hidup',
+        'wafat' => 'Wafat',
+    ];
+    $distanceCategory = $profile?->jarak_tempuh_kategori;
+    $transportation = $profile?->moda_transportasi;
 
     $hasGuardian = $guardian && collect([
         $guardian->nama,
@@ -46,6 +66,9 @@
         }
         return (string) $value;
     };
+    $formatDistance = fn ($value) => filled($value) && is_numeric($value)
+        ? number_format((float) $value, 2, ',', '.').' km'
+        : '-';
     $formatBerkebutuhan = function ($value) {
         if (is_null($value)) {
             return '-';
@@ -124,6 +147,9 @@
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Nama Panggilan</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $record?->nama_panggilan ?? '-' }}</p></div>
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Jenis Kelamin</p><p class="mt-1 font-semibold text-on-surface">{{ $record?->jenis_kelamin === 'L' ? 'Laki-laki' : ($record?->jenis_kelamin === 'P' ? 'Perempuan' : '-') }}</p></div>
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">NIK Siswa</p><p class="mt-1 break-words font-semibold text-on-surface font-numeric-data">{{ $formatValue($profile?->nik_siswa) }}</p></div>
+                    @if(! $isTk)
+                        <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3" data-ppdb-field="nisn"><p class="text-body-sm text-on-surface-variant">NISN</p><p class="mt-1 break-words font-semibold text-on-surface font-numeric-data">{{ $formatValue($profile?->nisn) }}</p></div>
+                    @endif
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Nomor KK</p><p class="mt-1 break-words font-semibold text-on-surface font-numeric-data">{{ $formatValue($profile?->nomor_kk) }}</p></div>
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Nomor Akta Kelahiran</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $formatValue($profile?->nomor_akta_kelahiran) }}</p></div>
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Tempat Lahir</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $birthplace ?? '-' }}</p></div>
@@ -131,6 +157,8 @@
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Asal Sekolah</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $formatValue($profile?->asal_sekolah) }}</p></div>
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Anak ke-</p><p class="mt-1 font-semibold text-on-surface">{{ $formatNumber($profile?->anak_ke) }}</p></div>
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Jumlah Saudara</p><p class="mt-1 font-semibold text-on-surface">{{ $formatNumber($profile?->jumlah_saudara) }}</p></div>
+                    <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Hobi</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $formatValue($profile?->hobi) }}</p></div>
+                    <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Cita-cita</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $formatValue($profile?->cita_cita) }}</p></div>
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Status Anak</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $formatValue($profile?->status_anak) }}</p></div>
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Agama</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $formatValue($profile?->agama) }}</p></div>
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Bahasa Sehari-hari</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $formatValue($profile?->bahasa_sehari_hari) }}</p></div>
@@ -146,6 +174,14 @@
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Kabupaten / Kota</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $formatValue($profile?->kabupaten_kota) }}</p></div>
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Provinsi</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $formatValue($profile?->provinsi) }}</p></div>
                     <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><p class="text-body-sm text-on-surface-variant">Kode Pos</p><p class="mt-1 font-semibold text-on-surface">{{ $formatValue($profile?->kode_pos) }}</p></div>
+                    <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3" data-ppdb-field="distance"><p class="text-body-sm text-on-surface-variant">Jarak Tempuh</p><p class="mt-1 font-semibold text-on-surface">{{ $distanceLabels[$distanceCategory] ?? '-' }}</p></div>
+                    @if($distanceCategory === 'more_than_1_km' && filled($profile?->jarak_tempuh_detail))
+                        <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3" data-ppdb-field="distance-detail"><p class="text-body-sm text-on-surface-variant">Detail Jarak</p><p class="mt-1 font-semibold text-on-surface font-numeric-data">{{ $formatDistance($profile?->jarak_tempuh_detail) }}</p></div>
+                    @endif
+                    <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3" data-ppdb-field="transportation"><p class="text-body-sm text-on-surface-variant">Moda Transportasi</p><p class="mt-1 font-semibold text-on-surface">{{ $transportationLabels[$transportation] ?? '-' }}</p></div>
+                    @if($transportation === 'lainnya' && filled($profile?->moda_transportasi_lainnya))
+                        <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3" data-ppdb-field="transportation-detail"><p class="text-body-sm text-on-surface-variant">Moda Transportasi Lainnya</p><p class="mt-1 break-words font-semibold text-on-surface">{{ $formatValue($profile?->moda_transportasi_lainnya) }}</p></div>
+                    @endif
                 </div>
 
                 <p class="mb-3 text-label-md font-semibold text-on-surface">C. Keadaan Jasmani</p>
@@ -173,6 +209,7 @@
                 <div id="ppdb-accordion-{{ $parentSection['key'] }}" x-show="sections.{{ $parentSection['key'] }}" x-transition x-cloak class="border-t border-outline-variant/60 px-4 py-4 sm:px-5">
                     <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><dt class="text-body-sm text-on-surface-variant">Nama Lengkap</dt><dd class="mt-1 break-words font-semibold text-on-surface">{{ $parentSection['name'] ?? '-' }}</dd></div>
+                        <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3" data-ppdb-parent-status="{{ $parentSection['key'] }}"><dt class="text-body-sm text-on-surface-variant">Status Hidup</dt><dd class="mt-1 font-semibold text-on-surface">{{ $livingStatusLabels[$parentSection['record']?->status_hidup] ?? '-' }}</dd></div>
                         <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><dt class="text-body-sm text-on-surface-variant">NIK</dt><dd class="mt-1 break-words font-semibold text-on-surface font-numeric-data">{{ $formatValue($parentSection['record']?->nik) }}</dd></div>
                         <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><dt class="text-body-sm text-on-surface-variant">Tempat Lahir</dt><dd class="mt-1 break-words font-semibold text-on-surface">{{ $formatValue($parentSection['record']?->tempat_lahir) }}</dd></div>
                         <div class="rounded-lg bg-surface-container-low/40 px-3.5 py-3"><dt class="text-body-sm text-on-surface-variant">Tanggal Lahir</dt><dd class="mt-1 font-semibold text-on-surface">{{ $formatDate($parentSection['record']?->tanggal_lahir) }}</dd></div>

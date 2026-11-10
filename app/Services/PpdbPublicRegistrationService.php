@@ -33,6 +33,10 @@ class PpdbPublicRegistrationService
 {
     private const MAX_CONCURRENCY_ATTEMPTS = 3;
 
+    private const DISTANCE_OPTIONS = ['less_than_1_km', 'more_than_1_km'];
+
+    private const TRANSPORTATION_OPTIONS = ['jalan_kaki', 'sepeda', 'motor', 'mobil_pribadi', 'angkutan_umum', 'antar_jemput', 'lainnya'];
+
     public const CONSENT_POLICY_VERSION = 'ppdb-2026-10-29-v1';
 
     public const DOCUMENT_DISK = 'local';
@@ -176,10 +180,13 @@ class PpdbPublicRegistrationService
                         'tanggal_lahir' => $validated['birthdate'],
                         'asal_sekolah' => trim($validated['asal_sekolah']),
                         'nik_siswa' => $this->nullableString($validated['nik_siswa'] ?? null),
+                        'nisn' => $validated['school_level'] === SchoolLevel::TK->value ? null : $validated['nisn'],
                         'nomor_kk' => $this->nullableString($validated['nomor_kk'] ?? null),
                         'nomor_akta_kelahiran' => $this->nullableString($validated['nomor_akta_kelahiran'] ?? null),
                         'anak_ke' => $this->nullableInt($validated['anak_ke'] ?? null),
                         'jumlah_saudara' => $this->nullableInt($validated['jumlah_saudara'] ?? null),
+                        'hobi' => trim($validated['hobi']),
+                        'cita_cita' => trim($validated['cita_cita']),
                         'status_anak' => $this->nullableString($validated['status_anak'] ?? null),
                         'agama' => $this->nullableString($validated['agama'] ?? null),
                         'bahasa_sehari_hari' => $this->nullableString($validated['bahasa_sehari_hari'] ?? null),
@@ -190,6 +197,14 @@ class PpdbPublicRegistrationService
                         'kabupaten_kota' => $this->nullableString($validated['kabupaten_kota'] ?? null),
                         'provinsi' => $this->nullableString($validated['provinsi'] ?? null),
                         'kode_pos' => $this->nullableString($validated['kode_pos'] ?? null),
+                        'jarak_tempuh_kategori' => $validated['jarak_tempuh_kategori'],
+                        'jarak_tempuh_detail' => $validated['jarak_tempuh_kategori'] === 'more_than_1_km'
+                            ? $validated['jarak_tempuh_detail']
+                            : null,
+                        'moda_transportasi' => $validated['moda_transportasi'],
+                        'moda_transportasi_lainnya' => $validated['moda_transportasi'] === 'lainnya'
+                            ? trim($validated['moda_transportasi_lainnya'])
+                            : null,
                         'tinggi_badan' => $this->nullableNumeric($validated['tinggi_badan'] ?? null),
                         'berat_badan' => $this->nullableNumeric($validated['berat_badan'] ?? null),
                         'lingkar_kepala' => $this->nullableNumeric($validated['lingkar_kepala'] ?? null),
@@ -285,7 +300,7 @@ class PpdbPublicRegistrationService
             ];
         }
 
-        $payload = array_merge($data, ['documents' => $documents]);
+        $payload = array_merge($this->normalizeConditionalFields($data), ['documents' => $documents]);
 
         return Validator::make($payload, array_merge([
             'academic_year_id' => ['required', 'integer'],
@@ -299,10 +314,13 @@ class PpdbPublicRegistrationService
             'birthdate' => ['required', 'date', 'before:today'],
             'asal_sekolah' => ['required', 'string', 'max:255'],
             'nik_siswa' => ['required', 'digits:16'],
+            'nisn' => [Rule::requiredIf(($payload['school_level'] ?? null) !== SchoolLevel::TK->value), 'nullable', 'digits:10'],
             'nomor_kk' => ['required', 'digits:16'],
-            'nomor_akta_kelahiran' => ['nullable', 'string', 'max:100'],
-            'anak_ke' => ['nullable', 'integer', 'min:1'],
-            'jumlah_saudara' => ['nullable', 'integer', 'min:0'],
+            'nomor_akta_kelahiran' => ['required', 'string', 'max:100'],
+            'anak_ke' => ['required', 'integer', 'min:1'],
+            'jumlah_saudara' => ['required', 'integer', 'min:0'],
+            'hobi' => ['required', 'string', 'max:255'],
+            'cita_cita' => ['required', 'string', 'max:255'],
             'status_anak' => ['nullable', 'string', 'max:30'],
             'agama' => ['nullable', 'string', 'max:50'],
             'bahasa_sehari_hari' => ['nullable', 'string', 'max:100'],
@@ -314,6 +332,10 @@ class PpdbPublicRegistrationService
             'kabupaten_kota' => ['nullable', 'string', 'max:150'],
             'provinsi' => ['nullable', 'string', 'max:150'],
             'kode_pos' => ['nullable', 'digits:5'],
+            'jarak_tempuh_kategori' => ['required', Rule::in(self::DISTANCE_OPTIONS)],
+            'jarak_tempuh_detail' => ['nullable', 'required_if:jarak_tempuh_kategori,more_than_1_km', 'regex:/\A\d{1,4}(?:\.\d{1,2})?\z/', 'numeric', 'gt:1', 'max:9999.99'],
+            'moda_transportasi' => ['required', Rule::in(self::TRANSPORTATION_OPTIONS)],
+            'moda_transportasi_lainnya' => ['nullable', 'required_if:moda_transportasi,lainnya', 'string', 'max:255'],
             'tinggi_badan' => ['required', 'numeric', 'min:0', 'max:250'],
             'berat_badan' => ['required', 'numeric', 'min:0', 'max:200'],
             'lingkar_kepala' => ['required', 'numeric', 'min:0', 'max:100'],
@@ -322,6 +344,7 @@ class PpdbPublicRegistrationService
             'berkebutuhan_khusus' => ['required', Rule::in(['0', '1', true, false, 'Ya', 'Tidak'])],
             'keterangan_kebutuhan_khusus' => ['nullable', 'required_if:berkebutuhan_khusus,1,true,Ya', 'string', 'max:2000'],
             'father.name' => ['required', 'string', 'max:255'],
+            'father.living_status' => ['required', Rule::in(['hidup', 'wafat'])],
             'father.nik' => ['required', 'digits:16'],
             'father.birthplace' => ['required', 'string', 'max:150'],
             'father.birthdate' => ['required', 'date'],
@@ -331,6 +354,7 @@ class PpdbPublicRegistrationService
             'father.occupation' => ['required', 'string', 'max:255'],
             'father.income_range' => ['required', Rule::enum(ParentIncomeRange::class)],
             'mother.name' => ['required', 'string', 'max:255'],
+            'mother.living_status' => ['required', Rule::in(['hidup', 'wafat'])],
             'mother.nik' => ['required', 'digits:16'],
             'mother.birthplace' => ['required', 'string', 'max:150'],
             'mother.birthdate' => ['required', 'date'],
@@ -367,13 +391,14 @@ class PpdbPublicRegistrationService
     }
 
     /**
-     * @param  array{name: string, nik?: string|null, birthplace?: string|null, birthdate?: string|null, education_last?: string|null, email?: string|null, phone: string|null, occupation: string|null, income_range: string|null}  $data
+     * @param  array{name: string, living_status?: string|null, nik?: string|null, birthplace?: string|null, birthdate?: string|null, education_last?: string|null, email?: string|null, phone: string|null, occupation: string|null, income_range: string|null}  $data
      */
     private function createParent(ProspectiveStudent $prospectiveStudent, string $role, array $data): void
     {
         PpdbParent::query()->create([
             'prospective_student_id' => $prospectiveStudent->id,
             'role' => $role,
+            'status_hidup' => $role === 'guardian' ? null : $this->nullableString($data['living_status'] ?? null),
             'nama' => trim($data['name'] ?? ''),
             'nik' => $this->nullableString($data['nik'] ?? null),
             'tempat_lahir' => $this->nullableString($data['birthplace'] ?? null),
@@ -395,6 +420,45 @@ class PpdbPublicRegistrationService
     private function nullableString(mixed $value): ?string
     {
         return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function normalizeConditionalFields(array $data): array
+    {
+        foreach (['nomor_akta_kelahiran', 'hobi', 'cita_cita', 'moda_transportasi_lainnya'] as $field) {
+            if (is_string($data[$field] ?? null)) {
+                $data[$field] = trim($data[$field]);
+            }
+        }
+
+        if (($data['school_level'] ?? null) === SchoolLevel::TK->value) {
+            $data['nisn'] = null;
+        }
+
+        if (($data['jarak_tempuh_kategori'] ?? null) !== 'more_than_1_km') {
+            $data['jarak_tempuh_detail'] = null;
+        } else {
+            $data['jarak_tempuh_detail'] = $this->normalizeDistance($data['jarak_tempuh_detail'] ?? null);
+        }
+
+        if (($data['moda_transportasi'] ?? null) !== 'lainnya') {
+            $data['moda_transportasi_lainnya'] = null;
+        }
+
+        return $data;
+    }
+
+    private function normalizeDistance(mixed $value): mixed
+    {
+        if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+            return $value;
+        }
+
+        $normalized = str_replace(',', '.', trim((string) $value));
+
+        return preg_match('/\A\d{1,4}(?:\.\d{1,2})?\z/', $normalized) === 1
+            ? number_format((float) $normalized, 2, '.', '')
+            : $normalized;
     }
 
     private function storeDocument(string $documentType, UploadedFile $file): string

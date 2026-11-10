@@ -17,6 +17,8 @@
     $isDaycarePaymentActive = request()->routeIs('daycare.payment.*');
     $isDaycareReportActive = request()->routeIs('daycare.report.*');
 
+    $isJemputanActive = request()->routeIs('jemputan.*');
+
     $isMasterDataActive = request()->routeIs('bank.*')
         || request()->routeIs('jenis-pembayaran.*')
         || request()->routeIs('kategori-siswa.*')

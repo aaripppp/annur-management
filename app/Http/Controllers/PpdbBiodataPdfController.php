@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\ParentIncomeRange;
 use App\Enums\PpdbApplicantCategory;
+use App\Enums\SchoolLevel;
 use App\Models\PpdbParent;
 use App\Models\PpdbSibling;
 use App\Models\ProspectiveStudent;
@@ -30,6 +31,8 @@ class PpdbBiodataPdfController extends Controller
         $profile = $prospectiveStudent->ppdbProfile;
         $parents = $prospectiveStudent->ppdbParents->keyBy('role');
         $guardian = $parents->get('guardian');
+        $distanceCategory = $profile?->jarak_tempuh_kategori;
+        $transportation = $profile?->moda_transportasi;
 
         $data = [
             'registration' => [
@@ -44,6 +47,7 @@ class PpdbBiodataPdfController extends Controller
                 'nama_panggilan' => $this->display($prospectiveStudent->nama_panggilan),
                 'jenis_kelamin' => $this->genderLabel($prospectiveStudent->jenis_kelamin),
                 'nik_siswa' => $this->display($profile?->nik_siswa),
+                'nisn' => $this->display($profile?->nisn),
                 'nomor_kk' => $this->display($profile?->nomor_kk),
                 'nomor_akta_kelahiran' => $this->display($profile?->nomor_akta_kelahiran),
                 'tempat_lahir' => $this->display($profile?->tempat_lahir),
@@ -51,6 +55,8 @@ class PpdbBiodataPdfController extends Controller
                 'asal_sekolah' => $this->display($profile?->asal_sekolah),
                 'anak_ke' => $this->formatDecimal($profile?->anak_ke),
                 'jumlah_saudara' => $this->formatDecimal($profile?->jumlah_saudara),
+                'hobi' => $this->display($profile?->hobi),
+                'cita_cita' => $this->display($profile?->cita_cita),
                 'status_anak' => $this->display($profile?->status_anak),
                 'agama' => $this->display($profile?->agama),
                 'bahasa_sehari_hari' => $this->display($profile?->bahasa_sehari_hari),
@@ -64,6 +70,12 @@ class PpdbBiodataPdfController extends Controller
                 'kabupaten_kota' => $this->display($profile?->kabupaten_kota),
                 'provinsi' => $this->display($profile?->provinsi),
                 'kode_pos' => $this->display($profile?->kode_pos),
+                'jarak_tempuh' => $this->distanceLabel($distanceCategory),
+                'show_jarak_tempuh_detail' => $distanceCategory === 'more_than_1_km',
+                'jarak_tempuh_detail' => $this->formatDistance($profile?->jarak_tempuh_detail),
+                'moda_transportasi' => $this->transportationLabel($transportation),
+                'show_moda_transportasi_lainnya' => $transportation === 'lainnya',
+                'moda_transportasi_lainnya' => $this->display($profile?->moda_transportasi_lainnya),
             ],
             'health' => [
                 'tinggi_badan' => $this->formatDecimal($profile?->tinggi_badan),
@@ -74,8 +86,8 @@ class PpdbBiodataPdfController extends Controller
                 'berkebutuhan_khusus' => $this->specialNeedsLabel($profile?->berkebutuhan_khusus),
                 'keterangan_kebutuhan_khusus' => $this->display($profile?->keterangan_kebutuhan_khusus),
             ],
-            'father' => $this->parentData($parents->get('father')),
-            'mother' => $this->parentData($parents->get('mother')),
+            'father' => $this->parentData($parents->get('father'), true),
+            'mother' => $this->parentData($parents->get('mother'), true),
             'guardian' => $this->hasParentData($guardian) ? $this->parentData($guardian) : null,
             'siblings' => $prospectiveStudent->ppdbSiblings
                 ->map(fn (PpdbSibling $sibling): array => [
@@ -87,6 +99,7 @@ class PpdbBiodataPdfController extends Controller
                 ->all(),
             'printed_at' => now()->settings(['locale' => 'id'])->translatedFormat('d F Y'),
             'registration_number' => $this->display($prospectiveStudent->registration_number),
+            'show_nisn' => $prospectiveStudent->schoolClass?->schoolLevel !== SchoolLevel::TK,
         ];
 
         $filename = 'biodata-ppdb-'.$this->safeFilenamePart($prospectiveStudent->registration_number).'.pdf';
@@ -104,9 +117,9 @@ class PpdbBiodataPdfController extends Controller
     /**
      * @return array<string, string>
      */
-    private function parentData(?PpdbParent $parent): array
+    private function parentData(?PpdbParent $parent, bool $includeLivingStatus = false): array
     {
-        return [
+        $data = [
             'nama' => $this->display($parent?->nama),
             'nik' => $this->display($parent?->nik),
             'tempat_lahir' => $this->display($parent?->tempat_lahir),
@@ -117,6 +130,12 @@ class PpdbBiodataPdfController extends Controller
             'no_telp' => $this->display($parent?->no_telp),
             'email' => $this->display($parent?->email),
         ];
+
+        if ($includeLivingStatus) {
+            $data['status_hidup'] = $this->livingStatusLabel($parent?->status_hidup);
+        }
+
+        return $data;
     }
 
     private function hasParentData(?PpdbParent $parent): bool
@@ -169,6 +188,38 @@ class PpdbBiodataPdfController extends Controller
         return match ($value) {
             'L' => 'Laki-laki',
             'P' => 'Perempuan',
+            default => '-',
+        };
+    }
+
+    private function distanceLabel(mixed $value): string
+    {
+        return match ($value) {
+            'less_than_1_km' => 'Kurang dari 1 km',
+            'more_than_1_km' => 'Lebih dari 1 km',
+            default => '-',
+        };
+    }
+
+    private function transportationLabel(mixed $value): string
+    {
+        return match ($value) {
+            'jalan_kaki' => 'Jalan kaki',
+            'sepeda' => 'Sepeda',
+            'motor' => 'Motor',
+            'mobil_pribadi' => 'Mobil pribadi',
+            'angkutan_umum' => 'Angkutan umum',
+            'antar_jemput' => 'Antar-jemput',
+            'lainnya' => 'Lainnya',
+            default => '-',
+        };
+    }
+
+    private function livingStatusLabel(mixed $value): string
+    {
+        return match ($value) {
+            'hidup' => 'Hidup',
+            'wafat' => 'Wafat',
             default => '-',
         };
     }
@@ -234,6 +285,15 @@ class PpdbBiodataPdfController extends Controller
         $formatted = rtrim(rtrim(number_format((float) $value, 2, ',', '.'), '0'), ',');
 
         return $formatted === '' ? '0' : $formatted;
+    }
+
+    private function formatDistance(mixed $value): string
+    {
+        if (! filled($value) || ! is_numeric($value)) {
+            return '-';
+        }
+
+        return number_format((float) $value, 2, ',', '.').' km';
     }
 
     private function display(mixed $value): string

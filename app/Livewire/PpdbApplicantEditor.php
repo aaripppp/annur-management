@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Enums\ParentIncomeRange;
 use App\Enums\PpdbApplicantCategory;
+use App\Enums\SchoolLevel;
 use App\Models\PpdbParent;
 use App\Models\ProspectiveStudent;
 use App\Services\PpdbApplicantDataUpdater;
@@ -18,11 +19,29 @@ use Livewire\Component;
 
 class PpdbApplicantEditor extends Component
 {
+    private const DISTANCE_OPTIONS = [
+        'less_than_1_km' => 'Kurang dari 1 km',
+        'more_than_1_km' => 'Lebih dari 1 km',
+    ];
+
+    private const TRANSPORTATION_OPTIONS = [
+        'jalan_kaki' => 'Jalan kaki',
+        'sepeda' => 'Sepeda',
+        'motor' => 'Motor',
+        'mobil_pribadi' => 'Mobil pribadi',
+        'angkutan_umum' => 'Angkutan umum',
+        'antar_jemput' => 'Antar-jemput',
+        'lainnya' => 'Lainnya',
+    ];
+
     #[Locked]
     public int $prospectiveStudentId;
 
     #[Locked]
     public ?int $studentId = null;
+
+    #[Locked]
+    public string $schoolLevel = '';
 
     public bool $isOpen = false;
 
@@ -101,6 +120,7 @@ class PpdbApplicantEditor extends Component
     public function save(PpdbApplicantDataUpdater $updater): void
     {
         $prospectiveStudent = $this->authorizedProspectiveStudent();
+        $this->normalizeConditionalProfile();
         $validated = $this->validate($this->rules(), $this->messages());
 
         $updater->update($prospectiveStudent->id, [
@@ -109,7 +129,7 @@ class PpdbApplicantEditor extends Component
             'profile' => $validated['profile'],
             'parents' => $validated['parents'],
             'siblings' => $validated['siblings'],
-        ], $this->studentId);
+        ], $this->studentId, auth()->user());
 
         $this->isOpen = false;
         $this->successMessage = 'Biodata PPDB berhasil diperbarui.';
@@ -120,8 +140,23 @@ class PpdbApplicantEditor extends Component
     {
         return view('livewire.ppdb-applicant-editor', [
             'applicantCategories' => PpdbApplicantCategory::cases(),
+            'distanceOptions' => self::DISTANCE_OPTIONS,
             'incomeOptions' => ParentIncomeRange::options(),
+            'transportationOptions' => self::TRANSPORTATION_OPTIONS,
         ]);
+    }
+
+    public function updatedProfile(mixed $value, string $key): void
+    {
+        if ($key === 'jarak_tempuh_kategori' && $value !== 'more_than_1_km') {
+            $this->profile['jarak_tempuh_detail'] = '';
+            $this->resetValidation('profile.jarak_tempuh_detail');
+        }
+
+        if ($key === 'moda_transportasi' && $value !== 'lainnya') {
+            $this->profile['moda_transportasi_lainnya'] = '';
+            $this->resetValidation('profile.moda_transportasi_lainnya');
+        }
     }
 
     /** @return array<string, array<int, mixed>> */
@@ -137,10 +172,13 @@ class PpdbApplicantEditor extends Component
             'profile.tanggal_lahir' => ['nullable', 'date', 'before:today'],
             'profile.asal_sekolah' => ['nullable', 'string', 'max:255'],
             'profile.nik_siswa' => ['nullable', 'digits:16'],
+            'profile.nisn' => ['nullable', 'digits:10'],
             'profile.nomor_kk' => ['nullable', 'digits:16'],
             'profile.nomor_akta_kelahiran' => ['nullable', 'string', 'max:100'],
             'profile.anak_ke' => ['nullable', 'integer', 'min:1'],
             'profile.jumlah_saudara' => ['nullable', 'integer', 'min:0'],
+            'profile.hobi' => ['nullable', 'string', 'max:255'],
+            'profile.cita_cita' => ['nullable', 'string', 'max:255'],
             'profile.status_anak' => ['nullable', 'string', 'max:30'],
             'profile.agama' => ['nullable', 'string', 'max:50'],
             'profile.bahasa_sehari_hari' => ['nullable', 'string', 'max:100'],
@@ -151,6 +189,10 @@ class PpdbApplicantEditor extends Component
             'profile.kabupaten_kota' => ['nullable', 'string', 'max:150'],
             'profile.provinsi' => ['nullable', 'string', 'max:150'],
             'profile.kode_pos' => ['nullable', 'digits:5'],
+            'profile.jarak_tempuh_kategori' => ['nullable', Rule::in(array_keys(self::DISTANCE_OPTIONS))],
+            'profile.jarak_tempuh_detail' => ['nullable', 'regex:/\A\d{1,4}(?:\.\d{1,2})?\z/', 'numeric', 'gt:1', 'max:9999.99'],
+            'profile.moda_transportasi' => ['nullable', Rule::in(array_keys(self::TRANSPORTATION_OPTIONS))],
+            'profile.moda_transportasi_lainnya' => ['nullable', 'string', 'max:255'],
             'profile.tinggi_badan' => ['nullable', 'numeric', 'min:0', 'max:250'],
             'profile.berat_badan' => ['nullable', 'numeric', 'min:0', 'max:200'],
             'profile.lingkar_kepala' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -176,6 +218,10 @@ class PpdbApplicantEditor extends Component
             $rules["parents.$role.no_telp"] = ['nullable', 'string', 'max:20', 'regex:/\A[0-9+().\-\s]{8,20}\z/'];
             $rules["parents.$role.occupation"] = ['nullable', 'string', 'max:255'];
             $rules["parents.$role.income_range"] = ['nullable', Rule::enum(ParentIncomeRange::class)];
+
+            if ($role !== 'guardian') {
+                $rules["parents.$role.status_hidup"] = ['nullable', Rule::in(['hidup', 'wafat'])];
+            }
         }
 
         return $rules;
@@ -196,6 +242,10 @@ class PpdbApplicantEditor extends Component
             'siblings.*.jenis_kelamin.required' => 'Jenis kelamin saudara wajib dipilih.',
             'siblings.*.pendidikan_pekerjaan.required' => 'Pendidikan atau pekerjaan saudara wajib diisi.',
             'regex' => ':attribute memiliki format yang tidak valid.',
+            'gt' => ':attribute harus lebih dari :value.',
+            'profile.jarak_tempuh_detail.regex' => 'Detail jarak harus berupa angka dengan maksimal dua angka desimal.',
+            'profile.jarak_tempuh_detail.gt' => 'Detail jarak harus lebih dari 1 km.',
+            'profile.jarak_tempuh_detail.max' => 'Detail jarak maksimal 9999,99 km.',
         ];
     }
 
@@ -219,14 +269,16 @@ class PpdbApplicantEditor extends Component
 
     private function populateForm(ProspectiveStudent $prospectiveStudent): void
     {
-        $prospectiveStudent->load(['convertedStudent', 'ppdbProfile', 'ppdbParents', 'ppdbSiblings']);
+        $prospectiveStudent->load(['schoolClass', 'convertedStudent', 'ppdbProfile', 'ppdbParents', 'ppdbSiblings']);
         $profile = $prospectiveStudent->ppdbProfile;
         $student = $prospectiveStudent->convertedStudent;
         $father = $prospectiveStudent->ppdbParents->firstWhere('role', 'father');
         $mother = $prospectiveStudent->ppdbParents->firstWhere('role', 'mother');
         $guardian = $prospectiveStudent->ppdbParents->firstWhere('role', 'guardian');
+        $classLevel = $prospectiveStudent->schoolClass?->level;
 
         $this->applicantCategory = $prospectiveStudent->applicant_category?->value ?? '';
+        $this->schoolLevel = $classLevel !== null ? SchoolLevel::fromClassLevel((int) $classLevel)?->value ?? '' : '';
         $this->student = [
             'nama_lengkap' => $prospectiveStudent->nama_lengkap,
             'nama_panggilan' => $prospectiveStudent->nama_panggilan ?? '',
@@ -238,10 +290,13 @@ class PpdbApplicantEditor extends Component
             'tanggal_lahir' => $profile?->tanggal_lahir?->format('Y-m-d') ?? $student?->tanggal_lahir?->format('Y-m-d') ?? '',
             'asal_sekolah' => $profile?->asal_sekolah ?? '',
             'nik_siswa' => $profile?->nik_siswa ?? '',
+            'nisn' => $profile?->nisn ?? '',
             'nomor_kk' => $profile?->nomor_kk ?? '',
             'nomor_akta_kelahiran' => $profile?->nomor_akta_kelahiran ?? '',
             'anak_ke' => $profile?->anak_ke !== null ? (string) $profile->anak_ke : '',
             'jumlah_saudara' => $profile?->jumlah_saudara !== null ? (string) $profile->jumlah_saudara : '',
+            'hobi' => $profile?->hobi ?? '',
+            'cita_cita' => $profile?->cita_cita ?? '',
             'status_anak' => $profile?->status_anak ?? '',
             'agama' => $profile?->agama ?? '',
             'bahasa_sehari_hari' => $profile?->bahasa_sehari_hari ?? '',
@@ -252,6 +307,10 @@ class PpdbApplicantEditor extends Component
             'kabupaten_kota' => $profile?->kabupaten_kota ?? '',
             'provinsi' => $profile?->provinsi ?? '',
             'kode_pos' => $profile?->kode_pos ?? '',
+            'jarak_tempuh_kategori' => $profile?->jarak_tempuh_kategori ?? '',
+            'jarak_tempuh_detail' => $profile?->jarak_tempuh_detail ?? '',
+            'moda_transportasi' => $profile?->moda_transportasi ?? '',
+            'moda_transportasi_lainnya' => $profile?->moda_transportasi_lainnya ?? '',
             'tinggi_badan' => $profile?->tinggi_badan ?? '',
             'berat_badan' => $profile?->berat_badan ?? '',
             'lingkar_kepala' => $profile?->lingkar_kepala ?? '',
@@ -261,8 +320,8 @@ class PpdbApplicantEditor extends Component
             'keterangan_kebutuhan_khusus' => $profile?->keterangan_kebutuhan_khusus ?? '',
         ];
         $this->parents = [
-            'father' => $this->parentState($father, $prospectiveStudent->nama_orang_tua, $prospectiveStudent->no_telp_orang_tua),
-            'mother' => $this->parentState($mother, $student?->nama_ibu, $student?->no_telp_ibu),
+            'father' => $this->parentState($father, $prospectiveStudent->nama_orang_tua, $prospectiveStudent->no_telp_orang_tua, true),
+            'mother' => $this->parentState($mother, $student?->nama_ibu, $student?->no_telp_ibu, true),
             'guardian' => $this->parentState($guardian),
         ];
         $this->siblings = $prospectiveStudent->ppdbSiblings
@@ -278,9 +337,9 @@ class PpdbApplicantEditor extends Component
     }
 
     /** @return array<string, mixed> */
-    private function parentState(?PpdbParent $parent = null, ?string $fallbackName = null, ?string $fallbackPhone = null): array
+    private function parentState(?PpdbParent $parent = null, ?string $fallbackName = null, ?string $fallbackPhone = null, bool $includeLivingStatus = false): array
     {
-        return [
+        $state = [
             'nama' => $parent?->nama ?? $fallbackName ?? '',
             'nik' => $parent?->nik ?? '',
             'tempat_lahir' => $parent?->tempat_lahir ?? '',
@@ -291,6 +350,38 @@ class PpdbApplicantEditor extends Component
             'occupation' => $parent?->occupation ?? '',
             'income_range' => $parent?->income_range?->value ?? '',
         ];
+
+        if ($includeLivingStatus) {
+            $state['status_hidup'] = $parent?->status_hidup ?? '';
+        }
+
+        return $state;
+    }
+
+    private function normalizeConditionalProfile(): void
+    {
+        foreach (['hobi', 'cita_cita', 'moda_transportasi_lainnya'] as $field) {
+            if (is_string($this->profile[$field] ?? null)) {
+                $this->profile[$field] = trim($this->profile[$field]);
+            }
+        }
+
+        if ($this->schoolLevel === SchoolLevel::TK->value) {
+            $this->profile['nisn'] = '';
+        }
+
+        if (($this->profile['jarak_tempuh_kategori'] ?? null) !== 'more_than_1_km') {
+            $this->profile['jarak_tempuh_detail'] = '';
+        } else {
+            $normalizedDistance = str_replace(',', '.', trim((string) ($this->profile['jarak_tempuh_detail'] ?? '')));
+            $this->profile['jarak_tempuh_detail'] = preg_match('/\A\d{1,4}(?:\.\d{1,2})?\z/', $normalizedDistance) === 1
+                ? number_format((float) $normalizedDistance, 2, '.', '')
+                : $normalizedDistance;
+        }
+
+        if (($this->profile['moda_transportasi'] ?? null) !== 'lainnya') {
+            $this->profile['moda_transportasi_lainnya'] = '';
+        }
     }
 
     /** @return array<string, string> */

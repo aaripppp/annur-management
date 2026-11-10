@@ -13,6 +13,7 @@ use App\Models\ProspectiveStudent;
 use App\Models\ProspectiveStudentBill;
 use App\Models\ProspectiveStudentPayment;
 use App\Models\ProspectiveStudentPaymentDetail;
+use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\User;
 use App\Services\PpdbApplicantDataUpdater;
@@ -153,6 +154,152 @@ it('handles historical null sidecars without requiring public registration field
 
     expect($prospectiveStudent->fresh()->nama_lengkap)->toBe('NAMA HISTORIS DIKOREKSI')
         ->and($prospectiveStudent->fresh()->ppdbProfile)->toBeNull();
+});
+
+it('loads and preserves all additional biodata during an unrelated edit', function () {
+    $prospectiveStudent = ProspectiveStudent::factory()->create();
+    PpdbProfile::query()->create([
+        'prospective_student_id' => $prospectiveStudent->id,
+        'nisn' => '0012345678',
+        'jarak_tempuh_kategori' => 'more_than_1_km',
+        'jarak_tempuh_detail' => '2.50',
+        'moda_transportasi' => 'lainnya',
+        'moda_transportasi_lainnya' => 'Perahu',
+        'hobi' => 'Membaca',
+        'cita_cita' => 'Dokter',
+        'anak_ke' => 2,
+        'jumlah_saudara' => 1,
+        'nomor_akta_kelahiran' => 'AKTA/001',
+    ]);
+    PpdbParent::query()->create([
+        'prospective_student_id' => $prospectiveStudent->id,
+        'role' => 'father',
+        'nama' => 'Ayah Lama',
+        'status_hidup' => 'hidup',
+    ]);
+    PpdbParent::query()->create([
+        'prospective_student_id' => $prospectiveStudent->id,
+        'role' => 'mother',
+        'nama' => 'Ibu Lama',
+        'status_hidup' => 'wafat',
+    ]);
+    $this->actingAs(ppdbEditorUser());
+
+    Livewire::test(PpdbApplicantEditor::class, ['prospectiveStudent' => $prospectiveStudent])
+        ->call('openEditor')
+        ->assertSet('profile.nisn', '0012345678')
+        ->assertSet('profile.jarak_tempuh_kategori', 'more_than_1_km')
+        ->assertSet('profile.jarak_tempuh_detail', '2.50')
+        ->assertSet('profile.moda_transportasi', 'lainnya')
+        ->assertSet('profile.moda_transportasi_lainnya', 'Perahu')
+        ->assertSet('profile.hobi', 'Membaca')
+        ->assertSet('profile.cita_cita', 'Dokter')
+        ->assertSet('parents.father.status_hidup', 'hidup')
+        ->assertSet('parents.mother.status_hidup', 'wafat')
+        ->assertSeeHtml('name="parents[father][status_hidup]"')
+        ->assertSeeHtml('name="parents[mother][status_hidup]"')
+        ->set('student.nama_lengkap', 'Nama Saja Diperbarui')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $profile = $prospectiveStudent->fresh()->ppdbProfile;
+    expect($profile->nisn)->toBe('0012345678')
+        ->and($profile->jarak_tempuh_kategori)->toBe('more_than_1_km')
+        ->and($profile->jarak_tempuh_detail)->toBe('2.50')
+        ->and($profile->moda_transportasi)->toBe('lainnya')
+        ->and($profile->moda_transportasi_lainnya)->toBe('Perahu')
+        ->and($profile->hobi)->toBe('Membaca')
+        ->and($profile->cita_cita)->toBe('Dokter')
+        ->and($profile->anak_ke)->toBe(2)
+        ->and($profile->jumlah_saudara)->toBe(1)
+        ->and($profile->nomor_akta_kelahiran)->toBe('AKTA/001')
+        ->and($prospectiveStudent->ppdbParents()->count())->toBe(2)
+        ->and($prospectiveStudent->ppdbParents()->where('role', 'father')->value('status_hidup'))->toBe('hidup')
+        ->and($prospectiveStudent->ppdbParents()->where('role', 'mother')->value('status_hidup'))->toBe('wafat');
+});
+
+it('edits and normalizes all additional nullable biodata fields', function () {
+    $prospectiveStudent = ProspectiveStudent::factory()->create();
+    $this->actingAs(ppdbEditorUser());
+
+    Livewire::test(PpdbApplicantEditor::class, ['prospectiveStudent' => $prospectiveStudent])
+        ->call('openEditor')
+        ->set('profile.nisn', '0012345678')
+        ->set('profile.jarak_tempuh_kategori', 'more_than_1_km')
+        ->set('profile.jarak_tempuh_detail', '2,5')
+        ->set('profile.moda_transportasi', 'lainnya')
+        ->set('profile.moda_transportasi_lainnya', '  Perahu  ')
+        ->set('profile.hobi', '  Membaca  ')
+        ->set('profile.cita_cita', '  Dokter  ')
+        ->set('parents.father.status_hidup', 'wafat')
+        ->set('parents.mother.status_hidup', 'hidup')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $profile = $prospectiveStudent->fresh()->ppdbProfile;
+    expect($profile->nisn)->toBe('0012345678')
+        ->and($profile->jarak_tempuh_detail)->toBe('2.50')
+        ->and($profile->moda_transportasi_lainnya)->toBe('Perahu')
+        ->and($profile->hobi)->toBe('Membaca')
+        ->and($profile->cita_cita)->toBe('Dokter')
+        ->and($prospectiveStudent->ppdbParents()->where('role', 'father')->value('status_hidup'))->toBe('wafat')
+        ->and($prospectiveStudent->ppdbParents()->where('role', 'mother')->value('status_hidup'))->toBe('hidup')
+        ->and($prospectiveStudent->ppdbParents()->count())->toBe(2);
+});
+
+it('clears inactive conditional details and validates provided formats', function () {
+    $prospectiveStudent = ProspectiveStudent::factory()->create();
+    PpdbProfile::query()->create([
+        'prospective_student_id' => $prospectiveStudent->id,
+        'jarak_tempuh_kategori' => 'more_than_1_km',
+        'jarak_tempuh_detail' => '3.25',
+        'moda_transportasi' => 'lainnya',
+        'moda_transportasi_lainnya' => 'Perahu',
+    ]);
+    $this->actingAs(ppdbEditorUser());
+
+    $component = Livewire::test(PpdbApplicantEditor::class, ['prospectiveStudent' => $prospectiveStudent])
+        ->call('openEditor')
+        ->set('profile.nisn', '123')
+        ->set('profile.jarak_tempuh_detail', '1')
+        ->call('save')
+        ->assertHasErrors([
+            'profile.nisn' => 'digits',
+            'profile.jarak_tempuh_detail' => 'gt',
+        ]);
+
+    $component
+        ->set('profile.nisn', '')
+        ->set('profile.jarak_tempuh_kategori', 'less_than_1_km')
+        ->assertSet('profile.jarak_tempuh_detail', '')
+        ->set('profile.moda_transportasi', 'motor')
+        ->assertSet('profile.moda_transportasi_lainnya', '')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $profile = $prospectiveStudent->fresh()->ppdbProfile;
+    expect($profile->jarak_tempuh_detail)->toBeNull()
+        ->and($profile->moda_transportasi_lainnya)->toBeNull();
+});
+
+it('hides and clears NISN only for an applicant whose actual school level is TK', function () {
+    $class = SchoolClass::factory()->create(['level' => -1]);
+    $prospectiveStudent = ProspectiveStudent::factory()->create(['school_class_id' => $class->id]);
+    PpdbProfile::query()->create([
+        'prospective_student_id' => $prospectiveStudent->id,
+        'nisn' => '0012345678',
+    ]);
+    $this->actingAs(ppdbEditorUser());
+
+    Livewire::test(PpdbApplicantEditor::class, ['prospectiveStudent' => $prospectiveStudent])
+        ->call('openEditor')
+        ->assertSet('schoolLevel', 'TK')
+        ->assertDontSee('NISN')
+        ->set('student.nama_lengkap', 'Nama TK Diperbarui')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($prospectiveStudent->fresh()->ppdbProfile->nisn)->toBeNull();
 });
 
 it('loads trims updates and clears nullable asal sekolah in the admin editor', function () {
@@ -377,6 +524,24 @@ it('synchronizes only mapped shared fields to a converted student', function () 
     $prospectiveStudent = ProspectiveStudent::factory()->converted()->create([
         'converted_student_id' => $student->id,
     ]);
+    PpdbProfile::query()->create([
+        'prospective_student_id' => $prospectiveStudent->id,
+        'nisn' => '0012345678',
+        'jarak_tempuh_kategori' => 'less_than_1_km',
+        'moda_transportasi' => 'sepeda',
+        'hobi' => 'Membaca',
+        'cita_cita' => 'Dokter',
+    ]);
+    PpdbParent::query()->create([
+        'prospective_student_id' => $prospectiveStudent->id,
+        'role' => 'father',
+        'status_hidup' => 'hidup',
+    ]);
+    PpdbParent::query()->create([
+        'prospective_student_id' => $prospectiveStudent->id,
+        'role' => 'mother',
+        'status_hidup' => 'wafat',
+    ]);
     $unrelatedBefore = collect($student->getRawOriginal())->only(['nis', 'class_id', 'status', 'entry_date', 'foto'])->all();
     $this->actingAs(ppdbEditorUser());
 
@@ -407,6 +572,13 @@ it('synchronizes only mapped shared fields to a converted student', function () 
         ->and($student->tanggal_lahir->format('Y-m-d'))->toBe('2014-02-03')
         ->and($student->nama_ayah)->toBe('AYAH SINKRON')
         ->and($student->nama_ibu)->toBe('IBU SINKRON')
+        ->and($prospectiveStudent->fresh()->ppdbProfile->nisn)->toBe('0012345678')
+        ->and($prospectiveStudent->fresh()->ppdbProfile->jarak_tempuh_kategori)->toBe('less_than_1_km')
+        ->and($prospectiveStudent->fresh()->ppdbProfile->moda_transportasi)->toBe('sepeda')
+        ->and($prospectiveStudent->fresh()->ppdbProfile->hobi)->toBe('Membaca')
+        ->and($prospectiveStudent->fresh()->ppdbProfile->cita_cita)->toBe('Dokter')
+        ->and($prospectiveStudent->ppdbParents()->where('role', 'father')->value('status_hidup'))->toBe('hidup')
+        ->and($prospectiveStudent->ppdbParents()->where('role', 'mother')->value('status_hidup'))->toBe('wafat')
         ->and(collect($student->getRawOriginal())->only(['nis', 'class_id', 'status', 'entry_date', 'foto'])->all())->toEqual($unrelatedBefore);
 });
 

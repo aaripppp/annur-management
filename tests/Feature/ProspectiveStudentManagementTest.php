@@ -22,6 +22,45 @@ use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use ValueError;
 
+it('mengurutkan timestamp yang sama dengan id terbaru terlebih dahulu', function () {
+    $prospects = ProspectiveStudent::factory()->count(3)->create();
+    DB::table('prospective_students')
+        ->whereIn('id', $prospects->pluck('id')->all())
+        ->update(['created_at' => '2026-11-06 08:00:00']);
+    $expectedRegistrationNumbers = $prospects
+        ->sortByDesc('id')
+        ->pluck('registration_number')
+        ->all();
+
+    Livewire::test(ProspectiveStudentManagement::class)
+        ->assertSeeInOrder($expectedRegistrationNumbers);
+});
+
+it('mempertahankan pagination stabil untuk timestamp yang sama', function () {
+    $prospects = ProspectiveStudent::factory()->count(12)->create();
+    DB::table('prospective_students')
+        ->whereIn('id', $prospects->pluck('id')->all())
+        ->update(['created_at' => '2026-11-06 09:00:00']);
+    $orderedRegistrationNumbers = $prospects
+        ->sortByDesc('id')
+        ->pluck('registration_number')
+        ->values();
+    $firstPage = $orderedRegistrationNumbers->take(10)->all();
+    $secondPage = $orderedRegistrationNumbers->skip(10)->all();
+
+    $component = Livewire::test(ProspectiveStudentManagement::class)
+        ->assertSeeInOrder($firstPage)
+        ->assertDontSee($secondPage)
+        ->set('paginators.page', 2)
+        ->assertSeeInOrder($secondPage)
+        ->assertDontSee($firstPage);
+
+    $component
+        ->call('$refresh')
+        ->assertSeeInOrder($secondPage)
+        ->assertDontSee($firstPage);
+});
+
 it('membuat calon siswa baru', function () {
     $academicYear = AcademicYear::create([
         'year' => '2027/2028',

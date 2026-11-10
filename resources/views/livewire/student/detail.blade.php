@@ -103,24 +103,28 @@
                 </div>
             </div>
         </div>
+        @if($canViewBilling)
         <div class="flex items-center gap-2">
+            @if($canManageFinance)
             @if(!$canGenerateBillsAutomatically)
                 <button wire:click="openAddBill" class="flex items-center gap-1.5 text-primary font-label-md border border-primary rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors">
                     <span class="material-symbols-outlined text-[18px]">add_box</span>
                     {{ $manualAddBillLabel }}
                 </button>
             @endif
+            @endif
             <a href="{{ route('siswa.bills.pdf', ['student' => $student->id, 'academic_year' => $selectedAcademicYear]) }}" target="_blank" class="flex items-center gap-1.5 text-primary font-label-md border border-primary rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors" title="Cetak daftar tagihan siswa ke PDF.">
                 <span class="material-symbols-outlined text-[18px]">print</span>
                 Cetak Tagihan
             </a>
-            @if($canGenerateBillsAutomatically)
+            @if($canManageFinance && $canGenerateBillsAutomatically)
                 <button wire:click="openBillbook" class="flex items-center gap-1.5 text-on-surface-variant font-label-md border border-outline-variant rounded-xl px-3.5 py-2 hover:bg-surface-container transition-colors" title="Lengkapi tagihan yang belum ada untuk siswa lama.">
                     <span class="material-symbols-outlined text-[18px]">menu_book</span>
                     Lengkapi Tagihan
                 </button>
             @endif
         </div>
+        @endif
     </div>
 
     <!-- Local success feedback for same-page actions -->
@@ -157,7 +161,7 @@
         </div>
     @endif
 
-    <x-ppdb.detail-tabs prefix="student" />
+    <x-ppdb.detail-tabs prefix="student" :show-finance="$canViewBilling" />
 
     <div x-show="activeDetailTab === 'biodata'" id="student-panel-biodata" role="tabpanel" aria-labelledby="student-tab-biodata" tabindex="0">
         @if($student->prospectiveStudent)
@@ -171,7 +175,7 @@
     <div x-show="activeDetailTab === 'documents'" x-cloak id="student-panel-documents" role="tabpanel" aria-labelledby="student-tab-documents" tabindex="0">
         @if($student->prospectiveStudent)
             <x-ppdb.document-section :applicant="$student->prospectiveStudent" :student="$student" />
-            @can('replace', new App\Models\PpdbDocument())
+            @can('replaceDocument', $student->prospectiveStudent)
                 <livewire:ppdb-document-replacer :prospective-student-id="$student->prospectiveStudent->id" :student-id="$student->id" :key="'ppdb-doc-replacer-student-'.$student->id" />
             @endcan
         @else
@@ -183,9 +187,10 @@
         @endif
     </div>
 
+    @if($canViewBilling)
     <div x-show="activeDetailTab === 'finance'" x-cloak id="student-panel-finance" role="tabpanel" aria-labelledby="student-tab-finance" tabindex="0">
     <!-- Kartu riwayat konversi calon siswa -->
-    <x-student.registration-history-card :prospect="$registeredProspect" :summary="$registrationSummary" />
+    <x-student.registration-history-card :prospect="$registeredProspect" :summary="$registrationSummary" :read-only="! $canManageFinance" />
 
     <!-- Filter Periode Summary -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-stack-lg">
@@ -260,13 +265,13 @@
             <div class="p-8 text-center text-on-surface-variant">
                 <span class="material-symbols-outlined text-4xl mb-2 block">receipt_long</span>
                 <p>Belum ada tagihan untuk siswa ini.</p>
-                @if($canGenerateBillsAutomatically)
+                @if($canManageFinance && $canGenerateBillsAutomatically)
                     <p class="text-body-sm mt-1">Buku tagihan dibuat otomatis saat siswa ditambahkan. Gunakan "Lengkapi Tagihan" untuk membuat tagihan bagi siswa lama.</p>
                     <button wire:click="openAddBill" class="mt-4 inline-flex items-center gap-1.5 text-primary font-label-lg border border-primary/40 rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors">
                         <span class="material-symbols-outlined text-[18px]">add_box</span>
                         {{ $manualAddBillLabel }}
                     </button>
-                @else
+                @elseif($canManageFinance)
                     <p class="text-body-sm mt-1">Gunakan "Tambah Tagihan Lama" untuk mencatat kewajiban historis siswa.</p>
                 @endif
             </div>
@@ -282,13 +287,15 @@
                     </div>
                     <p class="text-body-sm text-on-surface-variant mt-0.5">{{ $group['count'] }} tagihan · Total sisa Rp {{ number_format($group['total_remaining'], 0, ',', '.') }}</p>
                 </div>
+                @if($canManageFinance)
                 <button wire:click="openAddBillForMonth({{ $group['period_month'] }}, {{ $group['period_year'] }})" class="flex items-center gap-1.5 text-primary font-label-lg border border-primary/40 rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors">
                     <span class="material-symbols-outlined text-[18px]">add_box</span>
                     {{ $manualAddBillLabel }}
                 </button>
+                @endif
             </div>
 
-                @include('livewire.student.bill-table', ['bills' => $group['bills'], 'applyMonthlyOrder' => true])
+                @include('livewire.student.bill-table', ['bills' => $group['bills'], 'applyMonthlyOrder' => true, 'readOnly' => ! $canManageFinance, 'showPaymentHistoryColumns' => $canManageFinance])
             </div>
         @endforeach
 
@@ -312,13 +319,15 @@
                         </div>
                         <p class="text-body-sm text-on-surface-variant mt-0.5">Tahun Ajaran {{ $group['academic_year'] }} · {{ $group['count'] }} tagihan · Total sisa Rp {{ number_format($group['total_remaining'], 0, ',', '.') }}</p>
                     </div>
+                    @if($canManageFinance)
                     <button wire:click="openAddBillForAcademicYear('{{ $group['academic_year'] }}')" class="flex items-center gap-1.5 text-primary font-label-lg border border-primary/40 rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors">
                         <span class="material-symbols-outlined text-[18px]">add_box</span>
                         {{ $manualAddBillLabel }}
                     </button>
+                    @endif
                 </div>
 
-                @include('livewire.student.bill-table', ['bills' => $group['bills']])
+                @include('livewire.student.bill-table', ['bills' => $group['bills'], 'readOnly' => ! $canManageFinance, 'showPaymentHistoryColumns' => $canManageFinance])
             </div>
         @endforeach
 
@@ -332,20 +341,22 @@
                         </div>
                         <p class="text-body-sm text-on-surface-variant mt-0.5">{{ $oneTimeBills->count() }} tagihan · Total sisa Rp {{ number_format($oneTimeBills->sum(fn ($bill) => (float) $bill->remaining_amount), 0, ',', '.') }}</p>
                     </div>
+                    @if($canManageFinance)
                     <button wire:click="openAddBillForOneTime" class="flex items-center gap-1.5 text-primary font-label-lg border border-primary/40 rounded-xl px-3.5 py-2 hover:bg-primary-fixed/50 transition-colors">
                         <span class="material-symbols-outlined text-[18px]">add_box</span>
                         {{ $manualAddBillLabel }}
                     </button>
+                    @endif
                 </div>
 
-                @include('livewire.student.bill-table', ['bills' => $oneTimeBills])
+                @include('livewire.student.bill-table', ['bills' => $oneTimeBills, 'readOnly' => ! $canManageFinance, 'showPaymentHistoryColumns' => $canManageFinance])
             </div>
         @endif
     @endif
     </div>
 
     <!-- Modal Generate Tagihan Sampai -->
-    @if($canGenerateBillsAutomatically && $isGenerateUntilOpen)
+    @if($canManageFinance && $canGenerateBillsAutomatically && $isGenerateUntilOpen)
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-sm" role="dialog" aria-modal="true">
             <div class="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
                 <div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0">
@@ -376,7 +387,7 @@
     @endif
 
     <!-- Modal Generate Buku Tagihan -->
-    @if($canGenerateBillsAutomatically && $isBillbookOpen)
+    @if($canManageFinance && $canGenerateBillsAutomatically && $isBillbookOpen)
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-sm" role="dialog" aria-modal="true">
             <div class="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
                 <div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0">
@@ -407,7 +418,7 @@
     @endif
 
     <!-- Modal Edit Tagihan -->
-    @if($isEditOpen && $editBillId)
+    @if($canManageFinance && $isEditOpen && $editBillId)
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-sm" role="dialog" aria-modal="true">
             <div class="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                 <div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0">
@@ -466,7 +477,7 @@
     @endif
 
     <!-- Modal Tambah Tagihan Manual -->
-    @if($isAddOpen)
+    @if($canManageFinance && $isAddOpen)
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-sm" role="dialog" aria-modal="true">
             <div class="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
                 <div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0">
@@ -623,7 +634,7 @@
     @endif
 
     <!-- Modal Konfirmasi Hapus Tagihan -->
-    @if($isDeleteOpen && $deleteBillId)
+    @if($canManageFinance && $isDeleteOpen && $deleteBillId)
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-sm" role="dialog" aria-modal="true">
             <div class="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                 <div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0">
@@ -658,5 +669,6 @@
                 </div>
             </div>
         </div>
+    @endif
     @endif
 </div>

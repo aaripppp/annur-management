@@ -4,13 +4,13 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Biodata Calon Siswa PPDB - {{ $registration_number }}</title>
     <style>
-        @page { size: A4 portrait; margin: 9mm 9mm 10mm; }
+        @page { size: A4 portrait; margin: 7mm 8mm 8mm; }
         * { box-sizing: border-box; }
-        body { margin: 0; color: #1b2733; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; line-height: 1.22; }
-        .header { width: 100%; margin-bottom: 5px; border-collapse: collapse; border-bottom: 1.2pt solid #173a5e; page-break-after: avoid; }
-        .header td { padding: 0 0 4px; vertical-align: middle; }
+        body { margin: 0; color: #1b2733; font-family: "DejaVu Sans", sans-serif; font-size: 7.6pt; line-height: 1.16; }
+        .header { width: 100%; margin-bottom: 3px; border-collapse: collapse; border-bottom: 1.2pt solid #173a5e; page-break-after: avoid; }
+        .header td { padding: 0 0 3px; vertical-align: middle; }
         .logo-cell { width: 15%; }
-        .logo { width: auto; height: 34px; }
+        .logo { width: auto; height: 31px; }
         .title-cell { width: 64%; text-align: center; }
         .brand { color: #173a5e; font-size: 7.2pt; font-weight: bold; letter-spacing: 0.5px; }
         .title { margin-top: 1px; color: #173a5e; font-size: 11pt; font-weight: bold; letter-spacing: 0.3px; }
@@ -19,15 +19,15 @@
         .registration-box { display: inline-block; padding: 3px 6px; border: 0.5pt solid #a9b8c6; background: #f4f7fa; text-align: left; }
         .registration-label { color: #53697d; font-size: 6.2pt; text-transform: uppercase; letter-spacing: 0.3px; }
         .registration-number { margin-top: 1px; color: #173a5e; font-size: 8pt; font-weight: bold; word-wrap: break-word; }
-        .section { margin-top: 5px; }
-        .section-title { padding: 2px 5px; border: 0.5pt solid #173a5e; background: #173a5e; color: #fff; font-size: 8pt; font-weight: bold; page-break-after: avoid; break-after: avoid; }
-        .card-title { padding: 2px 5px; border: 0.5pt solid #a9b8c6; border-bottom: 0; background: #e8f0f7; color: #173a5e; font-size: 7.6pt; font-weight: bold; page-break-after: avoid; break-after: avoid; }
-        .subsection-title { padding: 2px 5px; border: 0.5pt solid #a9b8c6; border-bottom: 0; background: #e8f0f7; color: #173a5e; font-size: 7.6pt; font-weight: bold; page-break-after: avoid; break-after: avoid; }
+        .section { margin-top: 3px; }
+        .section-title { padding: 1.5px 4px; border: 0.5pt solid #173a5e; background: #173a5e; color: #fff; font-size: 7.7pt; font-weight: bold; page-break-after: avoid; break-after: avoid; }
+        .card-title { padding: 1.5px 4px; border: 0.5pt solid #a9b8c6; border-bottom: 0; background: #e8f0f7; color: #173a5e; font-size: 7.4pt; font-weight: bold; page-break-after: avoid; break-after: avoid; }
+        .subsection-title { padding: 1.5px 4px; border: 0.5pt solid #a9b8c6; border-bottom: 0; background: #e8f0f7; color: #173a5e; font-size: 7.4pt; font-weight: bold; page-break-after: avoid; break-after: avoid; }
         table.layout { width: 100%; border-collapse: collapse; table-layout: fixed; }
         table.layout > tbody > tr > td { padding: 0; vertical-align: top; }
         table.kv, table.data, table.siblings { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        table.kv td, table.data td, table.siblings th, table.siblings td { padding: 1.5px 4px; border: 0.5pt solid #a9b8c6; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; }
-        table.kv td.label, table.data td.label { background: #f4f7fa; color: #34495e; font-size: 7.4pt; font-weight: bold; }
+        table.kv td, table.data td, table.siblings th, table.siblings td { padding: 1px 3px; border: 0.5pt solid #a9b8c6; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; }
+        table.kv td.label, table.data td.label { background: #f4f7fa; color: #34495e; font-size: 7.2pt; font-weight: bold; }
         table.data td.label { width: 38%; }
         table.data td.value { width: 62%; }
         table.kv td.label { width: 18%; }
@@ -39,7 +39,7 @@
         .parent-card { page-break-inside: avoid; break-inside: avoid; }
         .guardian-block { page-break-inside: avoid; break-inside: avoid; }
         table.siblings thead { display: table-header-group; }
-        table.siblings th { background: #e8f0f7; color: #173a5e; font-size: 7.4pt; text-align: left; }
+        table.siblings th { background: #e8f0f7; color: #173a5e; font-size: 7.2pt; text-align: left; }
         table.siblings tr { page-break-inside: avoid; break-inside: avoid; }
         table.siblings td.number { width: 5%; text-align: center; }
         table.siblings th:nth-child(2), table.siblings td:nth-child(2) { width: 33%; }
@@ -47,7 +47,7 @@
         table.siblings th:nth-child(4), table.siblings td:nth-child(4) { width: 15%; }
         table.siblings th:nth-child(5), table.siblings td:nth-child(5) { width: 29%; }
         .empty-row { text-align: center; color: #53697d; }
-        .footer { margin-top: 7px; padding-top: 3px; border-top: 0.5pt solid #a9b8c6; color: #53697d; font-size: 6.8pt; page-break-inside: avoid; break-inside: avoid; }
+        .footer { margin-top: 4px; padding-top: 2px; border-top: 0.5pt solid #a9b8c6; color: #53697d; font-size: 6.6pt; page-break-inside: avoid; break-inside: avoid; }
         .footer-table { width: 100%; border-collapse: collapse; }
         .footer-table td { padding: 0; vertical-align: top; }
         .footer-right { text-align: right; }
@@ -103,7 +103,34 @@
 
     <div class="section">
         <div class="section-title">B. IDENTITAS CALON SISWA</div>
-        <table class="kv">
+        @php
+            $identityFields = [
+                ['label' => 'Nama Lengkap', 'value' => $identity['nama_lengkap']],
+                ['label' => 'Nama Panggilan', 'value' => $identity['nama_panggilan']],
+                ['label' => 'Jenis Kelamin', 'value' => $identity['jenis_kelamin']],
+                ['label' => 'NIK Siswa', 'value' => $identity['nik_siswa']],
+                ['label' => 'Nomor KK', 'value' => $identity['nomor_kk']],
+                ['label' => 'Nomor Akta Kelahiran', 'value' => $identity['nomor_akta_kelahiran']],
+                ['label' => 'Tempat Lahir', 'value' => $identity['tempat_lahir']],
+                ['label' => 'Tanggal Lahir', 'value' => $identity['tanggal_lahir']],
+                ['label' => 'Asal Sekolah', 'value' => $identity['asal_sekolah']],
+                ['label' => 'Anak ke-', 'value' => $identity['anak_ke']],
+                ['label' => 'Jumlah Saudara', 'value' => $identity['jumlah_saudara']],
+                ['label' => 'Status Anak', 'value' => $identity['status_anak']],
+                ['label' => 'Hobi', 'value' => $identity['hobi']],
+                ['label' => 'Cita-cita', 'value' => $identity['cita_cita']],
+                ['label' => 'Agama', 'value' => $identity['agama']],
+                ['label' => 'Bahasa Sehari-hari', 'value' => $identity['bahasa_sehari_hari']],
+            ];
+
+            if ($show_nisn) {
+                array_splice($identityFields, 4, 0, [[
+                    'label' => 'NISN',
+                    'value' => $identity['nisn'],
+                ]]);
+            }
+        @endphp
+        <table class="kv identity-table">
             <colgroup>
                 <col style="width: 17%">
                 <col style="width: 33%">
@@ -111,48 +138,18 @@
                 <col style="width: 33%">
             </colgroup>
             <tbody>
-                <tr>
-                    <td class="label">Nama Lengkap</td>
-                    <td class="value">{{ $identity['nama_lengkap'] }}</td>
-                    <td class="label">Nama Panggilan</td>
-                    <td class="value">{{ $identity['nama_panggilan'] }}</td>
-                </tr>
-                <tr>
-                    <td class="label">Jenis Kelamin</td>
-                    <td class="value">{{ $identity['jenis_kelamin'] }}</td>
-                    <td class="label">NIK Siswa</td>
-                    <td class="value">{{ $identity['nik_siswa'] }}</td>
-                </tr>
-                <tr>
-                    <td class="label">Nomor KK</td>
-                    <td class="value">{{ $identity['nomor_kk'] }}</td>
-                    <td class="label">Nomor Akta Kelahiran</td>
-                    <td class="value">{{ $identity['nomor_akta_kelahiran'] }}</td>
-                </tr>
-                <tr>
-                    <td class="label">Tempat Lahir</td>
-                    <td class="value">{{ $identity['tempat_lahir'] }}</td>
-                    <td class="label">Tanggal Lahir</td>
-                    <td class="value">{{ $identity['tanggal_lahir'] }}</td>
-                </tr>
-                <tr>
-                    <td class="label">Asal Sekolah</td>
-                    <td class="value">{{ $identity['asal_sekolah'] }}</td>
-                    <td class="label">Anak ke-</td>
-                    <td class="value">{{ $identity['anak_ke'] }}</td>
-                </tr>
-                <tr>
-                    <td class="label">Jumlah Saudara</td>
-                    <td class="value">{{ $identity['jumlah_saudara'] }}</td>
-                    <td class="label">Status Anak</td>
-                    <td class="value">{{ $identity['status_anak'] }}</td>
-                </tr>
-                <tr>
-                    <td class="label">Agama</td>
-                    <td class="value">{{ $identity['agama'] }}</td>
-                    <td class="label">Bahasa Sehari-hari</td>
-                    <td class="value">{{ $identity['bahasa_sehari_hari'] }}</td>
-                </tr>
+                @foreach(array_chunk($identityFields, 2) as $identityRow)
+                    <tr data-identity-row>
+                        @foreach($identityRow as $field)
+                            <td class="label">{{ $field['label'] }}</td>
+                            <td class="value">{{ $field['value'] }}</td>
+                        @endforeach
+                        @if(count($identityRow) === 1)
+                            <td data-identity-empty aria-hidden="true"></td>
+                            <td data-identity-empty aria-hidden="true"></td>
+                        @endif
+                    </tr>
+                @endforeach
             </tbody>
         </table>
     </div>
@@ -171,6 +168,14 @@
                         <tr><td class="label">Kabupaten / Kota</td><td class="value">{{ $address['kabupaten_kota'] }}</td></tr>
                         <tr><td class="label">Provinsi</td><td class="value">{{ $address['provinsi'] }}</td></tr>
                         <tr><td class="label">Kode Pos</td><td class="value">{{ $address['kode_pos'] }}</td></tr>
+                        <tr><td class="label">Jarak Tempuh</td><td class="value">{{ $address['jarak_tempuh'] }}</td></tr>
+                        @if($address['show_jarak_tempuh_detail'])
+                            <tr><td class="label">Detail Jarak</td><td class="value">{{ $address['jarak_tempuh_detail'] }}</td></tr>
+                        @endif
+                        <tr><td class="label">Moda Transportasi</td><td class="value">{{ $address['moda_transportasi'] }}</td></tr>
+                        @if($address['show_moda_transportasi_lainnya'])
+                            <tr><td class="label">Transportasi Lainnya</td><td class="value">{{ $address['moda_transportasi_lainnya'] }}</td></tr>
+                        @endif
                     </table>
                 </td>
                 <td style="width: 2%"></td>
@@ -194,13 +199,14 @@
 
     <div class="section">
         <div class="parents-group">
-            <div class="section-title">E. DATA ORANG TUA / WALI</div>
+            <div class="section-title">E. DATA ORANG TUA</div>
             <table class="layout parents-row">
                 <tr>
                     <td class="parent-card" style="width: 49%">
                         <div class="card-title">Ayah</div>
                         <table class="data">
                             <tr><td class="label">Nama</td><td class="value">{{ $father['nama'] }}</td></tr>
+                            <tr><td class="label">Status Hidup</td><td class="value">{{ $father['status_hidup'] }}</td></tr>
                             <tr><td class="label">NIK</td><td class="value">{{ $father['nik'] }}</td></tr>
                             <tr><td class="label">Tempat Lahir</td><td class="value">{{ $father['tempat_lahir'] }}</td></tr>
                             <tr><td class="label">Tanggal Lahir</td><td class="value">{{ $father['tanggal_lahir'] }}</td></tr>
@@ -216,6 +222,7 @@
                         <div class="card-title">Ibu</div>
                         <table class="data">
                             <tr><td class="label">Nama</td><td class="value">{{ $mother['nama'] }}</td></tr>
+                            <tr><td class="label">Status Hidup</td><td class="value">{{ $mother['status_hidup'] }}</td></tr>
                             <tr><td class="label">NIK</td><td class="value">{{ $mother['nik'] }}</td></tr>
                             <tr><td class="label">Tempat Lahir</td><td class="value">{{ $mother['tempat_lahir'] }}</td></tr>
                             <tr><td class="label">Tanggal Lahir</td><td class="value">{{ $mother['tanggal_lahir'] }}</td></tr>
@@ -229,11 +236,12 @@
                 </tr>
             </table>
         </div>
+    </div>
 
-        @if($guardian !== null)
-            <div class="guardian-block">
-                <div class="subsection-title">Wali</div>
-                <table class="kv">
+    @if($guardian !== null)
+        <div class="section guardian-block">
+                <div class="section-title">F. DATA WALI</div>
+                <table class="kv guardian-table">
                     <colgroup>
                         <col style="width: 17%">
                         <col style="width: 33%">
@@ -271,12 +279,11 @@
                         </tr>
                     </tbody>
                 </table>
-            </div>
-        @endif
-    </div>
+        </div>
+    @endif
 
     <div class="section">
-        <div class="section-title">F. DATA SAUDARA KANDUNG</div>
+        <div class="section-title">{{ $guardian !== null ? 'G' : 'F' }}. DATA SAUDARA KANDUNG</div>
         <table class="siblings">
             <thead>
                 <tr>

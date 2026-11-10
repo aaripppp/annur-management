@@ -9,26 +9,38 @@ class PpdbDocumentPolicy
 {
     public function view(User $user, PpdbDocument $ppdbDocument): bool
     {
-        return $this->hasDocumentAccess($user);
+        return $this->hasDocumentAccess($user, $ppdbDocument);
     }
 
     public function download(User $user, PpdbDocument $ppdbDocument): bool
     {
-        return $this->hasDocumentAccess($user);
+        return $this->hasDocumentAccess($user, $ppdbDocument);
     }
 
     public function replace(User $user, ?PpdbDocument $ppdbDocument = null): bool
     {
-        return $this->hasDocumentAccess($user);
+        return $ppdbDocument !== null && $this->hasDocumentAccess($user, $ppdbDocument);
     }
 
     public function update(User $user, ?PpdbDocument $ppdbDocument = null): bool
     {
-        return $this->hasDocumentAccess($user);
+        return $ppdbDocument !== null && $this->hasDocumentAccess($user, $ppdbDocument);
     }
 
-    private function hasDocumentAccess(User $user): bool
+    private function hasDocumentAccess(User $user, PpdbDocument $ppdbDocument): bool
     {
-        return $user->isActive() && ($user->isAdmin() || $user->isSuperAdmin());
+        if (! $user->isActive()) {
+            return false;
+        }
+
+        if ($user->isAdmin() || $user->isSuperAdmin()) {
+            return true;
+        }
+
+        $prospectiveStudent = $ppdbDocument->relationLoaded('prospectiveStudent')
+            ? $ppdbDocument->prospectiveStudent
+            : $ppdbDocument->prospectiveStudent()->first();
+
+        return $prospectiveStudent !== null && $user->can('viewBiodata', $prospectiveStudent);
     }
 }

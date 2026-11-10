@@ -1,6 +1,7 @@
 @props([
     'prospect' => null,
     'summary' => null,
+    'readOnly' => false,
 ])
 
 @if ($prospect && $summary)
@@ -21,6 +22,7 @@
                 </div>
                 <p class="text-body-sm text-on-surface-variant mt-0.5">No. Pendaftaran {{ $prospect->registration_number }} &bull; Tahun Ajaran Tujuan {{ $prospect->academicYear?->year ?? '-' }}</p>
             </div>
+            @unless($readOnly)
             <div class="flex flex-wrap items-center gap-2 shrink-0">
                 <a href="{{ route('pembayaran.prospective.workspace', $prospect) }}" wire:navigate class="inline-flex items-center gap-1.5 text-on-surface-variant font-label-md border border-outline-variant rounded-xl px-3.5 py-2 hover:bg-surface-container transition-colors">
                     <span class="material-symbols-outlined text-[18px]">receipt_long</span>
@@ -33,6 +35,7 @@
                     </a>
                 @endif
             </div>
+            @endunless
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-outline-variant/60">
             <div class="px-5 py-4">

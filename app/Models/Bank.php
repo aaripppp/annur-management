@@ -83,6 +83,15 @@ class Bank extends Model
         return $accountNumber !== '' ? $accountNumber : null;
     }
 
+    public function paymentHistoryLabel(): string
+    {
+        $accountNumber = $this->displayAccountNumber();
+
+        return $accountNumber === null
+            ? $this->paymentLabel()
+            : $this->name.' · '.$accountNumber;
+    }
+
     public function optionLabel(): string
     {
         return $this->displayLabel();

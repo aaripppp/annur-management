@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ProfileUpdateRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\View\View;
 
@@ -26,29 +25,30 @@ class ProfileController extends Controller
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->user()->fill($request->validated())->save();
+        $user = $request->user();
+        $validated = $request->validated();
+        $payload = [
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+        ];
 
-        return Redirect::route('profile.edit')->with('status', 'profile-updated');
+        if (! $user->hasReservedPosition()) {
+            $payload['position'] = ($validated['position'] ?? null) ?: null;
+        }
+
+        $user->update($payload);
+
+        return Redirect::route('profile.edit')->with('profile_notification', [
+            'type' => 'success',
+            'message' => 'Profil berhasil diperbarui.',
+        ]);
     }
 
     /**
-     * Delete the user's account.
+     * Deny self-service account deletion.
      */
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(): never
     {
-        $request->validateWithBag('userDeletion', [
-            'password' => ['required', 'current_password'],
-        ]);
-
-        $user = $request->user();
-
-        Auth::logout();
-
-        $user->delete();
-
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
-        return Redirect::to('/');
+        abort(403);
     }
 }

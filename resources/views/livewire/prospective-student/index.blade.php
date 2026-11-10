@@ -1,22 +1,61 @@
 <div>
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-stack-lg">
+    <div class="mb-stack-lg flex flex-col gap-4">
         <div class="min-w-0">
             <h1 class="text-display-sm font-display-sm text-on-surface">Data Calon Siswa</h1>
             <p class="text-body-md text-on-surface-variant mt-1">Kelola pendaftar calon siswa untuk tahun ajaran tujuan.</p>
         </div>
-        <div class="flex flex-wrap items-center gap-3">
-            <button type="button" wire:click="openModal" class="bg-primary hover:bg-primary/90 text-on-primary px-5 py-2.5 rounded-xl font-label-lg transition-colors flex items-center gap-2 w-fit shrink-0 whitespace-nowrap">
-                <span class="material-symbols-outlined text-[20px]">add</span>
-                Tambah Calon Siswa
-            </button>
-            <a href="{{ route('calon-siswa.import') }}" wire:navigate class="border border-primary text-primary hover:bg-primary-fixed px-5 py-2.5 rounded-xl font-label-lg transition-colors flex items-center gap-2 w-fit shrink-0 whitespace-nowrap">
-                <span class="material-symbols-outlined text-[20px]">upload_file</span>
-                Import Calon Siswa
-            </a>
-            <a href="{{ route('calon-siswa.update') }}" wire:navigate class="border border-primary text-primary hover:bg-primary-fixed px-5 py-2.5 rounded-xl font-label-lg transition-colors flex items-center gap-2 w-fit shrink-0 whitespace-nowrap">
-                <span class="material-symbols-outlined text-[20px]">edit_note</span>
-                Update Data Calon Siswa
-            </a>
+
+        <div class="flex flex-col gap-3 2xl:flex-row 2xl:items-end 2xl:justify-between">
+            @can('exportBiodataRecap', \App\Models\ProspectiveStudent::class)
+                <form method="GET" action="{{ route('calon-siswa.biodata-recap.export') }}" class="grid w-full grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:w-auto lg:grid-cols-[minmax(10rem,12rem)_minmax(8rem,10rem)_auto]">
+                    <label class="block min-w-0">
+                        <span class="mb-1 block text-label-sm text-on-surface-variant">Tahun Ajaran</span>
+                        <select name="academic_year_id" required class="h-11 w-full rounded-xl border-outline-variant py-0 text-body-md focus:border-primary focus:ring-primary">
+                            <option value="" selected disabled>Pilih tahun ajaran</option>
+                            @foreach($academicYears as $academicYear)
+                                <option value="{{ $academicYear->id }}">{{ $academicYear->year }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <label class="block min-w-0">
+                        <span class="mb-1 block text-label-sm text-on-surface-variant">Jenjang</span>
+                        @if($isTuUnit)
+                            <input type="hidden" name="school_level" value="{{ auth()->user()->school_level->value }}">
+                            <div class="flex h-11 items-center rounded-xl border border-outline-variant px-3 text-body-md text-on-surface">{{ auth()->user()->school_level->value }}</div>
+                        @else
+                            <select name="school_level" required class="h-11 w-full rounded-xl border-outline-variant py-0 text-body-md focus:border-primary focus:ring-primary">
+                                <option value="" selected disabled>Pilih jenjang</option>
+                                @foreach($levels as $level)
+                                    <option value="{{ $level->value }}">{{ $level->value }}</option>
+                                @endforeach
+                            </select>
+                        @endif
+                    </label>
+                    <button type="submit" class="inline-flex h-11 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-primary px-4 text-label-md font-label-md text-primary transition-colors hover:bg-primary-fixed lg:w-auto">
+                        <span class="material-symbols-outlined text-[20px]">download</span>
+                        Export Excel Biodata
+                    </button>
+                </form>
+            @endcan
+
+            <div class="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center 2xl:w-auto 2xl:justify-end">
+                <button type="button" wire:click="openModal" class="inline-flex h-11 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-5 text-label-md font-label-md text-on-primary transition-colors hover:bg-primary/90 sm:w-auto">
+                    <span class="material-symbols-outlined text-[20px]">add</span>
+                    Tambah Calon Siswa
+                </button>
+                @can('bulkUpdate', \App\Models\ProspectiveStudent::class)
+                    <a href="{{ route('calon-siswa.update') }}" wire:navigate class="inline-flex h-11 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-primary px-5 text-label-md font-label-md text-primary transition-colors hover:bg-primary-fixed sm:w-auto">
+                        <span class="material-symbols-outlined text-[20px]">edit_note</span>
+                        Update Biodata Excel
+                    </a>
+                @endcan
+                @unless($isTuUnit)
+                    <a href="{{ route('calon-siswa.import') }}" wire:navigate class="inline-flex h-11 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-primary px-5 text-label-md font-label-md text-primary transition-colors hover:bg-primary-fixed sm:w-auto">
+                        <span class="material-symbols-outlined text-[20px]">upload_file</span>
+                        Import Calon Siswa
+                    </a>
+                @endunless
+            </div>
         </div>
     </div>
 
@@ -31,6 +70,12 @@
         <div x-data="{ show: true }" x-init="setTimeout(() => show = false, 5000)" x-show="show" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-x-8" x-transition:enter-end="opacity-100 translate-x-0" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100 translate-x-0" x-transition:leave-end="opacity-0 translate-x-8" class="fixed top-24 right-8 z-50 bg-error-container border border-error text-on-error-container px-5 py-4 rounded-xl shadow-lg flex items-center gap-3 min-w-[300px]">
             <span class="material-symbols-outlined text-error">error</span>
             <p class="font-body-md">{{ session('error') }}</p>
+        </div>
+    @endif
+
+    @if($errors->hasAny(['academic_year_id', 'school_level', 'export']))
+        <div class="mb-stack-lg rounded-xl border border-error bg-error-container px-4 py-3 text-body-sm text-on-error-container" role="alert">
+            {{ $errors->first('academic_year_id') ?: ($errors->first('school_level') ?: $errors->first('export')) }}
         </div>
     @endif
 
@@ -129,7 +174,7 @@
 <div class="p-5 border-b border-outline-variant flex flex-col gap-4">
                 <div>
                     <h3 class="text-headline-sm font-headline-sm text-on-surface">Cari & Filter Calon Siswa</h3>
-                    <p class="text-body-sm text-on-surface-variant mt-1">Cari atau filter berdasarkan tahun ajaran, jenjang, kelas tujuan, kategori pendaftaran, status pendaftaran, dan status tagihan.</p>
+                    <p class="text-body-sm text-on-surface-variant mt-1">Cari atau filter berdasarkan tahun ajaran, jenjang, kelas tujuan, kategori pendaftaran{{ $isTuUnit ? ', dan status pendaftaran.' : ', status pendaftaran, dan status tagihan.' }}</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
                     <div class="relative flex-1 sm:flex-initial sm:w-64">
@@ -166,12 +211,14 @@
                             <option value="{{ $status->value }}">{{ $status->label() }}</option>
                         @endforeach
                     </select>
-                    <select wire:model.live="filterBillStatus" class="w-full sm:w-44 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2">
-                        <option value="">Semua Tagihan</option>
-                        @foreach($billStatusOptions as $billStatusValue => $billStatusLabel)
-                            <option value="{{ $billStatusValue }}">{{ $billStatusLabel }}</option>
-                        @endforeach
-                    </select>
+                    @unless($isTuUnit)
+                        <select wire:model.live="filterBillStatus" class="w-full sm:w-44 border-outline-variant focus:border-primary focus:ring-primary rounded-lg shadow-sm text-body-md py-2">
+                            <option value="">Semua Tagihan</option>
+                            @foreach($billStatusOptions as $billStatusValue => $billStatusLabel)
+                                <option value="{{ $billStatusValue }}">{{ $billStatusLabel }}</option>
+                            @endforeach
+                        </select>
+                    @endunless
                 </div>
             </div>
         <div class="overflow-x-auto">
@@ -185,7 +232,9 @@
                         <th class="p-4">Tahun Ajaran Tujuan</th>
                         <th class="p-4">Kelas Tujuan</th>
                         <th class="p-4">Status</th>
-                        <th class="p-4">Tagihan</th>
+                        @unless($isTuUnit)
+                            <th class="p-4">Tagihan</th>
+                        @endunless
                         <th class="p-4">Orang Tua</th>
                         <th class="p-4">No. HP</th>
                         <th class="p-4 text-right">Aksi</th>
@@ -222,50 +271,71 @@
                                     {{ $prospectiveStudent->status_label }}
                                 </span>
                             </td>
-                            <td class="p-4">
-                                @php($billStatus = $prospectiveStudent->bill_status)
-                                @if($billStatus === 'none')
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm bg-surface-container-high text-on-surface-variant">Belum Ada Tagihan</span>
-                                @elseif($billStatus === \App\Models\ProspectiveStudentBill::STATUS_PARTIAL)
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm bg-yellow-100 text-yellow-800">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-yellow-600"></span>Sebagian
-                                    </span>
-                                @elseif($billStatus === \App\Models\ProspectiveStudentBill::STATUS_PAID)
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm bg-tertiary-fixed text-on-tertiary-fixed">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-on-tertiary-fixed"></span>Lunas
-                                    </span>
-                                @else
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm bg-error-container text-on-error-container">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-error"></span>Belum Bayar
-                                    </span>
-                                @endif
-                            </td>
+                            @unless($isTuUnit)
+                                <td class="p-4">
+                                    @php($billStatus = $prospectiveStudent->bill_status)
+                                    @if($billStatus === 'none')
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm bg-surface-container-high text-on-surface-variant">Belum Ada Tagihan</span>
+                                    @elseif($billStatus === \App\Models\ProspectiveStudentBill::STATUS_PARTIAL)
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm bg-yellow-100 text-yellow-800">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-yellow-600"></span>Sebagian
+                                        </span>
+                                    @elseif($billStatus === \App\Models\ProspectiveStudentBill::STATUS_PAID)
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm bg-tertiary-fixed text-on-tertiary-fixed">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-on-tertiary-fixed"></span>Lunas
+                                        </span>
+                                    @else
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm bg-error-container text-on-error-container">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-error"></span>Belum Bayar
+                                        </span>
+                                    @endif
+                                </td>
+                            @endunless
                             <td class="p-4 text-on-surface-variant">{{ $prospectiveStudent->nama_orang_tua ?? '—' }}</td>
                             <td class="p-4 text-on-surface-variant font-numeric-data">{{ $prospectiveStudent->no_telp_orang_tua ?? '—' }}</td>
                             <td class="p-4 text-right">
                                 <div class="flex justify-end gap-1">
-                                    <a href="{{ route('calon-siswa.show', $prospectiveStudent) }}" wire:navigate class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg" title="Lihat Detail">
-                                        <span class="material-symbols-outlined text-[20px]">visibility</span>
-                                    </a>
-                                    @if(! $prospectiveStudent->isConverted())
-                                        <button type="button" wire:click="edit({{ $prospectiveStudent->id }})" class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg" title="Edit">
-                                            <span class="material-symbols-outlined text-[20px]">edit</span>
-                                        </button>
-                                        @if($prospectiveStudent->status === \App\Enums\ProspectiveStudentStatus::Registered && $prospectiveStudent->converted_student_id === null)
-                                            <button type="button" wire:click="convertProspect({{ $prospectiveStudent->id }})" class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg" title="Jadikan Siswa">
-                                                <span class="material-symbols-outlined text-[20px]">school</span>
+                                    @if($isTuUnit)
+                                        <a href="{{ route('calon-siswa.show', $prospectiveStudent) }}" wire:navigate class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg" title="Lihat Detail">
+                                            <span class="material-symbols-outlined text-[20px]">visibility</span>
+                                        </a>
+                                        @if(! $prospectiveStudent->isConverted())
+                                            <button type="button" wire:click="edit({{ $prospectiveStudent->id }})" class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg" title="Edit">
+                                                <span class="material-symbols-outlined text-[20px]">edit</span>
+                                            </button>
+                                            @if($prospectiveStudent->status === \App\Enums\ProspectiveStudentStatus::Registered && $prospectiveStudent->converted_student_id === null)
+                                                <button type="button" wire:click="convertProspect({{ $prospectiveStudent->id }})" class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg" title="Jadikan Siswa">
+                                                    <span class="material-symbols-outlined text-[20px]">school</span>
+                                                </button>
+                                            @endif
+                                            <button type="button" wire:click="confirmDelete({{ $prospectiveStudent->id }})" class="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg" title="Hapus">
+                                                <span class="material-symbols-outlined text-[20px]">delete</span>
                                             </button>
                                         @endif
-                                        <button type="button" wire:click="confirmDelete({{ $prospectiveStudent->id }})" class="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg" title="Hapus">
-                                            <span class="material-symbols-outlined text-[20px]">delete</span>
-                                        </button>
+                                    @else
+                                        <a href="{{ route('calon-siswa.show', $prospectiveStudent) }}" wire:navigate class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg" title="Lihat Detail">
+                                            <span class="material-symbols-outlined text-[20px]">visibility</span>
+                                        </a>
+                                        @if(! $prospectiveStudent->isConverted())
+                                            <button type="button" wire:click="edit({{ $prospectiveStudent->id }})" class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg" title="Edit">
+                                                <span class="material-symbols-outlined text-[20px]">edit</span>
+                                            </button>
+                                            @if($prospectiveStudent->status === \App\Enums\ProspectiveStudentStatus::Registered && $prospectiveStudent->converted_student_id === null)
+                                                <button type="button" wire:click="convertProspect({{ $prospectiveStudent->id }})" class="p-2 text-on-surface-variant hover:text-primary hover:bg-primary-fixed/50 rounded-lg" title="Jadikan Siswa">
+                                                    <span class="material-symbols-outlined text-[20px]">school</span>
+                                                </button>
+                                            @endif
+                                            <button type="button" wire:click="confirmDelete({{ $prospectiveStudent->id }})" class="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg" title="Hapus">
+                                                <span class="material-symbols-outlined text-[20px]">delete</span>
+                                            </button>
+                                        @endif
                                     @endif
                                 </div>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="11" class="p-10 text-center text-on-surface-variant">
+                            <td colspan="{{ $isTuUnit ? 10 : 11 }}" class="p-10 text-center text-on-surface-variant">
                                 <span class="material-symbols-outlined text-4xl block mb-2">person_search</span>
                                 Tidak ada calon siswa yang ditemukan.
                             </td>

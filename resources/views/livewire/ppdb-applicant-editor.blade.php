@@ -53,11 +53,18 @@
                                 <div><label class="{{ $labelClass }}" for="ppdb-birthplace">Tempat Lahir</label><input id="ppdb-birthplace" type="text" wire:model="profile.tempat_lahir" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.tempat_lahir')" class="mt-1" /></div>
                                 <div><label class="{{ $labelClass }}" for="ppdb-birthdate">Tanggal Lahir</label><input id="ppdb-birthdate" type="date" wire:model="profile.tanggal_lahir" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.tanggal_lahir')" class="mt-1" /></div>
                                 <div><label class="{{ $labelClass }}" for="ppdb-school-origin">Asal Sekolah</label><input id="ppdb-school-origin" type="text" maxlength="255" wire:model="profile.asal_sekolah" class="{{ $inputClass }}"><p class="mt-1 text-xs text-on-surface-variant">Kosongkan jika belum pernah sekolah.</p><x-input-error :messages="$errors->get('profile.asal_sekolah')" class="mt-1" /></div>
-                                <div><label class="{{ $labelClass }}" for="ppdb-nik">NIK Siswa</label><input id="ppdb-nik" type="text" inputmode="numeric" maxlength="16" wire:model="profile.nik_siswa" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.nik_siswa')" class="mt-1" /></div>
+                                <div>
+                                    <label class="{{ $labelClass }}" for="ppdb-nik">NIK Siswa</label><input id="ppdb-nik" type="text" inputmode="numeric" maxlength="16" wire:model="profile.nik_siswa" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.nik_siswa')" class="mt-1" />
+                                    @if($schoolLevel !== 'TK')
+                                        <div class="mt-4"><label class="{{ $labelClass }}" for="ppdb-nisn">NISN</label><input id="ppdb-nisn" type="text" inputmode="numeric" maxlength="10" wire:model="profile.nisn" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.nisn')" class="mt-1" /></div>
+                                    @endif
+                                </div>
                                 <div><label class="{{ $labelClass }}" for="ppdb-kk">Nomor KK</label><input id="ppdb-kk" type="text" inputmode="numeric" maxlength="16" wire:model="profile.nomor_kk" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.nomor_kk')" class="mt-1" /></div>
                                 <div><label class="{{ $labelClass }}" for="ppdb-birth-certificate">Nomor Akta Kelahiran</label><input id="ppdb-birth-certificate" type="text" wire:model="profile.nomor_akta_kelahiran" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.nomor_akta_kelahiran')" class="mt-1" /></div>
                                 <div><label class="{{ $labelClass }}" for="ppdb-child-order">Anak ke-</label><input id="ppdb-child-order" type="number" min="1" wire:model="profile.anak_ke" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.anak_ke')" class="mt-1" /></div>
                                 <div><label class="{{ $labelClass }}" for="ppdb-sibling-count">Jumlah Saudara</label><input id="ppdb-sibling-count" type="number" min="0" wire:model="profile.jumlah_saudara" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.jumlah_saudara')" class="mt-1" /></div>
+                                <div><label class="{{ $labelClass }}" for="ppdb-hobby">Hobi</label><input id="ppdb-hobby" type="text" maxlength="255" wire:model="profile.hobi" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.hobi')" class="mt-1" /></div>
+                                <div><label class="{{ $labelClass }}" for="ppdb-aspiration">Cita-cita</label><input id="ppdb-aspiration" type="text" maxlength="255" wire:model="profile.cita_cita" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.cita_cita')" class="mt-1" /></div>
                                 <div><label class="{{ $labelClass }}" for="ppdb-child-status">Status Anak</label><input id="ppdb-child-status" type="text" wire:model="profile.status_anak" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.status_anak')" class="mt-1" /></div>
                                 <div><label class="{{ $labelClass }}" for="ppdb-religion">Agama</label><input id="ppdb-religion" type="text" wire:model="profile.agama" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.agama')" class="mt-1" /></div>
                                 <div><label class="{{ $labelClass }}" for="ppdb-language">Bahasa Sehari-hari</label><input id="ppdb-language" type="text" wire:model="profile.bahasa_sehari_hari" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.bahasa_sehari_hari')" class="mt-1" /></div>
@@ -74,6 +81,22 @@
                                 @foreach(['kelurahan' => 'Kelurahan / Desa', 'kecamatan' => 'Kecamatan', 'kabupaten_kota' => 'Kabupaten / Kota', 'provinsi' => 'Provinsi'] as $field => $label)
                                     <div><label class="{{ $labelClass }}" for="ppdb-{{ str_replace('_', '-', $field) }}">{{ $label }}</label><input id="ppdb-{{ str_replace('_', '-', $field) }}" type="text" wire:model="profile.{{ $field }}" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.'.$field)" class="mt-1" /></div>
                                 @endforeach
+                                <fieldset class="sm:col-span-2 lg:col-span-4">
+                                    <legend class="{{ $labelClass }}">Jarak Tempuh ke Sekolah</legend>
+                                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        @foreach($distanceOptions as $value => $label)
+                                            <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-outline-variant px-3 py-2 text-body-md text-on-surface hover:bg-primary-fixed/30"><input type="radio" name="profile[jarak_tempuh_kategori]" wire:model.live="profile.jarak_tempuh_kategori" value="{{ $value }}" class="border-outline text-primary focus:ring-primary">{{ $label }}</label>
+                                        @endforeach
+                                    </div>
+                                    <x-input-error :messages="$errors->get('profile.jarak_tempuh_kategori')" class="mt-1" />
+                                </fieldset>
+                                @if(($profile['jarak_tempuh_kategori'] ?? '') === 'more_than_1_km')
+                                    <div><label class="{{ $labelClass }}" for="ppdb-distance-detail">Detail Jarak (km)</label><input id="ppdb-distance-detail" type="text" inputmode="decimal" placeholder="Contoh: 2,5" wire:model="profile.jarak_tempuh_detail" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.jarak_tempuh_detail')" class="mt-1" /></div>
+                                @endif
+                                <div><label class="{{ $labelClass }}" for="ppdb-transportation">Moda Transportasi</label><select id="ppdb-transportation" wire:model.live="profile.moda_transportasi" class="{{ $inputClass }}"><option value="">Belum diisi</option>@foreach($transportationOptions as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach</select><x-input-error :messages="$errors->get('profile.moda_transportasi')" class="mt-1" /></div>
+                                @if(($profile['moda_transportasi'] ?? '') === 'lainnya')
+                                    <div><label class="{{ $labelClass }}" for="ppdb-transportation-other">Moda Transportasi Lainnya</label><input id="ppdb-transportation-other" type="text" maxlength="255" wire:model="profile.moda_transportasi_lainnya" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('profile.moda_transportasi_lainnya')" class="mt-1" /></div>
+                                @endif
                             </div>
                         </section>
 
@@ -95,6 +118,17 @@
                                 <div class="mb-4 flex items-center justify-between gap-3"><h3 class="text-title-md font-semibold text-on-surface">{{ $title }}</h3>@if($role === 'guardian')<span class="text-body-sm text-on-surface-variant">Kosongkan seluruh kolom untuk menghapus data wali.</span>@endif</div>
                                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                     <div><label class="{{ $labelClass }}" for="ppdb-{{ $role }}-name">Nama Lengkap</label><input id="ppdb-{{ $role }}-name" type="text" wire:model="parents.{{ $role }}.nama" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('parents.'.$role.'.nama')" class="mt-1" /></div>
+                                    @if($role !== 'guardian')
+                                        <fieldset>
+                                            <legend class="{{ $labelClass }}">Status Hidup</legend>
+                                            <div class="grid grid-cols-2 gap-2">
+                                                @foreach(['hidup' => 'Hidup', 'wafat' => 'Wafat'] as $value => $label)
+                                                    <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-outline-variant px-3 py-2 text-body-md text-on-surface hover:bg-primary-fixed/30"><input type="radio" name="parents[{{ $role }}][status_hidup]" wire:model="parents.{{ $role }}.status_hidup" value="{{ $value }}" class="border-outline text-primary focus:ring-primary">{{ $label }}</label>
+                                                @endforeach
+                                            </div>
+                                            <x-input-error :messages="$errors->get('parents.'.$role.'.status_hidup')" class="mt-1" />
+                                        </fieldset>
+                                    @endif
                                     <div><label class="{{ $labelClass }}" for="ppdb-{{ $role }}-nik">NIK</label><input id="ppdb-{{ $role }}-nik" type="text" inputmode="numeric" maxlength="16" wire:model="parents.{{ $role }}.nik" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('parents.'.$role.'.nik')" class="mt-1" /></div>
                                     <div><label class="{{ $labelClass }}" for="ppdb-{{ $role }}-phone">Nomor WhatsApp</label><input id="ppdb-{{ $role }}-phone" type="text" wire:model="parents.{{ $role }}.no_telp" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('parents.'.$role.'.no_telp')" class="mt-1" /></div>
                                     <div><label class="{{ $labelClass }}" for="ppdb-{{ $role }}-birthplace">Tempat Lahir</label><input id="ppdb-{{ $role }}-birthplace" type="text" wire:model="parents.{{ $role }}.tempat_lahir" class="{{ $inputClass }}"><x-input-error :messages="$errors->get('parents.'.$role.'.tempat_lahir')" class="mt-1" /></div>

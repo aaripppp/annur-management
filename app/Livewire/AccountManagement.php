@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Enums\SchoolLevel;
 use App\Models\User;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -30,6 +31,8 @@ class AccountManagement extends Component
     public string $password_confirmation = '';
 
     public string $role = User::ROLE_ADMIN;
+
+    public string $school_level = '';
 
     public string $position = '';
 
@@ -63,6 +66,7 @@ class AccountManagement extends Component
         $this->name = $user->name;
         $this->email = $user->email;
         $this->role = $user->role;
+        $this->school_level = $user->school_level?->value ?? '';
         $this->position = $user->position ?? '';
         $this->is_active = $user->is_active;
         $this->password = '';
@@ -72,10 +76,17 @@ class AccountManagement extends Component
 
     public function resetForm(): void
     {
-        $this->reset(['isEditing', 'editingUserId', 'name', 'email', 'password', 'password_confirmation', 'position']);
+        $this->reset(['isEditing', 'editingUserId', 'name', 'email', 'password', 'password_confirmation', 'school_level', 'position']);
         $this->role = User::ROLE_ADMIN;
         $this->is_active = true;
         $this->resetValidation();
+    }
+
+    public function updatedRole(): void
+    {
+        if ($this->role !== User::ROLE_TU_UNIT) {
+            $this->school_level = '';
+        }
     }
 
     public function save(): void
@@ -92,7 +103,12 @@ class AccountManagement extends Component
                 'max:255',
                 Rule::unique(User::class)->ignore($this->editingUserId),
             ],
-            'role' => ['required', Rule::in([User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN])],
+            'role' => ['required', Rule::in([User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN, User::ROLE_TU_UNIT])],
+            'school_level' => [
+                'exclude_unless:role,'.User::ROLE_TU_UNIT,
+                'required',
+                Rule::enum(SchoolLevel::class),
+            ],
             'position' => ['nullable', 'string', 'max:255'],
             'is_active' => ['boolean'],
             'password' => $this->isEditing
@@ -111,6 +127,9 @@ class AccountManagement extends Component
                 'name' => $validated['name'],
                 'email' => $validated['email'],
                 'role' => $validated['role'],
+                'school_level' => $validated['role'] === User::ROLE_TU_UNIT
+                    ? $validated['school_level']
+                    : null,
                 'position' => $validated['position'] ?: null,
                 'is_active' => filter_var($validated['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
             ];
@@ -128,6 +147,9 @@ class AccountManagement extends Component
                 'email' => $validated['email'],
                 'password' => $validated['password'],
                 'role' => $validated['role'],
+                'school_level' => $validated['role'] === User::ROLE_TU_UNIT
+                    ? $validated['school_level']
+                    : null,
                 'position' => $validated['position'] ?: null,
                 'is_active' => filter_var($validated['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
             ]);
@@ -195,6 +217,8 @@ class AccountManagement extends Component
             'email.unique' => 'Email sudah digunakan akun lain.',
             'role.required' => 'Role wajib dipilih.',
             'role.in' => 'Role tidak valid.',
+            'school_level.required' => 'Unit sekolah wajib dipilih untuk TU Unit.',
+            'school_level.enum' => 'Unit sekolah tidak valid.',
             'password.required' => 'Password wajib diisi.',
             'password.confirmed' => 'Konfirmasi password tidak cocok.',
             'is_active.boolean' => 'Status aktif tidak valid.',

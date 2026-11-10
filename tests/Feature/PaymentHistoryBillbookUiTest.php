@@ -66,6 +66,19 @@ function billbookHistoryRowHtml($component, StudentBill $bill): string
     return $matches[0];
 }
 
+function billbookPaymentHistoryModalRowHtml($component, string $receiptNumber): string
+{
+    $html = is_string($component) ? $component : $component->html();
+    preg_match_all('/<tr class="hover:bg-surface-container-lowest\/50">.*?<\/tr>/s', $html, $matches);
+    $row = collect($matches[0] ?? [])->first(
+        fn (string $html): bool => str_contains($html, $receiptNumber)
+    );
+
+    expect($row)->not->toBeNull();
+
+    return $row;
+}
+
 function assertBillbookHistoryUi($component, StudentBill $partialBill, StudentBill $paidBill, Payment $firstPayment): void
 {
     $component
@@ -207,6 +220,82 @@ it('shows ordered active allocations with deterministic latest dates on both bil
         ->and(StudentBill::query()->orderBy('id')->get()->toArray())->toBe($databaseState['bills']);
 });
 
+it('shows the bank from each payment transaction in the history modal', function () {
+    $user = User::factory()->create();
+    $accountBank = Bank::factory()->create([
+        'name' => 'BCAS',
+        'account_number' => '1234567890',
+    ]);
+    $nameOnlyBank = Bank::factory()->create([
+        'name' => 'Bank Tanpa Rekening',
+        'account_number' => null,
+    ]);
+    $student = makeBillStudent(8);
+    $paymentType = makeBillType('SPP Bank Riwayat');
+    $bill = makeMonthlyBill($student, $paymentType, 900000, 8, 2026);
+    makeActiveSetting($student, $paymentType);
+
+    $accountPayment = createBillbookHistoryPayment(
+        $student,
+        $accountBank,
+        $user,
+        'KWT-BANK-ACCOUNT',
+        '2026-08-01',
+        '2026-08-01 08:00:00',
+        [['bill' => $bill, 'amount' => 100000]],
+    );
+    $nameOnlyPayment = createBillbookHistoryPayment(
+        $student,
+        $nameOnlyBank,
+        $user,
+        'KWT-BANK-NAME',
+        '2026-08-02',
+        '2026-08-02 08:00:00',
+        [['bill' => $bill, 'amount' => 100000]],
+    );
+    $component = Livewire::actingAs($user)->test(StudentDetail::class, ['student' => $student])
+        ->assertSee('>Bank</th>', false)
+        ->assertSee('BCAS · 1234567890')
+        ->assertSee('Bank Tanpa Rekening')
+        ->assertSee(route('pembayaran.show', $accountPayment->id), false)
+        ->assertSee(route('pembayaran.show', $nameOnlyPayment->id), false);
+
+    expect(billbookPaymentHistoryModalRowHtml($component, 'KWT-BANK-ACCOUNT'))
+        ->toContain('BCAS · 1234567890')
+        ->and(billbookPaymentHistoryModalRowHtml($component, 'KWT-BANK-NAME'))
+        ->toContain('Bank Tanpa Rekening')
+        ->not->toContain('Bank Tanpa Rekening ·');
+});
+
+it('shows a dash when a payment bank relation is unavailable', function () {
+    $user = User::factory()->create();
+    $bank = Bank::factory()->create();
+    $student = makeBillStudent(8);
+    $paymentType = makeBillType('SPP Bank Tidak Tersedia');
+    $bill = makeMonthlyBill($student, $paymentType, 900000, 8, 2026);
+    makeActiveSetting($student, $paymentType);
+    createBillbookHistoryPayment(
+        $student,
+        $bank,
+        $user,
+        'KWT-BANK-UNAVAILABLE',
+        '2026-08-01',
+        '2026-08-01 08:00:00',
+        [['bill' => $bill, 'amount' => 100000]],
+    );
+    $bill->load(['paymentType', 'paymentDetails.payment.bank']);
+    $bill->paymentDetails->firstOrFail()->payment->setRelation('bank', null);
+
+    $html = view('livewire.student.bill-table', [
+        'bills' => collect([$bill]),
+        'readOnly' => false,
+        'showPaymentHistoryColumns' => true,
+    ])->render();
+
+    expect($html)->toContain('>Bank</th>')
+        ->and(billbookPaymentHistoryModalRowHtml($html, 'KWT-BANK-UNAVAILABLE'))->toContain('>—</td>');
+});
+
 it('renders bill histories without per-bill payment relationship queries', function () {
     $user = User::factory()->create();
     $bank = Bank::factory()->create();
@@ -255,8 +344,13 @@ it('renders bill histories without per-bill payment relationship queries', funct
             fn (string $query): bool => str_contains($query, 'from "payments"')
                 && str_contains($query, '"payments"."id" = ?')
         );
+        $bankLazyLoads = $queries->filter(
+            fn (string $query): bool => str_contains($query, 'from "banks"')
+                && str_contains($query, '"banks"."id" = ?')
+        );
 
         expect($paymentDetailLazyLoads)->toHaveCount(0)
-            ->and($paymentLazyLoads)->toHaveCount(0);
+            ->and($paymentLazyLoads)->toHaveCount(0)
+            ->and($bankLazyLoads)->toHaveCount(0);
     }
 });

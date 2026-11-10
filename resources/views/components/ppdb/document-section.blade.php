@@ -2,6 +2,7 @@
 
 @php
     $applicant->loadMissing('ppdbDocuments');
+    $applicant->ppdbDocuments->each(fn ($document) => $document->setRelation('prospectiveStudent', $applicant));
     $documentsByType = $applicant->ppdbDocuments->keyBy(fn ($document) => $document->document_type->value);
     $prospectiveStudentId = $applicant->id;
     $studentId = $student?->id;
@@ -65,7 +66,7 @@
                             </a>
                         @endcan
                     @endif
-                    @can('replace', $document ?? new App\Models\PpdbDocument())
+                    @can('replaceDocument', $applicant)
                         <button
                             type="button"
                             wire:click="$dispatch('ppdb-document:replace', { prospectiveStudentId: {{ $prospectiveStudentId }}, studentId: {{ $studentId ?? 'null' }}, documentId: {{ $document?->id ?? 'null' }}, documentType: @js($documentType->value) })"

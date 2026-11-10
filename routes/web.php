@@ -5,7 +5,9 @@ use App\Http\Controllers\DaycareDailyReportHistoryPdfController;
 use App\Http\Controllers\DaycareDailyReportPdfController;
 use App\Http\Controllers\DaycareMonthlyReportExportController;
 use App\Http\Controllers\DaycareMonthlyReportPdfController;
+use App\Http\Controllers\JemputanDriverRecapExportController;
 use App\Http\Controllers\PpdbBiodataPdfController;
+use App\Http\Controllers\PpdbBiodataRecapExportController;
 use App\Http\Controllers\PpdbDocumentController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReceiptPrintController;
@@ -40,6 +42,8 @@ use App\Livewire\DaycarePaymentCreate;
 use App\Livewire\DaycarePaymentEdit;
 use App\Livewire\DaycarePaymentEntry;
 use App\Livewire\DaycarePaymentShow;
+use App\Livewire\JemputanDriverManagement;
+use App\Livewire\JemputanDriverRecap;
 use App\Livewire\PaymentCorrection;
 use App\Livewire\PaymentCreate;
 use App\Livewire\PaymentEdit;
@@ -69,6 +73,9 @@ use App\Livewire\StudentImport;
 use App\Livewire\StudentManagement;
 use App\Livewire\StudentManualPaymentEdit;
 use App\Livewire\StudentPaymentSettings;
+use App\Livewire\TuProspectiveStudentBiodata;
+use App\Livewire\TuStudentBiodata;
+use App\Models\JemputanDriver;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -96,6 +103,10 @@ Route::get('/dashboard', Dashboard::class)
     ->middleware('auth')
     ->name('dashboard');
 
+Route::view('/tu/access-pending', 'auth.tu-access-pending')
+    ->middleware('auth')
+    ->name('tu.pending');
+
 Route::get('/siswa', StudentManagement::class)
     ->middleware('auth')
     ->name('siswa.index');
@@ -111,6 +122,10 @@ Route::get('/siswa/update', StudentBulkUpdate::class)
 Route::get('/siswa/kelayakan-kartu-ujian', StudentExamEligibility::class)
     ->middleware('auth')
     ->name('siswa.exam-eligibility');
+
+Route::get('/siswa/{student}/biodata', TuStudentBiodata::class)
+    ->middleware('auth')
+    ->name('siswa.biodata');
 
 Route::get('/siswa/{student}', StudentDetail::class)
     ->middleware('auth')
@@ -135,6 +150,14 @@ Route::get('/calon-siswa/import', ProspectiveStudentImport::class)
 Route::get('/calon-siswa/update', ProspectiveStudentBulkUpdate::class)
     ->middleware('auth')
     ->name('calon-siswa.update');
+
+Route::get('/calon-siswa/biodata-recap/export', PpdbBiodataRecapExportController::class)
+    ->middleware(['auth', AddPrivateResponseHeaders::class])
+    ->name('calon-siswa.biodata-recap.export');
+
+Route::get('/calon-siswa/{prospectiveStudent}/biodata', TuProspectiveStudentBiodata::class)
+    ->middleware('auth')
+    ->name('calon-siswa.biodata');
 
 Route::get('/calon-siswa/{prospectiveStudent}', ProspectiveStudentDetail::class)
     ->middleware('auth')
@@ -207,6 +230,18 @@ Route::get('/daycare/pembayaran/{payment}', DaycarePaymentShow::class)
 Route::get('/daycare/{child}', DaycareDetail::class)
     ->middleware('auth')
     ->name('daycare.show');
+
+Route::get('/jemputan/kelompok-sopir', JemputanDriverManagement::class)
+    ->middleware(['auth', 'can:viewAny,'.JemputanDriver::class])
+    ->name('jemputan.drivers.index');
+
+Route::get('/jemputan/rekap', JemputanDriverRecap::class)
+    ->middleware(['auth', 'can:viewAny,'.JemputanDriver::class])
+    ->name('jemputan.recap.index');
+
+Route::get('/jemputan/rekap.xlsx', JemputanDriverRecapExportController::class)
+    ->middleware(['auth', 'can:viewAny,'.JemputanDriver::class])
+    ->name('jemputan.recap.export');
 
 Route::get('/kelas', SchoolClassManagement::class)
     ->middleware('auth')

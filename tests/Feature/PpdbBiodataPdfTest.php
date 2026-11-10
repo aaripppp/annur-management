@@ -58,10 +58,17 @@ function ppdbBiodataProfile(ProspectiveStudent $student, array $overrides = []):
         'tanggal_lahir' => '2015-08-17',
         'asal_sekolah' => 'TK Nurul Ilmi',
         'nik_siswa' => '3201010101010001',
+        'nisn' => '0012345678',
         'nomor_kk' => '3201010101010002',
         'nomor_akta_kelahiran' => '1234/2015',
         'anak_ke' => 2,
         'jumlah_saudara' => 3,
+        'hobi' => 'Membaca',
+        'cita_cita' => 'Dokter',
+        'jarak_tempuh_kategori' => 'more_than_1_km',
+        'jarak_tempuh_detail' => '2.50',
+        'moda_transportasi' => 'lainnya',
+        'moda_transportasi_lainnya' => 'Perahu sekolah',
         'status_anak' => 'Kandung',
         'agama' => 'Islam',
         'bahasa_sehari_hari' => 'Bahasa Indonesia',
@@ -87,6 +94,11 @@ function ppdbBiodataParent(ProspectiveStudent $student, string $role, array $ove
     return PpdbParent::create(array_merge([
         'prospective_student_id' => $student->id,
         'role' => $role,
+        'status_hidup' => match ($role) {
+            'father' => 'hidup',
+            'mother' => 'wafat',
+            default => null,
+        },
         'nik' => '320101010101'.match ($role) {
             'father' => '0011',
             'mother' => '0012',
@@ -318,8 +330,10 @@ it('renders all biodata sections and canonical field values', function () {
         ->toContain('B. IDENTITAS CALON SISWA')
         ->toContain('C. ALAMAT TEMPAT TINGGAL')
         ->toContain('D. KEADAAN JASMANI &amp; KESEHATAN')
-        ->toContain('E. DATA ORANG TUA / WALI')
-        ->toContain('F. DATA SAUDARA KANDUNG')
+        ->toContain('E. DATA ORANG TUA')
+        ->not->toContain('DATA ORANG TUA / WALI')
+        ->toContain('F. DATA WALI')
+        ->toContain('G. DATA SAUDARA KANDUNG')
         ->toContain('REG-2026-000123')
         ->toContain('2026/2027')
         ->toContain('SMP')
@@ -329,8 +343,15 @@ it('renders all biodata sections and canonical field values', function () {
         ->toContain('AHMAD')
         ->toContain('Laki-laki')
         ->toContain('3201010101010001')
+        ->toContain('0012345678')
         ->toContain('3201010101010002')
         ->toContain('1234/2015')
+        ->toContain('Membaca')
+        ->toContain('Dokter')
+        ->toContain('Lebih dari 1 km')
+        ->toContain('2,50 km')
+        ->toContain('Lainnya')
+        ->toContain('Perahu sekolah')
         ->toContain('Bekasi')
         ->toContain('17 Agustus 2015')
         ->toContain('TK Nurul Ilmi')
@@ -350,12 +371,18 @@ it('renders all biodata sections and canonical field values', function () {
         ->toContain('BUDI SANTOSO')
         ->toContain('SITI RAHAYU')
         ->toContain('DEWI LESTARI')
+        ->toContain('Hidup')
+        ->toContain('Wafat')
         ->toContain('Rp1.000.000')
         ->toContain('SITI AMINAH')
         ->toContain('MUHAMMAD RIZKI')
         ->toContain('TK B')
         ->toContain('Belum sekolah')
-        ->toContain('<div class="guardian-block">')
+        ->toContain('<div class="section guardian-block">')
+        ->toContain('<table class="kv guardian-table">')
+        ->not->toContain('more_than_1_km')
+        ->not->toContain('lainnya')
+        ->not->toContain('Dokumen Persyaratan')
         ->not->toContain('Checklist Dokumen')
         ->not->toContain('Tagihan')
         ->not->toContain('Pembayaran')
@@ -365,9 +392,129 @@ it('renders all biodata sections and canonical field values', function () {
         ->and(strpos($html, 'B. IDENTITAS CALON SISWA'))->toBeLessThan(strpos($html, 'C. ALAMAT TEMPAT TINGGAL'))
         ->and(strpos($html, 'C. ALAMAT TEMPAT TINGGAL'))->toBeLessThan(strpos($html, 'D. KEADAAN JASMANI'))
         ->and(strpos($html, 'D. KEADAAN JASMANI'))->toBeLessThan(strpos($html, 'E. DATA ORANG TUA'))
-        ->and(strpos($html, 'E. DATA ORANG TUA'))->toBeLessThan(strpos($html, 'F. DATA SAUDARA KANDUNG'))
+        ->and(strpos($html, 'E. DATA ORANG TUA'))->toBeLessThan(strpos($html, 'F. DATA WALI'))
+        ->and(strpos($html, 'F. DATA WALI'))->toBeLessThan(strpos($html, 'G. DATA SAUDARA KANDUNG'))
         ->and(strpos($html, 'SITI AMINAH'))->toBeLessThan(strpos($html, 'MUHAMMAD RIZKI'));
+
+    expect(strpos($html, 'NIK Siswa'))->toBeLessThan(strpos($html, 'NISN'));
+
+    preg_match('/<table class="kv identity-table">(.*?)<\/table>/s', $html, $identityTable);
+    preg_match_all('/<tr data-identity-row>(.*?)<\/tr>/s', $identityTable[1] ?? '', $identityRows);
+
+    expect($identityTable[1] ?? '')
+        ->not->toContain('colspan')
+        ->and($identityRows[1])->toHaveCount(9)
+        ->and(collect($identityRows[1])->every(fn (string $row): bool => substr_count($row, '<td') === 4))->toBeTrue()
+        ->and(collect($identityRows[1])->slice(0, -1)->every(fn (string $row): bool => ! str_contains($row, 'data-identity-empty')))->toBeTrue()
+        ->and($identityRows[1][8])->toContain('Bahasa Sehari-hari')
+        ->toContain('data-identity-empty');
+
+    preg_match('/F\. DATA WALI(.*?)G\. DATA SAUDARA KANDUNG/s', $html, $guardianSection);
+    expect($guardianSection[1] ?? '')
+        ->toContain('DEWI LESTARI')
+        ->not->toContain('Status Hidup');
 });
+
+it('hides NISN for actual TK applicants', function () {
+    $student = ppdbBiodataApplicant();
+    $tkClass = SchoolClass::factory()->create(['level' => -1]);
+    $student->update(['school_class_id' => $tkClass->id]);
+    ppdbBiodataProfile($student, ['nisn' => '0012345678']);
+    $renderer = fakePpdbBiodataPdfRenderer();
+
+    $this->actingAs(ppdbBiodataUser())
+        ->get(route('calon-siswa.biodata.pdf', $student))
+        ->assertOk();
+
+    $html = view($renderer->view, $renderer->data)->render();
+
+    expect($html)
+        ->not->toContain('>NISN<')
+        ->not->toContain('0012345678');
+
+    preg_match('/<table class="kv identity-table">(.*?)<\/table>/s', $html, $identityTable);
+    preg_match_all('/<tr data-identity-row>(.*?)<\/tr>/s', $identityTable[1] ?? '', $identityRows);
+
+    expect($identityTable[1] ?? '')
+        ->not->toContain('colspan')
+        ->not->toContain('data-identity-empty')
+        ->and($identityRows[1])->toHaveCount(8)
+        ->and(collect($identityRows[1])->every(fn (string $row): bool => substr_count($row, '<td') === 4))->toBeTrue();
+});
+
+it('hides inactive distance and transportation details', function () {
+    $student = ppdbBiodataApplicant();
+    ppdbBiodataProfile($student, [
+        'jarak_tempuh_kategori' => 'less_than_1_km',
+        'jarak_tempuh_detail' => '8.50',
+        'moda_transportasi' => 'motor',
+        'moda_transportasi_lainnya' => 'Tidak boleh tampil',
+    ]);
+    $renderer = fakePpdbBiodataPdfRenderer();
+
+    $this->actingAs(ppdbBiodataUser())
+        ->get(route('calon-siswa.biodata.pdf', $student))
+        ->assertOk();
+
+    $html = view($renderer->view, $renderer->data)->render();
+
+    expect($html)
+        ->toContain('Kurang dari 1 km')
+        ->toContain('Motor')
+        ->not->toContain('Detail Jarak')
+        ->not->toContain('8,50 km')
+        ->not->toContain('Transportasi Lainnya')
+        ->not->toContain('Tidak boleh tampil')
+        ->not->toContain('less_than_1_km');
+});
+
+it('shows dashes for missing active distance and other transportation details', function () {
+    $student = ppdbBiodataApplicant();
+    ppdbBiodataProfile($student, [
+        'jarak_tempuh_kategori' => 'more_than_1_km',
+        'jarak_tempuh_detail' => null,
+        'moda_transportasi' => 'lainnya',
+        'moda_transportasi_lainnya' => null,
+    ]);
+    $renderer = fakePpdbBiodataPdfRenderer();
+
+    $this->actingAs(ppdbBiodataUser())
+        ->get(route('calon-siswa.biodata.pdf', $student))
+        ->assertOk();
+
+    $html = view($renderer->view, $renderer->data)->render();
+
+    expect($html)
+        ->toContain('<td class="label">Detail Jarak</td><td class="value">-</td>')
+        ->toContain('<td class="label">Transportasi Lainnya</td><td class="value">-</td>');
+});
+
+it('uses readable transportation labels', function (string $storedValue, string $expectedLabel) {
+    $student = ppdbBiodataApplicant();
+    ppdbBiodataProfile($student, [
+        'moda_transportasi' => $storedValue,
+        'moda_transportasi_lainnya' => $storedValue === 'lainnya' ? 'Perahu' : null,
+    ]);
+    $renderer = fakePpdbBiodataPdfRenderer();
+
+    $this->actingAs(ppdbBiodataUser())
+        ->get(route('calon-siswa.biodata.pdf', $student))
+        ->assertOk();
+
+    $html = view($renderer->view, $renderer->data)->render();
+
+    expect($html)
+        ->toContain('<td class="label">Moda Transportasi</td><td class="value">'.$expectedLabel.'</td>')
+        ->not->toContain('<td class="value">'.$storedValue.'</td>');
+})->with([
+    'walk' => ['jalan_kaki', 'Jalan kaki'],
+    'bicycle' => ['sepeda', 'Sepeda'],
+    'motorcycle' => ['motor', 'Motor'],
+    'private car' => ['mobil_pribadi', 'Mobil pribadi'],
+    'public transportation' => ['angkutan_umum', 'Angkutan umum'],
+    'shuttle' => ['antar_jemput', 'Antar-jemput'],
+    'other' => ['lainnya', 'Lainnya'],
+]);
 
 it('keeps parent cards and sibling rows together with page-break safeguards', function () {
     $student = ppdbBiodataApplicant();
@@ -416,10 +563,13 @@ it('omits guardian section and shows a dash when optional data is missing', func
 
     expect($html)
         ->toContain('Tidak ada data saudara kandung.')
+        ->toContain('F. DATA SAUDARA KANDUNG')
+        ->not->toContain('F. DATA WALI')
+        ->not->toContain('G. DATA SAUDARA KANDUNG')
         ->toContain('Asal Sekolah')
         ->toContain('Berkebutuhan Khusus')
         ->toContain('-')
-        ->not->toContain('<div class="guardian-block">')
+        ->not->toContain('<div class="section guardian-block">')
         ->not->toContain('>Wali</div>')
         ->not->toContain('DEWI LESTARI')
         ->not->toContain('MUHAMMAD RIZKI');
@@ -451,7 +601,7 @@ it('omits the guardian block when a guardian row has no biodata content', functi
     $html = view($renderer->view, $renderer->data)->render();
 
     expect($html)
-        ->not->toContain('<div class="guardian-block">')
+        ->not->toContain('<div class="section guardian-block">')
         ->not->toContain('>Wali</div>')
         ->toContain('Ayah')
         ->toContain('Ibu');
@@ -482,13 +632,46 @@ it('renders a partial guardian block with dashes for missing fields', function (
 
     $html = view($renderer->view, $renderer->data)->render();
 
-    preg_match('/<div class="guardian-block">(.*?)<\/table>/s', $html, $guardianBlock);
+    preg_match('/<div class="section guardian-block">(.*?)<\/table>/s', $html, $guardianBlock);
 
-    expect($html)->toContain('<div class="guardian-block">')
-        ->and($guardianBlock[1] ?? '')->toContain('Wali')
+    expect($html)->toContain('<div class="section guardian-block">')
+        ->and($guardianBlock[1] ?? '')->toContain('F. DATA WALI')
         ->toContain('DEWI LESTARI')
         ->toContain('NIK')
-        ->toContain('-');
+        ->toContain('-')
+        ->not->toContain('Status Hidup');
+});
+
+it('renders missing and unknown new biodata values safely', function () {
+    $student = ppdbBiodataApplicant();
+    ppdbBiodataProfile($student, [
+        'nisn' => null,
+        'hobi' => null,
+        'cita_cita' => null,
+        'jarak_tempuh_kategori' => 'legacy_distance',
+        'jarak_tempuh_detail' => null,
+        'moda_transportasi' => 'legacy_transportation',
+        'moda_transportasi_lainnya' => null,
+    ]);
+    ppdbBiodataParent($student, 'father', ['status_hidup' => null]);
+    ppdbBiodataParent($student, 'mother', ['status_hidup' => 'legacy_status']);
+    $renderer = fakePpdbBiodataPdfRenderer();
+
+    $this->actingAs(ppdbBiodataUser())
+        ->get(route('calon-siswa.biodata.pdf', $student))
+        ->assertOk();
+
+    $html = view($renderer->view, $renderer->data)->render();
+
+    expect($html)
+        ->toContain('<td class="label">NISN</td>')
+        ->toContain('<td class="label">Hobi</td>')
+        ->toContain('<td class="label">Cita-cita</td>')
+        ->toContain('<td class="label">Jarak Tempuh</td><td class="value">-</td>')
+        ->toContain('<td class="label">Moda Transportasi</td><td class="value">-</td>')
+        ->not->toContain('legacy_distance')
+        ->not->toContain('legacy_transportation')
+        ->not->toContain('legacy_status');
 });
 
 it('shows the special needs description only when the status is explicitly Ya', function (
@@ -616,11 +799,34 @@ it('fits a typical biodata on one A4 page', function () {
         ->and(ppdbBiodataPdfPageCount($pdf))->toBe(1);
 });
 
+it('renders the compact identity table through Dompdf for TK and non-TK applicants', function (int $classLevel) {
+    $student = ppdbBiodataApplicant();
+    $class = SchoolClass::factory()->create(['level' => $classLevel]);
+    $student->update(['school_class_id' => $class->id]);
+    ppdbBiodataProfile($student);
+
+    $response = $this->actingAs(ppdbBiodataUser())
+        ->get(route('calon-siswa.biodata.pdf', $student));
+
+    $response->assertOk()
+        ->assertHeader('Content-Type', 'application/pdf');
+
+    $pdf = $response->getContent();
+
+    expect($pdf)->toStartWith('%PDF-')
+        ->and(ppdbBiodataPdfPageCount($pdf))->toBe(1);
+})->with([
+    'TK' => -1,
+    'non-TK' => 7,
+]);
+
 it('allows unusually long biodata to flow to another page without clipping', function () {
     $student = ppdbBiodataApplicant([
         'alamat' => str_repeat('Jl. Melati No. 10, RT 01/RW 02, Harapan Jaya, Bekasi Utara. ', 18),
     ]);
     ppdbBiodataProfile($student, [
+        'hobi' => str_repeat('Membaca, berenang, dan kegiatan seni. ', 30),
+        'cita_cita' => str_repeat('Menjadi tenaga profesional yang bermanfaat. ', 25),
         'riwayat_penyakit' => str_repeat('Riwayat kesehatan perlu perhatian khusus. ', 60),
         'keterangan_kebutuhan_khusus' => str_repeat('Pendampingan belajar dan observasi. ', 40),
     ]);

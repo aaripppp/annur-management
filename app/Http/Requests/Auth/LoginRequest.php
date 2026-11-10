@@ -51,6 +51,12 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        if ($user?->isTuUnit() && $user->school_level === null) {
+            throw ValidationException::withMessages([
+                'email' => 'Unit sekolah akun TU belum ditentukan. Hubungi administrator.',
+            ]);
+        }
+
         if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 

@@ -1,4 +1,4 @@
-@props(['prefix'])
+@props(['prefix', 'showFinance' => true])
 
 <div class="mb-6 overflow-x-auto border-b border-outline-variant" role="tablist" aria-label="Bagian detail">
     <div class="flex min-w-max gap-1 px-1">
@@ -9,7 +9,7 @@
             @keydown.arrow-right.prevent="moveDetailTab(1)"
             @keydown.arrow-left.prevent="moveDetailTab(-1)"
             @keydown.home.prevent="selectDetailTab('biodata'); $nextTick(() => $refs.biodataTab.focus())"
-            @keydown.end.prevent="selectDetailTab('finance'); $nextTick(() => $refs.financeTab.focus())"
+            @keydown.end.prevent="selectDetailTab(@js($showFinance ? 'finance' : 'documents'))"
             role="tab"
             id="{{ $prefix }}-tab-biodata"
             aria-controls="{{ $prefix }}-panel-biodata"
@@ -29,7 +29,7 @@
             @keydown.arrow-right.prevent="moveDetailTab(1)"
             @keydown.arrow-left.prevent="moveDetailTab(-1)"
             @keydown.home.prevent="selectDetailTab('biodata'); $nextTick(() => $refs.biodataTab.focus())"
-            @keydown.end.prevent="selectDetailTab('finance'); $nextTick(() => $refs.financeTab.focus())"
+            @keydown.end.prevent="selectDetailTab(@js($showFinance ? 'finance' : 'documents'))"
             role="tab"
             id="{{ $prefix }}-tab-documents"
             aria-controls="{{ $prefix }}-panel-documents"
@@ -42,6 +42,7 @@
             <span class="material-symbols-outlined text-[19px]" aria-hidden="true">folder</span>
             Dokumen
         </button>
+        @if($showFinance)
         <button
             type="button"
             x-ref="financeTab"
@@ -62,5 +63,6 @@
             <span class="material-symbols-outlined text-[19px]" aria-hidden="true">payments</span>
             Tagihan &amp; Pembayaran
         </button>
+        @endif
     </div>
 </div>

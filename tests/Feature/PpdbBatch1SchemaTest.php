@@ -60,6 +60,91 @@ it('stores asal sekolah only on the ppdb profile and allows legacy nulls', funct
         ->and(PpdbProfile::create(['prospective_student_id' => ProspectiveStudent::factory()->create()->id])->asal_sekolah)->toBeNull();
 });
 
+it('adds nullable ppdb biodata columns with the expected database types', function () {
+    $profileColumns = collect(Schema::getColumns('ppdb_profiles'))->keyBy('name');
+    $parentColumns = collect(Schema::getColumns('ppdb_parents'))->keyBy('name');
+
+    expect($profileColumns->keys()->all())->toContain(
+        'jarak_tempuh_kategori',
+        'jarak_tempuh_detail',
+        'moda_transportasi',
+        'moda_transportasi_lainnya',
+        'hobi',
+        'cita_cita',
+        'nisn',
+    )->and($profileColumns['jarak_tempuh_kategori']['type_name'])->toBe('varchar')
+        ->and($profileColumns['jarak_tempuh_detail']['type_name'])->toBe('numeric')
+        ->and($profileColumns['moda_transportasi']['type_name'])->toBe('varchar')
+        ->and($profileColumns['moda_transportasi_lainnya']['type_name'])->toBe('varchar')
+        ->and($profileColumns['hobi']['type_name'])->toBe('varchar')
+        ->and($profileColumns['cita_cita']['type_name'])->toBe('varchar')
+        ->and($profileColumns['nisn']['type_name'])->toBe('varchar')
+        ->and($parentColumns['status_hidup']['type_name'])->toBe('varchar');
+
+    foreach ([
+        'jarak_tempuh_kategori',
+        'jarak_tempuh_detail',
+        'moda_transportasi',
+        'moda_transportasi_lainnya',
+        'hobi',
+        'cita_cita',
+        'nisn',
+    ] as $column) {
+        expect($profileColumns[$column]['nullable'])->toBeTrue();
+    }
+
+    expect($parentColumns['status_hidup']['nullable'])->toBeTrue();
+});
+
+it('mass assigns and casts the additional ppdb biodata fields', function () {
+    $prospect = ProspectiveStudent::factory()->create();
+
+    $profile = PpdbProfile::create([
+        'prospective_student_id' => $prospect->id,
+        'jarak_tempuh_kategori' => 'more_than_1_km',
+        'jarak_tempuh_detail' => 2.5,
+        'moda_transportasi' => 'lainnya',
+        'moda_transportasi_lainnya' => 'Perahu',
+        'hobi' => 'Membaca',
+        'cita_cita' => 'Dokter',
+        'nisn' => '0012345678',
+    ]);
+    $father = PpdbParent::create([
+        'prospective_student_id' => $prospect->id,
+        'role' => 'father',
+        'status_hidup' => 'hidup',
+    ]);
+
+    expect($profile->fresh()->jarak_tempuh_kategori)->toBe('more_than_1_km')
+        ->and($profile->fresh()->jarak_tempuh_detail)->toBe('2.50')
+        ->and($profile->fresh()->moda_transportasi)->toBe('lainnya')
+        ->and($profile->fresh()->moda_transportasi_lainnya)->toBe('Perahu')
+        ->and($profile->fresh()->hobi)->toBe('Membaca')
+        ->and($profile->fresh()->cita_cita)->toBe('Dokter')
+        ->and($profile->fresh()->nisn)->toBe('0012345678')
+        ->and($father->fresh()->status_hidup)->toBe('hidup');
+});
+
+it('allows existing ppdb records to keep additional biodata values null', function () {
+    $prospect = ProspectiveStudent::factory()->create();
+    $profile = PpdbProfile::create(['prospective_student_id' => $prospect->id]);
+    $mother = PpdbParent::create([
+        'prospective_student_id' => $prospect->id,
+        'role' => 'mother',
+    ]);
+
+    expect($profile->fresh()->only([
+        'jarak_tempuh_kategori',
+        'jarak_tempuh_detail',
+        'moda_transportasi',
+        'moda_transportasi_lainnya',
+        'hobi',
+        'cita_cita',
+        'nisn',
+    ]))->each->toBeNull()
+        ->and($mother->fresh()->status_hidup)->toBeNull();
+});
+
 it('allows legacy prospective students without ppdb sidecars', function () {
     $year = createAcademicYear();
     $class = SchoolClass::factory()->create(['level' => 7]);

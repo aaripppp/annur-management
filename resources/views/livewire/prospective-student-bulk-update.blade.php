@@ -6,7 +6,7 @@
                 Data Calon Siswa
             </a>
             <h1 class="text-display-sm font-display-sm text-on-surface">Update Data Calon Siswa</h1>
-            <p class="text-body-md text-on-surface-variant mt-1">Perbarui biodata calon siswa yang sudah ada. Tidak membuat calon siswa baru.</p>
+            <p class="text-body-md text-on-surface-variant mt-1">Data calon siswa terdaftar dan dikonversi dapat diperbarui. Field yang terkait siswa aktif disinkronkan otomatis.</p>
         </div>
         <div class="flex items-center gap-2 text-label-md text-on-surface-variant">
             @foreach([1 => 'File', 2 => 'Preview', 3 => 'Selesai'] as $number => $label)
@@ -81,11 +81,13 @@
                     <span class="material-symbols-outlined text-[20px]">download</span>
                     Download File Calon Siswa
                 </button>
+                @error('export') <p class="mt-3 text-body-sm text-error">{{ $message }}</p> @enderror
                 <div class="mt-4 pt-4 border-t border-outline-variant text-body-sm text-on-surface-variant space-y-1.5">
                     <p class="flex items-start gap-2"><span class="material-symbols-outlined text-[18px] mt-0.5">lock</span> ID Sistem tidak boleh diubah.</p>
                     <p class="flex items-start gap-2"><span class="material-symbols-outlined text-[18px] mt-0.5">info</span> No. Pendaftaran, Tahun Ajaran, dan Kelas hanya referensi.</p>
                     <p class="flex items-start gap-2"><span class="material-symbols-outlined text-[18px] mt-0.5">edit_off</span> Sel kosong = data lama dipertahankan.</p>
-                    <p class="flex items-start gap-2"><span class="material-symbols-outlined text-[18px] mt-0.5">close</span> Untuk mengosongkan nilai gunakan form Edit Calon Siswa.</p>
+                    <p class="flex items-start gap-2"><span class="material-symbols-outlined text-[18px] mt-0.5">backspace</span> Gunakan #CLEAR# hanya untuk mengosongkan field nullable.</p>
+                    <p class="flex items-start gap-2"><span class="material-symbols-outlined text-[18px] mt-0.5">rule</span> Satu baris gagal membatalkan seluruh file.</p>
                 </div>
             </aside>
         </div>
@@ -94,7 +96,7 @@
             <div class="px-6 py-4 border-b border-outline-variant flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                     <h2 class="text-headline-sm font-headline-sm text-on-surface">Update Data Calon Siswa - Preview</h2>
-                    <p class="text-body-sm text-on-surface-variant mt-1">Hanya baris berstatus SIAP UPDATE yang akan diterapkan.</p>
+                    <p class="text-body-sm text-on-surface-variant mt-1">Seluruh perubahan diterapkan bersama hanya jika tidak ada baris GAGAL.</p>
                 </div>
                 @if($summary['blocked'] > 0)
                     <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-error-container text-on-error-container text-label-md font-label-md">
@@ -153,16 +155,28 @@
                                     @if($row['changes'] === [])
                                         <span class="text-body-sm text-on-surface-variant">-</span>
                                     @else
-                                        <ul class="space-y-1">
-                                            @foreach($row['changes'] as $change)
-                                                <li class="text-body-sm leading-snug">
-                                                    <span class="text-on-surface-variant">{{ $change['label'] }}:</span>
-                                                    <span class="line-through text-on-surface-variant/70">{{ $change['old_display'] }}</span>
-                                                    <span class="material-symbols-outlined text-[14px] text-on-surface-variant align-middle">arrow_forward</span>
-                                                    <span class="text-on-surface font-label-md">{{ $change['new_display'] }}</span>
-                                                </li>
+                                        <div class="space-y-3">
+                                            @foreach(collect($row['changes'])->groupBy('section') as $sectionChanges)
+                                                <div>
+                                                    <p class="text-label-sm font-label-sm uppercase tracking-wide text-primary mb-1">{{ $sectionChanges->first()['section_label'] }}</p>
+                                                    <ul class="space-y-1">
+                                                        @foreach($sectionChanges as $change)
+                                                            <li class="text-body-sm leading-snug">
+                                                                <span class="text-on-surface-variant">{{ $change['label'] }}:</span>
+                                                                <span class="line-through text-on-surface-variant/70">{{ $change['old_display'] }}</span>
+                                                                <span class="material-symbols-outlined text-[14px] text-on-surface-variant align-middle">arrow_forward</span>
+                                                                <span class="text-on-surface font-label-md">{{ $change['new_display'] }}</span>
+                                                                @if($change['explicit_clear'])
+                                                                    <span class="ml-1 text-label-sm text-error">#CLEAR#</span>
+                                                                @elseif($change['automatic'])
+                                                                    <span class="ml-1 text-label-sm text-tertiary">otomatis dikosongkan</span>
+                                                                @endif
+                                                            </li>
+                                                        @endforeach
+                                                    </ul>
+                                                </div>
                                             @endforeach
-                                        </ul>
+                                        </div>
                                     @endif
                                 </td>
                                 <td class="px-4 py-3 align-middle min-w-[220px]">
@@ -194,7 +208,7 @@
 
             <div class="px-6 py-4 border-t border-outline-variant bg-surface flex flex-col-reverse sm:flex-row justify-end gap-3 sticky bottom-0">
                 <button type="button" wire:click="backToSetup" class="px-5 py-2.5 text-on-surface-variant font-label-lg hover:bg-surface-container rounded-xl transition-colors">Ganti File</button>
-                <button type="button" wire:click="confirmUpdate" wire:loading.attr="disabled" @disabled($summary['ready'] === 0) class="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-6 py-2.5 rounded-xl font-label-lg transition-colors shadow-sm">
+                <button type="button" wire:click="confirmUpdate" wire:loading.attr="disabled" @disabled($summary['ready'] === 0 || $summary['blocked'] > 0) class="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-on-primary px-6 py-2.5 rounded-xl font-label-lg transition-colors shadow-sm">
                     <span wire:loading.remove wire:target="confirmUpdate">Update {{ $summary['ready'] }} Calon Siswa</span>
                     <span wire:loading wire:target="confirmUpdate">Memperbarui...</span>
                 </button>
@@ -219,7 +233,7 @@
                 <p class="font-label-md text-on-surface">Catatan</p>
                 <p>• ID calon siswa tidak berubah sehingga tagihan dan pembayaran pendaftaran tetap terhubung.</p>
                 <p>• Kelas tujuan, tahun ajaran, dan status tidak terpengaruh oleh fitur ini.</p>
-                <p>• Calon siswa yang sudah dikonversi tidak dapat diubah melalui fitur ini.</p>
+                <p>• Field terkait pada calon siswa yang sudah dikonversi disinkronkan otomatis ke data siswa.</p>
             </div>
 
             <a href="{{ route('calon-siswa.index') }}" wire:navigate class="mt-6 inline-flex items-center justify-center bg-primary hover:bg-primary/90 text-on-primary px-6 py-2.5 rounded-xl font-label-lg transition-colors">

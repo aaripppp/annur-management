@@ -7,6 +7,7 @@ use App\Models\ProspectiveStudent;
 use App\Models\Student;
 use App\Services\ProspectiveStudentConversionService;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -24,6 +25,8 @@ trait ConvertsProspectiveStudent
 
     public function openConvertModal(): void
     {
+        $this->authorizeConversionWhenAuthenticated();
+
         if ($this->prospectiveStudent->status !== ProspectiveStudentStatus::Registered
             || $this->prospectiveStudent->converted_student_id !== null) {
             session()->flash('error', 'Calon siswa ini tidak dapat dijadikan siswa.');
@@ -45,10 +48,25 @@ trait ConvertsProspectiveStudent
 
     public function convertToStudent(ProspectiveStudentConversionService $conversionService): void
     {
+        abort_if($this->prospectiveStudent === null, 403);
+
         $validated = $this->validate(['convertNis' => 'nullable|string|max:50']);
 
         try {
-            $student = $conversionService->convert($this->prospectiveStudent, $validated['convertNis']);
+            $student = DB::transaction(function () use ($conversionService, $validated): Student {
+                $prospectiveStudent = ProspectiveStudent::query()
+                    ->whereKey($this->prospectiveStudent->getKey())
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (auth()->check()) {
+                    $this->authorize('convert', $prospectiveStudent);
+                }
+
+                $this->prospectiveStudent = $prospectiveStudent;
+
+                return $conversionService->convert($prospectiveStudent, $validated['convertNis']);
+            });
         } catch (ValidationException $exception) {
             $messages = Arr::flatten($exception->errors());
             session()->flash('error', $messages[0] ?? 'Calon siswa tidak dapat dijadikan siswa.');
@@ -70,5 +88,14 @@ trait ConvertsProspectiveStudent
     protected function handleSuccessfulConversion(Student $student): void
     {
         $this->redirectRoute('siswa.show', ['student' => $student->id]);
+    }
+
+    private function authorizeConversionWhenAuthenticated(): void
+    {
+        if (! auth()->check() || $this->prospectiveStudent === null) {
+            return;
+        }
+
+        $this->authorize('convert', $this->prospectiveStudent);
     }
 }

@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\ProspectiveStudent;
 use App\Models\Student;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * Menghapus siswa beserta seluruh data operasionalnya.
@@ -34,18 +36,27 @@ class StudentDeletionService
         private readonly PaymentReceiptFileCleanupService $paymentReceiptFileCleanupService,
     ) {}
 
-    public function delete(int $studentId): void
+    public function delete(int $studentId, ?User $user = null): void
     {
-        DB::transaction(function () use ($studentId): void {
+        DB::transaction(function () use ($studentId, $user): void {
             $student = Student::query()
                 ->with(['payments.details', 'bills.adjustments', 'paymentSettings'])
                 ->lockForUpdate()
                 ->findOrFail($studentId);
+            $student->enrollments()->lockForUpdate()->get();
+
+            if ($user !== null) {
+                Gate::forUser($user)->authorize('delete', $student);
+            }
 
             $linkedProspect = ProspectiveStudent::query()
                 ->where('converted_student_id', $student->id)
                 ->lockForUpdate()
                 ->first();
+
+            if ($user !== null && $linkedProspect !== null) {
+                Gate::forUser($user)->authorize('delete', $linkedProspect);
+            }
 
             $prospectiveReceiptPaths = $linkedProspect !== null
                 ? $this->deleteProspectiveData($linkedProspect)

@@ -7,7 +7,9 @@ use App\Services\StudentBillStatementService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class StudentBillsPdfController extends Controller
 {
@@ -19,8 +21,10 @@ class StudentBillsPdfController extends Controller
         Student $student,
         StudentBillStatementService $statementService,
     ): Response {
+        Gate::authorize('downloadStudentBillsPdf', $student);
+
         $validated = $request->validate([
-            'academic_year' => ['nullable', 'string', 'max:9'],
+            'academic_year' => ['nullable', 'string', 'max:9', Rule::exists('academic_years', 'year')],
         ]);
 
         $academicYear = $validated['academic_year'] ?? '';

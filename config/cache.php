@@ -17,6 +17,8 @@ return [
 
     'default' => env('CACHE_STORE', 'database'),
 
+    'ppdb_bulk_preview_store' => env('PPDB_BULK_PREVIEW_CACHE_STORE', 'file'),
+
     /*
     |--------------------------------------------------------------------------
     | Cache Stores

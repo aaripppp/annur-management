@@ -3,9 +3,11 @@
 namespace App\Livewire;
 
 use App\Models\AcademicYear;
+use App\Models\ProspectiveStudent;
 use App\Services\ProspectiveStudentImportService;
 use App\Services\ProspectiveStudentImportSpreadsheet;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -34,8 +36,14 @@ class ProspectiveStudentImport extends Component
     /** @var array<string, mixed> */
     public array $result = [];
 
+    public function mount(): void
+    {
+        $this->authorizeAccess();
+    }
+
     public function downloadTemplate(ProspectiveStudentImportSpreadsheet $spreadsheet): BinaryFileResponse
     {
+        $this->authorizeAccess();
         $path = $spreadsheet->createTemplate();
 
         return response()
@@ -47,6 +55,7 @@ class ProspectiveStudentImport extends Component
 
     public function previewImport(ProspectiveStudentImportSpreadsheet $spreadsheet, ProspectiveStudentImportService $importService): void
     {
+        $this->authorizeAccess();
         $this->validate([
             'academicYearId' => ['required', 'exists:academic_years,id'],
             'file' => ['required', 'file', 'mimes:xlsx', 'max:12288'],
@@ -78,6 +87,7 @@ class ProspectiveStudentImport extends Component
 
     public function confirmImport(ProspectiveStudentImportService $importService): void
     {
+        $this->authorizeAccess();
         if ($this->importRows === [] || ($this->preview['has_errors'] ?? true)) {
             $this->addError('import', 'Import tidak dapat diproses selama masih ada baris bermasalah.');
 
@@ -100,6 +110,8 @@ class ProspectiveStudentImport extends Component
 
     public function backToSetup(): void
     {
+        $this->authorizeAccess();
+
         $this->step = 1;
         $this->importRows = [];
         $this->preview = [];
@@ -110,8 +122,17 @@ class ProspectiveStudentImport extends Component
 
     public function render(): View
     {
+        $this->authorizeAccess();
+
         return view('livewire.prospective-student-import', [
             'academicYears' => AcademicYear::query()->orderByDesc('start_date')->get(),
         ]);
+    }
+
+    private function authorizeAccess(): void
+    {
+        if (auth()->check()) {
+            Gate::authorize('import', ProspectiveStudent::class);
+        }
     }
 }

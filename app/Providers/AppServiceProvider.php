@@ -3,11 +3,17 @@
 namespace App\Providers;
 
 use App\Http\Middleware\AddPrivateResponseHeaders;
+use App\Http\Middleware\EnsureActiveUser;
+use App\Http\Middleware\RestrictTuUnitAccess;
+use App\Models\JemputanDriver;
 use App\Models\PpdbDocument;
 use App\Models\ProspectiveStudent;
+use App\Models\Student;
 use App\Models\User;
+use App\Policies\JemputanDriverPolicy;
 use App\Policies\PpdbDocumentPolicy;
 use App\Policies\ProspectiveStudentPolicy;
+use App\Policies\StudentPolicy;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -45,11 +51,17 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Livewire::addPersistentMiddleware(AddPrivateResponseHeaders::class);
+        Livewire::addPersistentMiddleware(EnsureActiveUser::class);
+        Livewire::addPersistentMiddleware(RestrictTuUnitAccess::class);
 
         Gate::policy(PpdbDocument::class, PpdbDocumentPolicy::class);
+        Gate::policy(JemputanDriver::class, JemputanDriverPolicy::class);
         Gate::policy(ProspectiveStudent::class, ProspectiveStudentPolicy::class);
+        Gate::policy(Student::class, StudentPolicy::class);
         Gate::define('manage-accounts', static fn (User $user): bool => $user->isSuperAdmin());
-        Gate::define('change-student-status', static fn (User $user): bool => $user->isAdmin() || $user->isSuperAdmin());
+        Gate::define('change-student-status', static fn (User $user): bool => $user->isAdmin()
+            || $user->isSuperAdmin()
+            || ($user->isTuUnit() && $user->school_level !== null));
     }
 
     /**

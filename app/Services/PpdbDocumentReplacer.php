@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Enums\PpdbDocumentType;
 use App\Models\PpdbDocument;
 use App\Models\ProspectiveStudent;
+use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -20,7 +22,7 @@ class PpdbDocumentReplacer
     /**
      * @param  array{prospective_student_id:int, document_type:string, document_id?:int|null, expected_path?:string|null, expected_updated_at?:string|null}  $context
      */
-    public function replaceOrUpload(array $context, UploadedFile $file): PpdbDocument
+    public function replaceOrUpload(array $context, UploadedFile $file, ?User $user = null): PpdbDocument
     {
         $prospectiveStudentId = (int) ($context['prospective_student_id'] ?? 0);
         $documentTypeValue = (string) ($context['document_type'] ?? '');
@@ -40,7 +42,7 @@ class PpdbDocumentReplacer
         $stagedDisk = PpdbPublicRegistrationService::DOCUMENT_DISK;
 
         try {
-            $result = DB::transaction(function () use ($prospectiveStudentId, $documentTypeValue, $documentId, $file, $stagedPath, $stagedDisk, $expectedPath, $expectedUpdatedAt): PpdbDocument {
+            $result = DB::transaction(function () use ($prospectiveStudentId, $documentTypeValue, $documentId, $file, $stagedPath, $stagedDisk, $expectedPath, $expectedUpdatedAt, $user): PpdbDocument {
                 $prospectiveStudent = ProspectiveStudent::query()
                     ->lockForUpdate()
                     ->find($prospectiveStudentId);
@@ -49,6 +51,10 @@ class PpdbDocumentReplacer
                     throw ValidationException::withMessages([
                         'prospective_student_id' => 'Data calon siswa tidak ditemukan.',
                     ]);
+                }
+
+                if ($user !== null) {
+                    Gate::forUser($user)->authorize('replaceDocument', $prospectiveStudent);
                 }
 
                 $existingDocument = null;

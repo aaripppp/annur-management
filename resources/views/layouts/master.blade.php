@@ -31,26 +31,53 @@
 >
 
     <!-- Flash Alert -->
-    @if(session('success'))
+    @php
+        $profileNotification = session('profile_notification');
+        $flashType = is_array($profileNotification)
+            ? ($profileNotification['type'] ?? null)
+            : (session('success') ? 'success' : null);
+        $flashMessage = is_array($profileNotification)
+            ? ($profileNotification['message'] ?? null)
+            : session('success');
+        $isErrorFlash = $flashType === 'error';
+    @endphp
         <div
-            x-data="{ show: true }"
+            data-flash-toast
+            data-flash-type="{{ $flashType }}"
+            x-data="{
+                show: @js((bool) $flashMessage),
+                type: @js($flashType ?? 'success'),
+                message: @js($flashMessage ?? ''),
+                timer: null,
+                notify(detail) {
+                    clearTimeout(this.timer);
+                    this.type = detail.type === 'error' ? 'error' : 'success';
+                    this.message = detail.message ?? '';
+                    this.show = this.message !== '';
+                    this.timer = setTimeout(() => this.show = false, this.type === 'error' ? 5000 : 3000);
+                }
+            }"
+            x-on:annur-toast.window="notify($event.detail)"
             x-show="show"
+            x-cloak
             x-transition:enter="transition ease-out duration-300"
             x-transition:enter-start="opacity-0 -translate-y-2"
             x-transition:enter-end="opacity-100 translate-y-0"
             x-transition:leave="transition ease-in duration-200"
             x-transition:leave-start="opacity-100 translate-y-0"
             x-transition:leave-end="opacity-0 -translate-y-2"
-            x-init="setTimeout(() => show = false, 3000)"
-            class="fixed top-4 right-4 z-[9999] max-w-sm bg-green-50 border border-green-200 text-green-800 rounded-xl px-4 py-3 shadow-lg flex items-center gap-3"
+            @if($flashMessage) x-init="setTimeout(() => show = false, {{ $isErrorFlash ? 5000 : 3000 }})" @endif
+            class="fixed top-4 right-4 z-[9999] max-w-sm border rounded-xl px-4 py-3 shadow-lg flex items-center gap-3"
+            x-bind:class="type === 'error' ? 'bg-error-container border-error text-on-error-container' : 'bg-green-50 border-green-200 text-green-800'"
+            x-bind:role="type === 'error' ? 'alert' : 'status'"
+            x-bind:aria-live="type === 'error' ? 'assertive' : 'polite'"
         >
-            <span class="material-symbols-outlined text-green-600 text-[20px]">check_circle</span>
-            <span class="text-body-sm font-label-md flex-1">{{ session('success') }}</span>
-            <button @click="show = false" class="text-green-400 hover:text-green-600">
-                <span class="material-symbols-outlined text-[18px]">close</span>
+            <span class="material-symbols-outlined text-[20px]" x-bind:class="type === 'error' ? 'text-error' : 'text-green-600'" x-text="type === 'error' ? 'error' : 'check_circle'" aria-hidden="true">{{ $isErrorFlash ? 'error' : 'check_circle' }}</span>
+            <span class="text-body-sm font-label-md flex-1" x-text="message">{{ $flashMessage }}</span>
+            <button type="button" @click="show = false" x-bind:class="type === 'error' ? 'text-error' : 'text-green-400 hover:text-green-600'" aria-label="Tutup notifikasi">
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">close</span>
             </button>
         </div>
-    @endif
 
     <!-- Sidebar Layout -->
     @include('layouts.sidebar')

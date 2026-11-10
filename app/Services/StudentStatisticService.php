@@ -34,15 +34,17 @@ class StudentStatisticService
         AcademicYear $year,
         ?SchoolLevel $level = null,
         ?int $classId = null,
+        ?SchoolLevel $accessibleLevel = null,
+        ?AcademicYear $accessActiveYear = null,
     ): array {
-        $active = Student::query()
+        $active = $this->studentQuery($accessibleLevel, $accessActiveYear)
             ->where('status', StudentStatus::Active->value)
             ->where(function (Builder $query) use ($year, $level, $classId): void {
                 $this->applyActivePredicate($query, $year, $level, $classId);
             })
             ->count();
 
-        $prospective = Student::query()
+        $prospective = $this->studentQuery($accessibleLevel, $accessActiveYear)
             ->where('status', StudentStatus::Active->value)
             ->whereDoesntHave('enrollments', fn (Builder $enrollments) => $enrollments
                 ->where('academic_year_id', $year->id)
@@ -55,7 +57,7 @@ class StudentStatisticService
             })
             ->count();
 
-        $graduated = Student::query()
+        $graduated = $this->studentQuery($accessibleLevel, $accessActiveYear)
             ->where(function (Builder $query) use ($year, $level, $classId): void {
                 $this->applyGraduatedPredicate($query, $year, $level, $classId);
             })
@@ -67,6 +69,18 @@ class StudentStatisticService
             'prospective' => $prospective,
             'graduated' => $graduated,
         ];
+    }
+
+    /** @return Builder<Student> */
+    private function studentQuery(?SchoolLevel $accessibleLevel, ?AcademicYear $accessActiveYear): Builder
+    {
+        $query = Student::query();
+
+        if ($accessibleLevel !== null) {
+            app(StudentUnitScope::class)->apply($query, $accessibleLevel, $accessActiveYear);
+        }
+
+        return $query;
     }
 
     /**

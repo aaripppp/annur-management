@@ -29,10 +29,17 @@ class StudentBillbook
      *     totalTunggakan: float|int
      * }
      */
-    public static function build(Student $student, string $selectedAcademicYear, string $summaryPeriod): array
-    {
+    public static function build(
+        Student $student,
+        string $selectedAcademicYear,
+        string $summaryPeriod,
+        bool $includePaymentBank = true,
+    ): array {
+        $paymentRelation = $includePaymentBank
+            ? 'paymentDetails.payment.bank'
+            : 'paymentDetails.payment';
         $bills = $student->bills()
-            ->with(['paymentType', 'paymentDetails.payment', 'adjustments.creator'])
+            ->with(['paymentType', $paymentRelation, 'adjustments.creator'])
             ->orderByDesc('period_year')
             ->orderByDesc('period_month')
             ->orderByDesc('id')

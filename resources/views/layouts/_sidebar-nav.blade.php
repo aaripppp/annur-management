@@ -4,11 +4,59 @@
     <div>
         <h1 class="text-headline-md font-headline-md text-on-primary">YPI Nurrahim An-nur</h1>
         <p class="text-body-sm font-body-sm text-on-primary-container">Management System</p>
+        @if (auth()->user()->isTuUnit())
+            <p class="text-label-sm font-label-sm text-on-primary-container">TU Unit {{ auth()->user()->school_level?->value ?? '-' }}</p>
+        @endif
     </div>
 </div>
 
 <!-- Main Nav -->
 <nav class="flex-1 flex flex-col gap-1 overflow-y-auto" x-data="sidebarScrollPosition()" @scroll.passive="onScroll()">
+    @if (auth()->user()->isTuUnit())
+        @php
+            $isTuStudentDataActive = request()->routeIs(
+                'siswa.index',
+                'siswa.show',
+                'siswa.biodata',
+                'siswa.bills.pdf',
+            );
+            $isTuProspectiveStudentActive = request()->routeIs(
+                'calon-siswa.index',
+                'calon-siswa.show',
+                'calon-siswa.biodata',
+                'calon-siswa.biodata.pdf',
+                'calon-siswa.biodata-recap.export',
+                'calon-siswa.update',
+            );
+        @endphp
+        <!-- Siswa -->
+        <div class="flex flex-col gap-1" x-data="sidebarMenu('siswa', true)">
+            <button
+                type="button"
+                id="nav-student-toggle"
+                aria-controls="nav-student-panel"
+                :aria-expanded="siswaOpen ? 'true' : 'false'"
+                @click="toggle()"
+                class="w-full text-left text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary rounded-lg flex items-center justify-between gap-3 px-3 py-2 scale-95 active:scale-90 transition-transform transition-colors duration-200"
+            >
+                <span class="flex items-center gap-3">
+                    <span class="material-symbols-outlined" data-icon="group">group</span>
+                    <span>Siswa</span>
+                </span>
+                <span class="material-symbols-outlined text-[20px] transition-transform duration-200" :class="siswaOpen ? 'rotate-180' : ''" data-icon="expand_more">expand_more</span>
+            </button>
+            <div id="nav-student-panel" role="region" aria-labelledby="nav-student-toggle" class="ml-4 pl-3 border-l-2 border-on-primary-fixed-variant/50 flex flex-col gap-1" x-show="siswaOpen" x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-100" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+                <a class="{{ $isTuStudentDataActive ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('siswa.index') }}">
+                    <span class="material-symbols-outlined text-[20px]" data-icon="person">person</span>
+                    Data Siswa
+                </a>
+                <a class="{{ $isTuProspectiveStudentActive ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('calon-siswa.index') }}">
+                    <span class="material-symbols-outlined text-[20px]" data-icon="person_add">person_add</span>
+                    Calon Siswa
+                </a>
+            </div>
+        </div>
+    @else
     <a class="{{ request()->routeIs('dashboard') ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-2 scale-95 active:scale-90 transition-transform transition-colors duration-200" href="{{ route('dashboard') }}">
         <span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
         Dashboard
@@ -50,6 +98,34 @@
             <a class="{{ $isStudentReportActive ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('laporan.index') }}">
                 <span class="material-symbols-outlined text-[20px]" data-icon="assessment">assessment</span>
                 Laporan
+            </a>
+        </div>
+    </div>
+
+    <!-- Jemputan -->
+    <div class="flex flex-col gap-1" x-data="sidebarMenu('jemputan', @json($isJemputanActive))">
+        <button
+            type="button"
+            id="nav-jemputan-toggle"
+            aria-controls="nav-jemputan-panel"
+            :aria-expanded="jemputanOpen ? 'true' : 'false'"
+            @click="toggle()"
+            class="w-full text-left {{ $isJemputanActive ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center justify-between gap-3 px-3 py-2 scale-95 active:scale-90 transition-transform transition-colors duration-200"
+        >
+            <span class="flex items-center gap-3">
+                <span class="material-symbols-outlined" data-icon="airport_shuttle">airport_shuttle</span>
+                <span>Jemputan</span>
+            </span>
+            <span class="material-symbols-outlined text-[20px] transition-transform duration-200" :class="jemputanOpen ? 'rotate-180' : ''" data-icon="expand_more">expand_more</span>
+        </button>
+        <div id="nav-jemputan-panel" role="region" aria-labelledby="nav-jemputan-toggle" class="ml-4 pl-3 border-l-2 border-on-primary-fixed-variant/50 flex flex-col gap-1" x-show="jemputanOpen" x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-100" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+            <a class="{{ request()->routeIs('jemputan.drivers.*') ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('jemputan.drivers.index') }}">
+                <span class="material-symbols-outlined text-[20px]" data-icon="groups">groups</span>
+                Kelompok Sopir
+            </a>
+            <a class="{{ request()->routeIs('jemputan.recap.*') ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('jemputan.recap.index') }}">
+                <span class="material-symbols-outlined text-[20px]" data-icon="table_view">table_view</span>
+                Rekap Jemputan
             </a>
         </div>
     </div>
@@ -141,20 +217,23 @@
             </a>
         </div>
     </div>
+    @endif
 </nav>
 
 <!-- Footer Nav -->
 <div class="mt-auto pt-3 border-t border-on-primary-fixed-variant flex flex-col gap-1">
-    <a class="text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary rounded-lg flex items-center gap-3 px-3 py-2 scale-95 active:scale-90 transition-transform transition-colors duration-200" href="#">
-        <span class="material-symbols-outlined" data-icon="settings">settings</span>
-        Pengaturan
-    </a>
-    @if (auth()->user()->isSuperAdmin())
-        <a class="{{ $isAccountActive ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-2 scale-95 active:scale-90 transition-transform transition-colors duration-200" href="{{ route('akun.index') }}">
-            <span class="material-symbols-outlined" data-icon="manage_accounts">manage_accounts</span>
-            Manajemen Akun
+    @unless (auth()->user()->isTuUnit())
+        <a class="text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary rounded-lg flex items-center gap-3 px-3 py-2 scale-95 active:scale-90 transition-transform transition-colors duration-200" href="#">
+            <span class="material-symbols-outlined" data-icon="settings">settings</span>
+            Pengaturan
         </a>
-    @endif
+        @if (auth()->user()->isSuperAdmin())
+            <a class="{{ $isAccountActive ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-2 scale-95 active:scale-90 transition-transform transition-colors duration-200" href="{{ route('akun.index') }}">
+                <span class="material-symbols-outlined" data-icon="manage_accounts">manage_accounts</span>
+                Manajemen Akun
+            </a>
+        @endif
+    @endunless
     <form method="POST" action="{{ route('logout') }}">
         @csrf
         <button type="submit" class="w-full text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary rounded-lg flex items-center gap-3 px-3 py-2 scale-95 active:scale-90 transition-transform transition-colors duration-200 cursor-pointer">
