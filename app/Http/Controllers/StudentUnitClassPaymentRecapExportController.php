@@ -26,6 +26,15 @@ class StudentUnitClassPaymentRecapExportController extends Controller
         ]);
         $academicYear = AcademicYear::query()->findOrFail((int) $validated['academic_year_id']);
         $schoolLevel = SchoolLevel::from($validated['school_level']);
+        $user = $request->user();
+
+        abort_unless($user !== null && ($user->isAdmin() || $user->isSuperAdmin() || $user->isTuUnit()), 403);
+
+        if ($user->isTuUnit()) {
+            abort_if($user->school_level === null || $schoolLevel !== $user->school_level, 403);
+            $schoolLevel = $user->school_level;
+        }
+
         $eligibleClassIds = StudentAcademicEnrollment::query()
             ->select('school_class_id')
             ->where('academic_year_id', $academicYear->id)

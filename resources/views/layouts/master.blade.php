@@ -67,7 +67,7 @@
             x-transition:leave-start="opacity-100 translate-y-0"
             x-transition:leave-end="opacity-0 -translate-y-2"
             @if($flashMessage) x-init="setTimeout(() => show = false, {{ $isErrorFlash ? 5000 : 3000 }})" @endif
-            class="fixed top-4 right-4 z-[9999] max-w-sm border rounded-xl px-4 py-3 shadow-lg flex items-center gap-3"
+            class="fixed top-4 right-4 z-[10000] max-w-sm border rounded-xl px-4 py-3 shadow-lg flex items-center gap-3"
             x-bind:class="type === 'error' ? 'bg-error-container border-error text-on-error-container' : 'bg-green-50 border-green-200 text-green-800'"
             x-bind:role="type === 'error' ? 'alert' : 'status'"
             x-bind:aria-live="type === 'error' ? 'assertive' : 'polite'"

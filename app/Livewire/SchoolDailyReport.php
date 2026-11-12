@@ -102,6 +102,9 @@ class SchoolDailyReport extends Component
 
     public function mount(): void
     {
+        $this->authorizeReportAccess();
+        $this->enforceTuClassRecapContext();
+
         if ($this->activeTab === 'level') {
             $this->activeTab = 'monthly';
             $this->monthlyMode = self::MONTHLY_MODE_BY_LEVEL;
@@ -165,6 +168,12 @@ class SchoolDailyReport extends Component
 
     public function setActiveTab(string $tab): void
     {
+        if ($this->isTuUnit()) {
+            $this->activeTab = 'class';
+
+            return;
+        }
+
         if ($tab === 'level') {
             $this->activeTab = 'monthly';
             $this->monthlyMode = self::MONTHLY_MODE_BY_LEVEL;
@@ -275,6 +284,7 @@ class SchoolDailyReport extends Component
 
     public function updatedClassRecapSchoolLevel(): void
     {
+        $this->enforceTuClassRecapContext();
         $this->normalizeClassRecapSelection();
     }
 
@@ -293,6 +303,9 @@ class SchoolDailyReport extends Component
         StudentTargetArrearsReportService $targetArrearsService,
         StudentClassPaymentRecapService $classRecapService,
     ): View {
+        $this->enforceTuClassRecapContext();
+        $this->normalizeClassRecapSelection();
+
         $schoolLevel = SchoolReportLevel::fromValue($this->schoolLevel);
 
         if ($this->activeTab === 'class') {
@@ -654,6 +667,14 @@ class SchoolDailyReport extends Component
     /** @return list<array{value: string, label: string}> */
     private function classRecapLevelOptions(): array
     {
+        $user = auth()->user();
+
+        if ($user?->isTuUnit()) {
+            return $user->school_level === null
+                ? []
+                : [['value' => $user->school_level->value, 'label' => $user->school_level->value]];
+        }
+
         return array_map(
             fn (SchoolLevel $level): array => ['value' => $level->value, 'label' => $level->value],
             SchoolLevel::cases(),
@@ -684,6 +705,7 @@ class SchoolDailyReport extends Component
 
     private function normalizeClassRecapSelection(): void
     {
+        $this->enforceTuClassRecapContext();
         $schoolLevel = SchoolLevel::tryFrom($this->classRecapSchoolLevel);
 
         if ($schoolLevel === null) {
@@ -728,5 +750,34 @@ class SchoolDailyReport extends Component
             self::MONTHLY_MODE_BY_LEVEL,
             self::MONTHLY_MODE_ALL_UNITS,
         ];
+    }
+
+    private function authorizeReportAccess(): void
+    {
+        $user = auth()->user();
+
+        if ($user === null) {
+            return;
+        }
+
+        abort_unless($user->isAdmin() || $user->isSuperAdmin() || $user->isTuUnit(), 403);
+        abort_if($user->isTuUnit() && $user->school_level === null, 403);
+    }
+
+    private function enforceTuClassRecapContext(): void
+    {
+        $user = auth()->user();
+
+        if ($user?->isTuUnit()) {
+            abort_if($user->school_level === null, 403);
+
+            $this->activeTab = 'class';
+            $this->classRecapSchoolLevel = $user->school_level->value;
+        }
+    }
+
+    private function isTuUnit(): bool
+    {
+        return auth()->user()?->isTuUnit() ?? false;
     }
 }

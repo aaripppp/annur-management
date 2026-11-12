@@ -164,6 +164,35 @@ it('uses only exact monthly Jemputan bills and only their mixed-payment allocati
         ->and($july['status'])->toBe(JemputanDriverRecapService::STATUS_PAID);
 });
 
+it('shows a multi-driver student in each driver recap without changing finances', function () {
+    $academicYear = recapAcademicYear();
+    [$student] = recapStudent($academicYear);
+    $drivers = JemputanDriver::factory()->count(2)->create();
+    recapAssign($drivers[0], $student, $academicYear);
+    recapAssign($drivers[1], $student, $academicYear);
+    $bill = recapBill($student, recapPaymentType('Jemputan'), 7, 2026, 500000);
+    $payment = recapPayment($student, Bank::factory()->create(), '2026-07-10', [$bill->id => 250000]);
+    $billCount = StudentBill::query()->count();
+    $paymentCount = Payment::query()->count();
+    $detailCount = PaymentDetail::query()->count();
+    $service = app(JemputanDriverRecapService::class);
+
+    $firstReport = $service->generate($academicYear->id, $drivers[0]->id);
+    $secondReport = $service->generate($academicYear->id, $drivers[1]->id);
+
+    expect($firstReport['rows'])->toHaveCount(1)
+        ->and($secondReport['rows'])->toHaveCount(1)
+        ->and($firstReport['rows'][0]['student_id'])->toBe($student->id)
+        ->and($secondReport['rows'][0]['student_id'])->toBe($student->id)
+        ->and($firstReport['rows'][0]['months']['2026-07']['effective_billed_amount'])->toBe(500000.0)
+        ->and($secondReport['rows'][0]['months']['2026-07']['effective_billed_amount'])->toBe(500000.0)
+        ->and(StudentBill::query()->count())->toBe($billCount)
+        ->and(Payment::query()->count())->toBe($paymentCount)
+        ->and(PaymentDetail::query()->count())->toBe($detailCount)
+        ->and($bill->fresh()?->amount)->toBe('500000.00')
+        ->and($payment->fresh()?->status)->toBe(Payment::STATUS_ACTIVE);
+});
+
 it('returns partial and multiple-payment totals with deterministic latest metadata', function () {
     $academicYear = recapAcademicYear();
     [$student] = recapStudent($academicYear);
@@ -405,11 +434,13 @@ it('performs no writes while generating the recap', function () {
 it('keeps SELECT queries constant as the student chunk grows', function (int $studentCount) {
     $academicYear = recapAcademicYear();
     $driver = JemputanDriver::factory()->create();
+    $otherDriver = JemputanDriver::factory()->create();
     $type = recapPaymentType('Jemputan');
 
     foreach (range(1, $studentCount) as $index) {
         [$student] = recapStudent($academicYear, 'Kelas '.$index);
         recapAssign($driver, $student, $academicYear);
+        recapAssign($otherDriver, $student, $academicYear);
         recapBill($student, $type, 7, 2026, 400000 + $index);
     }
 

@@ -191,6 +191,38 @@ it('keeps the search query separate from the selected student identity', functio
         ->and(JemputanDriverAssignment::query()->where('student_id', $firstStudent->id)->exists())->toBeFalse();
 });
 
+it('keeps a student eligible for another driver but not for the same driver', function () {
+    $year = groupingRefinementYear();
+    $student = groupingRefinementStudent($year, 'Siswa Multi Sopir');
+    $firstDriver = JemputanDriver::factory()->create(['name' => 'Sopir Pertama']);
+    $secondDriver = JemputanDriver::factory()->create(['name' => 'Sopir Kedua']);
+    groupingRefinementAssignment($firstDriver, $student, $year);
+
+    Livewire::test(JemputanDriverManagement::class)
+        ->call('viewGroup', $firstDriver->id)
+        ->call('openAssignmentModal')
+        ->set('studentSearch', 'Multi Sopir')
+        ->assertDontSee('wire:click="selectStudent('.$student->id.')"', false);
+
+    Livewire::test(JemputanDriverManagement::class)
+        ->call('viewGroup', $secondDriver->id)
+        ->call('openAssignmentModal')
+        ->set('studentSearch', 'Multi Sopir')
+        ->assertSee('wire:click="selectStudent('.$student->id.')"', false)
+        ->call('selectStudent', $student->id)
+        ->call('assignStudent')
+        ->assertHasNoErrors();
+
+    $sheets = groupingRefinementWorkbook($this->get(route('jemputan.recap.export', [
+        'mode' => 'all',
+        'academic_year_id' => $year->id,
+    ])));
+
+    expect(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->count())->toBe(2)
+        ->and(collect($sheets['SOPIR PERTAMA'])->flatten()->contains('SISWA MULTI SOPIR'))->toBeTrue()
+        ->and(collect($sheets['SOPIR KEDUA'])->flatten()->contains('SISWA MULTI SOPIR'))->toBeTrue();
+});
+
 it('rejects a tampered selected student id during save', function () {
     groupingRefinementYear();
     $ineligibleStudent = Student::factory()->create(['nama_lengkap' => 'Siswa Tidak Terdaftar']);
@@ -310,13 +342,16 @@ it('supports immediate same-month re-addition and academic-year isolation', func
     $closed = $service->remove($first->id);
     $readded = $service->assign($firstDriver->id, $student->id, $firstYear->id);
     $nextYearAssignment = $service->assign($otherDriver->id, $student->id, $nextYear->id);
+    $nextYearSameDriver = $service->assign($firstDriver->id, $student->id, $nextYear->id);
 
     expect(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->where('academic_year_id', $firstYear->id)->count())->toBe(1)
+        ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->where('academic_year_id', $nextYear->id)->count())->toBe(2)
         ->and($closed->effective_until?->toDateString())->toBe($readded->effective_from->toDateString())
         ->and($readded->effective_until)->toBeNull()
+        ->and($nextYearSameDriver->effective_until)->toBeNull()
         ->and(app(JemputanDriverRecapService::class)->generate($firstYear->id, $firstDriver->id)['rows'][0]['student_id'])->toBe($student->id)
         ->and(app(JemputanDriverRecapService::class)->generate($nextYear->id, $otherDriver->id)['rows'][0]['student_id'])->toBe($student->id)
-        ->and(fn () => $service->assign($otherDriver->id, $student->id, $firstYear->id))
+        ->and(fn () => $service->assign($firstDriver->id, $student->id, $firstYear->id))
         ->toThrow(ValidationException::class);
 
     $sheets = groupingRefinementWorkbook($this->get(route('jemputan.recap.export', [

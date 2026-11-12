@@ -20,6 +20,7 @@ class JemputanDriverFactory extends Factory
         return [
             'name' => fake()->name(),
             'phone' => fake()->optional()->phoneNumber(),
+            'foundation_deduction_percentage' => null,
             'is_active' => true,
         ];
     }

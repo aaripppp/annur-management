@@ -6,6 +6,8 @@ use App\Http\Controllers\DaycareDailyReportPdfController;
 use App\Http\Controllers\DaycareMonthlyReportExportController;
 use App\Http\Controllers\DaycareMonthlyReportPdfController;
 use App\Http\Controllers\JemputanDriverRecapExportController;
+use App\Http\Controllers\JemputanDriverSalaryExportController;
+use App\Http\Controllers\JemputanDriverSemesterRecapExportController;
 use App\Http\Controllers\PpdbBiodataPdfController;
 use App\Http\Controllers\PpdbBiodataRecapExportController;
 use App\Http\Controllers\PpdbDocumentController;
@@ -44,6 +46,8 @@ use App\Livewire\DaycarePaymentEntry;
 use App\Livewire\DaycarePaymentShow;
 use App\Livewire\JemputanDriverManagement;
 use App\Livewire\JemputanDriverRecap;
+use App\Livewire\JemputanDriverSalary;
+use App\Livewire\JemputanDriverSemesterRecap;
 use App\Livewire\PaymentCorrection;
 use App\Livewire\PaymentCreate;
 use App\Livewire\PaymentEdit;
@@ -238,6 +242,22 @@ Route::get('/jemputan/kelompok-sopir', JemputanDriverManagement::class)
 Route::get('/jemputan/rekap', JemputanDriverRecap::class)
     ->middleware(['auth', 'can:viewAny,'.JemputanDriver::class])
     ->name('jemputan.recap.index');
+
+Route::get('/jemputan/gaji', JemputanDriverSalary::class)
+    ->middleware(['auth', 'can:viewAny,'.JemputanDriver::class])
+    ->name('jemputan.salary.index');
+
+Route::get('/jemputan/rekap-6-bulan', JemputanDriverSemesterRecap::class)
+    ->middleware(['auth', 'can:viewAny,'.JemputanDriver::class])
+    ->name('jemputan.semester-recap.index');
+
+Route::get('/jemputan/rekap-6-bulan.xlsx', JemputanDriverSemesterRecapExportController::class)
+    ->middleware(['auth', 'can:viewAny,'.JemputanDriver::class])
+    ->name('jemputan.semester-recap.export');
+
+Route::get('/jemputan/gaji.xlsx', JemputanDriverSalaryExportController::class)
+    ->middleware(['auth', 'can:viewAny,'.JemputanDriver::class])
+    ->name('jemputan.salary.export');
 
 Route::get('/jemputan/rekap.xlsx', JemputanDriverRecapExportController::class)
     ->middleware(['auth', 'can:viewAny,'.JemputanDriver::class])

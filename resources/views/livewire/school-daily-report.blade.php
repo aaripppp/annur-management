@@ -119,6 +119,7 @@
 
     <div class="border-b border-outline-variant">
         <nav class="flex items-center gap-1 overflow-x-auto" aria-label="Jenis laporan">
+            @unless(auth()->user()?->isTuUnit())
             <button type="button" wire:click="setActiveTab('daily')" class="relative px-4 py-3 text-label-lg font-label-lg whitespace-nowrap transition-colors {{ $activeTab === 'daily' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface' }}">
                 Laporan Harian
                 @if($activeTab === 'daily')
@@ -143,6 +144,7 @@
                     <span class="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary"></span>
                 @endif
             </button>
+            @endunless
             <button type="button" wire:click="setActiveTab('class')" class="relative px-4 py-3 text-label-lg font-label-lg whitespace-nowrap transition-colors {{ $activeTab === 'class' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface' }}">
                 Rekap Per Kelas
                 @if($activeTab === 'class')
@@ -273,7 +275,7 @@
                 </div>
                 <div class="min-w-0">
                     <label for="class-recap-level" class="block text-body-sm text-on-surface-variant">Jenjang</label>
-                    <select id="class-recap-level" wire:model.live="classRecapSchoolLevel" class="mt-1 h-11 w-full rounded-lg border-outline-variant text-body-md shadow-sm focus:border-primary focus:ring-primary">
+                    <select id="class-recap-level" wire:model.live="classRecapSchoolLevel" class="mt-1 h-11 w-full rounded-lg border-outline-variant text-body-md shadow-sm focus:border-primary focus:ring-primary disabled:cursor-not-allowed disabled:bg-surface-container-low disabled:text-on-surface-variant" @disabled(auth()->user()?->isTuUnit())>
                         <option value="">Pilih Jenjang</option>
                         @foreach($classRecapLevelOptions as $option)
                             <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>

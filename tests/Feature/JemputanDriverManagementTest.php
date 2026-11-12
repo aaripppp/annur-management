@@ -4,6 +4,7 @@ use App\Livewire\JemputanDriverManagement;
 use App\Models\AcademicYear;
 use App\Models\JemputanDriver;
 use App\Models\JemputanDriverAssignment;
+use App\Models\JemputanDriverDeductionRate;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentAcademicEnrollment;
@@ -74,6 +75,111 @@ it('creates edits toggles and deletes an unassigned driver', function () {
         ->and($academicYear->exists)->toBeTrue();
 });
 
+it('creates a driver with an initial historical rate and keeps rates independent', function () {
+    $this->travelTo('2026-11-11 09:00:00');
+    jemputanAcademicYear();
+    $this->actingAs(jemputanManager());
+    $otherDriver = JemputanDriver::factory()->create([
+        'name' => 'Sopir Lain',
+        'foundation_deduction_percentage' => 20,
+    ]);
+
+    $component = Livewire::test(JemputanDriverManagement::class)
+        ->call('openCreateDriver')
+        ->set('driverName', 'Sopir Persentase')
+        ->set('driverFoundationDeductionPercentage', '10.5')
+        ->set('driverDeductionEffectiveMonth', '2026-07')
+        ->call('saveDriver')
+        ->assertHasNoErrors()
+        ->assertSee('10,5%');
+
+    $driver = JemputanDriver::query()->where('name', 'Sopir Persentase')->firstOrFail();
+    $initialRate = JemputanDriverDeductionRate::query()
+        ->where('jemputan_driver_id', $driver->id)
+        ->firstOrFail();
+
+    expect($driver->foundation_deduction_percentage)->toBeNull()
+        ->and($initialRate->percentage)->toBe('10.50')
+        ->and($initialRate->effective_year)->toBe(2026)
+        ->and($initialRate->effective_month)->toBe(7);
+
+    $component
+        ->call('editDriver', $driver->id)
+        ->assertSet('driverFoundationDeductionPercentage', '')
+        ->set('driverName', 'Sopir Persentase Baru')
+        ->call('saveDriver')
+        ->assertHasNoErrors()
+        ->call('viewGroup', $driver->id)
+        ->assertSee('10,5%')
+        ->assertSee('Mulai berlaku Juli 2026')
+        ->call('openDeductionRateModal')
+        ->set('deductionRatePercentage', '15.25')
+        ->set('deductionRateEffectiveMonth', '2026-11')
+        ->call('saveDeductionRate')
+        ->assertHasNoErrors()
+        ->assertSet('isDeductionRateModalOpen', false);
+
+    expect($driver->refresh()->name)->toBe('Sopir Persentase Baru')
+        ->and($driver->foundation_deduction_percentage)->toBeNull()
+        ->and(JemputanDriverDeductionRate::query()->where('jemputan_driver_id', $driver->id)->count())->toBe(2)
+        ->and($otherDriver->refresh()->foundation_deduction_percentage)->toBe('20.00');
+});
+
+it('accepts foundation deduction percentage boundaries', function (string $percentage) {
+    jemputanAcademicYear();
+    $this->actingAs(jemputanManager());
+
+    Livewire::test(JemputanDriverManagement::class)
+        ->call('openCreateDriver')
+        ->set('driverName', 'Sopir Batas '.$percentage)
+        ->set('driverFoundationDeductionPercentage', $percentage)
+        ->set('driverDeductionEffectiveMonth', '2026-07')
+        ->call('saveDriver')
+        ->assertHasNoErrors('driverFoundationDeductionPercentage');
+
+    $driver = JemputanDriver::query()->where('name', 'Sopir Batas '.$percentage)->firstOrFail();
+
+    expect(JemputanDriverDeductionRate::query()
+        ->where('jemputan_driver_id', $driver->id)
+        ->value('percentage'))
+        ->toBe(number_format((float) $percentage, 2, '.', ''));
+})->with(['0', '10.5', '100']);
+
+it('rejects an invalid foundation deduction percentage', function (string $percentage) {
+    jemputanAcademicYear();
+    $this->actingAs(jemputanManager());
+
+    Livewire::test(JemputanDriverManagement::class)
+        ->call('openCreateDriver')
+        ->set('driverName', 'Sopir Persentase Tidak Valid')
+        ->set('driverFoundationDeductionPercentage', $percentage)
+        ->set('driverDeductionEffectiveMonth', '2026-07')
+        ->call('saveDriver')
+        ->assertHasErrors('driverFoundationDeductionPercentage');
+
+    expect(JemputanDriver::query()->where('name', 'Sopir Persentase Tidak Valid')->exists())->toBeFalse();
+})->with(['-0.01', '100.01', '10.123']);
+
+it('keeps a legacy null percentage editable and displays it as not configured', function () {
+    jemputanAcademicYear();
+    $this->actingAs(jemputanManager());
+    $driver = JemputanDriver::factory()->create([
+        'name' => 'Sopir Lama',
+        'foundation_deduction_percentage' => null,
+    ]);
+
+    Livewire::test(JemputanDriverManagement::class)
+        ->assertSee('Belum diatur')
+        ->call('editDriver', $driver->id)
+        ->assertSet('driverFoundationDeductionPercentage', '')
+        ->call('saveDriver')
+        ->assertHasNoErrors()
+        ->call('viewGroup', $driver->id)
+        ->assertSee('Potongan Yayasan: Belum diatur');
+
+    expect($driver->refresh()->foundation_deduction_percentage)->toBeNull();
+});
+
 it('adds a current membership without month input or financial writes', function () {
     $academicYear = jemputanAcademicYear();
     $student = jemputanStudent($academicYear);
@@ -90,36 +196,41 @@ it('adds a current membership without month input or financial writes', function
         ->and(Payment::query()->count())->toBe($paymentCount);
 });
 
-it('rejects duplicate current membership for one student in the same academic year', function () {
+it('allows different drivers and rejects a duplicate current membership for the same driver', function () {
     $academicYear = jemputanAcademicYear();
     $student = jemputanStudent($academicYear);
     $firstDriver = JemputanDriver::factory()->create();
     $secondDriver = JemputanDriver::factory()->create();
     $service = app(JemputanDriverAssignmentService::class);
 
-    $service->assign($firstDriver->id, $student->id, $academicYear->id);
+    $firstAssignment = $service->assign($firstDriver->id, $student->id, $academicYear->id);
+    $secondAssignment = $service->assign($secondDriver->id, $student->id, $academicYear->id);
 
-    expect(fn () => $service->assign($secondDriver->id, $student->id, $academicYear->id))
+    expect(fn () => $service->assign($firstDriver->id, $student->id, $academicYear->id))
         ->toThrow(ValidationException::class);
 
-    expect(JemputanDriverAssignment::query()->where('student_id', $student->id)->count())->toBe(1);
+    expect($firstAssignment->effective_until)->toBeNull()
+        ->and($secondAssignment->effective_until)->toBeNull()
+        ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->count())->toBe(2);
 });
 
-it('removes and re-adds a student immediately while preserving the closed row', function () {
+it('removes only the selected driver membership and supports immediate re-addition', function () {
     $academicYear = jemputanAcademicYear();
     $student = jemputanStudent($academicYear);
     $drivers = JemputanDriver::factory()->count(2)->create();
     $service = app(JemputanDriverAssignmentService::class);
 
     $first = $service->assign($drivers[0]->id, $student->id, $academicYear->id);
+    $other = $service->assign($drivers[1]->id, $student->id, $academicYear->id);
     $closed = $service->remove($first->id);
-    $second = $service->assign($drivers[1]->id, $student->id, $academicYear->id);
+    $readded = $service->assign($drivers[0]->id, $student->id, $academicYear->id);
 
     expect($closed->effective_until?->toDateString())->toBe($closed->effective_from->toDateString())
-        ->and($second->effective_from->toDateString())->toBe($closed->effective_until?->toDateString())
-        ->and($second->effective_until)->toBeNull()
-        ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->count())->toBe(1)
-        ->and(JemputanDriverAssignment::query()->where('student_id', $student->id)->count())->toBe(2);
+        ->and($readded->effective_from->toDateString())->toBe($closed->effective_until?->toDateString())
+        ->and($readded->effective_until)->toBeNull()
+        ->and($other->fresh()?->effective_until)->toBeNull()
+        ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->count())->toBe(2)
+        ->and(JemputanDriverAssignment::query()->where('student_id', $student->id)->count())->toBe(3);
 });
 
 it('ignores legacy period overlap when no current membership exists', function () {
@@ -143,21 +254,39 @@ it('ignores legacy period overlap when no current membership exists', function (
         ->and(JemputanDriverAssignment::query()->where('student_id', $student->id)->count())->toBe(2);
 });
 
-it('moves a student immediately and preserves the prior row', function () {
+it('moves only the selected membership and preserves membership with another driver', function () {
     $academicYear = jemputanAcademicYear();
     $student = jemputanStudent($academicYear);
     $oldDriver = JemputanDriver::factory()->create();
+    $otherDriver = JemputanDriver::factory()->create();
     $newDriver = JemputanDriver::factory()->create();
     $service = app(JemputanDriverAssignmentService::class);
     $oldAssignment = $service->assign($oldDriver->id, $student->id, $academicYear->id);
+    $otherAssignment = $service->assign($otherDriver->id, $student->id, $academicYear->id);
 
     $newAssignment = $service->move($oldAssignment->id, $newDriver->id);
 
     expect($oldAssignment->refresh()->effective_until?->toDateString())->toBe($newAssignment->effective_from->toDateString())
         ->and($newAssignment->effective_until)->toBeNull()
         ->and($newAssignment->jemputan_driver_id)->toBe($newDriver->id)
-        ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->count())->toBe(1)
-        ->and(JemputanDriverAssignment::query()->where('student_id', $student->id)->count())->toBe(2);
+        ->and($otherAssignment->fresh()?->effective_until)->toBeNull()
+        ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->count())->toBe(2)
+        ->and(JemputanDriverAssignment::query()->where('student_id', $student->id)->count())->toBe(3);
+});
+
+it('rejects moving a membership to a driver that already has the student', function () {
+    $academicYear = jemputanAcademicYear();
+    $student = jemputanStudent($academicYear);
+    $drivers = JemputanDriver::factory()->count(2)->create();
+    $service = app(JemputanDriverAssignmentService::class);
+    $source = $service->assign($drivers[0]->id, $student->id, $academicYear->id);
+    $target = $service->assign($drivers[1]->id, $student->id, $academicYear->id);
+
+    expect(fn () => $service->move($source->id, $drivers[1]->id))
+        ->toThrow(ValidationException::class)
+        ->and($source->fresh()?->effective_until)->toBeNull()
+        ->and($target->fresh()?->effective_until)->toBeNull()
+        ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->count())->toBe(2);
 });
 
 it('isolates current memberships by academic year', function () {

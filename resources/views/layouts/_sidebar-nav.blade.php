@@ -28,6 +28,7 @@
                 'calon-siswa.biodata-recap.export',
                 'calon-siswa.update',
             );
+            $isTuReportActive = request()->routeIs('laporan.*');
         @endphp
         <!-- Siswa -->
         <div class="flex flex-col gap-1" x-data="sidebarMenu('siswa', true)">
@@ -53,6 +54,10 @@
                 <a class="{{ $isTuProspectiveStudentActive ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('calon-siswa.index') }}">
                     <span class="material-symbols-outlined text-[20px]" data-icon="person_add">person_add</span>
                     Calon Siswa
+                </a>
+                <a class="{{ $isTuReportActive ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('laporan.index', ['tab' => 'class']) }}">
+                    <span class="material-symbols-outlined text-[20px]" data-icon="assessment">assessment</span>
+                    Laporan
                 </a>
             </div>
         </div>
@@ -126,6 +131,14 @@
             <a class="{{ request()->routeIs('jemputan.recap.*') ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('jemputan.recap.index') }}">
                 <span class="material-symbols-outlined text-[20px]" data-icon="table_view">table_view</span>
                 Rekap Jemputan
+            </a>
+            <a class="{{ request()->routeIs('jemputan.salary.*') ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('jemputan.salary.index') }}">
+                <span class="material-symbols-outlined text-[20px]" data-icon="payments">payments</span>
+                Gaji Sopir
+            </a>
+            <a class="{{ request()->routeIs('jemputan.semester-recap.*') ? 'bg-secondary-container text-on-secondary-container font-bold' : 'text-on-primary-container hover:bg-on-primary-fixed-variant hover:text-on-primary' }} rounded-lg flex items-center gap-3 px-3 py-1.5 transition-colors duration-200" href="{{ route('jemputan.semester-recap.index') }}">
+                <span class="material-symbols-outlined text-[20px]" data-icon="calendar_view_month">calendar_view_month</span>
+                Rekap 6 Bulan
             </a>
         </div>
     </div>

@@ -12,16 +12,31 @@ class JemputanDriver extends Model
     /** @use HasFactory<JemputanDriverFactory> */
     use HasFactory;
 
-    protected $fillable = ['name', 'phone', 'is_active'];
+    protected $fillable = ['name', 'phone', 'foundation_deduction_percentage', 'is_active'];
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return [
+            'foundation_deduction_percentage' => 'decimal:2',
+            'is_active' => 'boolean',
+        ];
     }
 
     /** @return HasMany<JemputanDriverAssignment, $this> */
     public function assignments(): HasMany
     {
         return $this->hasMany(JemputanDriverAssignment::class);
+    }
+
+    /** @return HasMany<JemputanDriverSalaryAllocation, $this> */
+    public function salaryAllocations(): HasMany
+    {
+        return $this->hasMany(JemputanDriverSalaryAllocation::class);
+    }
+
+    /** @return HasMany<JemputanDriverDeductionRate, $this> */
+    public function deductionRates(): HasMany
+    {
+        return $this->hasMany(JemputanDriverDeductionRate::class);
     }
 }

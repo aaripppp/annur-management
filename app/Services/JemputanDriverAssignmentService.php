@@ -24,7 +24,7 @@ class JemputanDriverAssignmentService
             }
 
             $this->lockAssignments($student->id, $academicYear->id);
-            $this->assertNoCurrentMembership($student->id, $academicYear->id);
+            $this->assertNoCurrentMembership($student->id, $academicYear->id, $driver->id);
 
             return JemputanDriverAssignment::query()->create([
                 'jemputan_driver_id' => $driver->id,
@@ -82,6 +82,7 @@ class JemputanDriverAssignmentService
             $this->assertNoCurrentMembership(
                 $assignment->student_id,
                 $assignment->academic_year_id,
+                $targetDriver->id,
                 $assignment->id,
             );
             $operationDate = $this->operationDate($academicYear, $assignment->effective_from->toImmutable());
@@ -109,18 +110,20 @@ class JemputanDriverAssignmentService
     private function assertNoCurrentMembership(
         int $studentId,
         int $academicYearId,
+        int $driverId,
         ?int $ignoreAssignmentId = null,
     ): void {
         $currentMembershipExists = JemputanDriverAssignment::query()
             ->where('student_id', $studentId)
             ->where('academic_year_id', $academicYearId)
+            ->where('jemputan_driver_id', $driverId)
             ->currentMembership()
             ->when($ignoreAssignmentId !== null, fn ($query) => $query->whereKeyNot($ignoreAssignmentId))
             ->exists();
 
         if ($currentMembershipExists) {
             throw ValidationException::withMessages([
-                'selectedStudentId' => 'Siswa sudah menjadi anggota kelompok sopir pada tahun ajaran ini.',
+                'selectedStudentId' => 'Siswa sudah menjadi anggota sopir ini pada tahun ajaran yang dipilih.',
             ]);
         }
     }

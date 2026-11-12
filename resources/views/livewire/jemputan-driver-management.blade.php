@@ -25,6 +25,7 @@
                     <tr class="border-b border-outline-variant">
                         <th class="px-6 py-3 text-label-sm uppercase tracking-wider text-on-surface-variant">Nama Sopir</th>
                         <th class="px-6 py-3 text-label-sm uppercase tracking-wider text-on-surface-variant">Telepon</th>
+                        <th class="px-6 py-3 text-center text-label-sm uppercase tracking-wider text-on-surface-variant">Potongan Yayasan</th>
                         <th class="px-6 py-3 text-center text-label-sm uppercase tracking-wider text-on-surface-variant">Siswa</th>
                         <th class="px-6 py-3 text-center text-label-sm uppercase tracking-wider text-on-surface-variant">Status</th>
                         <th class="px-6 py-3 text-right text-label-sm uppercase tracking-wider text-on-surface-variant">Aksi</th>
@@ -35,6 +36,15 @@
                         <tr wire:key="driver-row-{{ $driver->id }}" class="hover:bg-surface-container-low/50">
                             <td class="whitespace-nowrap px-6 py-4 font-medium text-on-surface">{{ $driver->name }}</td>
                             <td class="whitespace-nowrap px-6 py-4 text-body-md text-on-surface-variant">{{ $driver->phone ?: '—' }}</td>
+                            @php($currentRate = $currentRates[$driver->id] ?? null)
+                            <td class="whitespace-nowrap px-6 py-4 text-center font-numeric-data text-on-surface">
+                                <span>{{ $currentRate['label'] ?? 'Belum diatur' }}</span>
+                                @if (($currentRate['source'] ?? null) === \App\Services\JemputanDriverDeductionRateResolver::SOURCE_LEGACY)
+                                    <p class="mt-1 whitespace-normal text-body-sm font-normal text-on-surface-variant">Persentase lama — bulan berlaku belum ditentukan</p>
+                                @elseif (! empty($currentRate['period_label']))
+                                    <p class="mt-1 text-body-sm font-normal text-on-surface-variant">Mulai {{ $currentRate['period_label'] }}</p>
+                                @endif
+                            </td>
                             <td class="px-6 py-4 text-center font-numeric-data text-on-surface">{{ $driver->student_count }}</td>
                             <td class="px-6 py-4 text-center">
                                 <span class="inline-flex rounded-full px-3 py-1 text-label-sm font-label-sm {{ $driver->is_active ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container-high text-on-surface-variant' }}">
@@ -51,7 +61,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="px-6 py-10 text-center text-body-md text-on-surface-variant">Belum ada data sopir yang sesuai.</td></tr>
+                        <tr><td colspan="6" class="px-6 py-10 text-center text-body-md text-on-surface-variant">Belum ada data sopir yang sesuai.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -64,6 +74,13 @@
                         <div class="min-w-0">
                             <p class="truncate font-medium text-on-surface">{{ $driver->name }}</p>
                             <p class="truncate text-body-sm text-on-surface-variant">{{ $driver->phone ?: 'Tanpa nomor telepon' }} · {{ $driver->student_count }} siswa</p>
+                            @php($currentRate = $currentRates[$driver->id] ?? null)
+                            <p class="text-body-sm text-on-surface-variant">Potongan Yayasan: {{ $currentRate['label'] ?? 'Belum diatur' }}</p>
+                            @if (($currentRate['source'] ?? null) === \App\Services\JemputanDriverDeductionRateResolver::SOURCE_LEGACY)
+                                <p class="text-body-sm text-on-surface-variant">Persentase lama — bulan berlaku belum ditentukan</p>
+                            @elseif (! empty($currentRate['period_label']))
+                                <p class="text-body-sm text-on-surface-variant">Mulai {{ $currentRate['period_label'] }}</p>
+                            @endif
                         </div>
                         <span class="shrink-0 rounded-full px-2.5 py-1 text-label-sm {{ $driver->is_active ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container-high text-on-surface-variant' }}">{{ $driver->is_active ? 'Aktif' : 'Nonaktif' }}</span>
                     </div>
@@ -93,6 +110,15 @@
                     </button>
                     <h2 class="text-title-lg font-title-lg text-on-surface">Kelompok {{ $selectedDriver->name }}</h2>
                     <p class="mt-1 text-body-sm text-on-surface-variant">Anggota aktif pada tahun ajaran yang dipilih. Riwayat penugasan tetap tersimpan.</p>
+                    <div class="mt-2 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+                        <p class="text-body-sm text-on-surface-variant">Potongan Yayasan berlaku saat ini</p>
+                        <p class="mt-0.5 text-body-lg font-label-lg text-on-surface">{{ $selectedDriverCurrentRate['label'] ?? 'Belum diatur' }}</p>
+                        @if (($selectedDriverCurrentRate['source'] ?? null) === \App\Services\JemputanDriverDeductionRateResolver::SOURCE_LEGACY)
+                            <p class="mt-1 text-body-sm text-on-surface-variant">Persentase lama — bulan berlaku belum ditentukan</p>
+                        @elseif (! empty($selectedDriverCurrentRate['period_label']))
+                            <p class="mt-1 text-body-sm text-on-surface-variant">Mulai berlaku {{ $selectedDriverCurrentRate['period_label'] }}</p>
+                        @endif
+                    </div>
                 </div>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <div>
@@ -103,6 +129,9 @@
                             @endforeach
                         </select>
                     </div>
+                    <button type="button" wire:click="openDeductionRateModal" class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-primary px-4 py-2 text-label-lg text-primary transition-colors hover:bg-primary/10">
+                        <span class="material-symbols-outlined text-[20px]">percent</span> Ubah Persentase
+                    </button>
                     <button type="button" wire:click="openAssignmentModal" @disabled(! $selectedDriver->is_active) class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-label-lg text-on-primary disabled:cursor-not-allowed disabled:opacity-50">
                         <span class="material-symbols-outlined text-[20px]">person_add</span> Tambah Siswa
                     </button>
@@ -145,6 +174,48 @@
             @if ($assignments?->hasPages())
                 <div class="border-t border-outline-variant p-4">{{ $assignments->links() }}</div>
             @endif
+
+            <div class="border-t border-outline-variant">
+                <div class="p-4 sm:p-5">
+                    <h3 class="text-title-md font-title-md text-on-surface">Riwayat Persentase Yayasan</h3>
+                    <p class="mt-1 text-body-sm text-on-surface-variant">Setiap tarif berlaku sampai ada tarif berikutnya. Tarif lama tidak berubah saat tarif baru ditambahkan.</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[520px] border-collapse text-left">
+                        <thead class="bg-surface-container-low">
+                            <tr class="border-b border-outline-variant">
+                                <th class="px-5 py-3 text-label-sm uppercase tracking-wider text-on-surface-variant">Mulai Berlaku</th>
+                                <th class="px-5 py-3 text-label-sm uppercase tracking-wider text-on-surface-variant">Persentase</th>
+                                <th class="px-5 py-3 text-label-sm uppercase tracking-wider text-on-surface-variant">Keterangan</th>
+                                <th class="px-5 py-3 text-right text-label-sm uppercase tracking-wider text-on-surface-variant">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-outline-variant">
+                            @forelse ($selectedDriverRateHistory as $deductionRate)
+                                <tr wire:key="deduction-rate-{{ $deductionRate['id'] }}">
+                                    <td class="whitespace-nowrap px-5 py-3 text-body-md text-on-surface">{{ $deductionRate['period_label'] }}</td>
+                                    <td class="whitespace-nowrap px-5 py-3 font-numeric-data text-body-md text-on-surface">{{ $deductionRate['percentage_label'] }}</td>
+                                    <td class="px-5 py-3 text-body-sm text-on-surface-variant">{{ $deductionRate['notes'] ?: '—' }}</td>
+                                    <td class="px-5 py-3 text-right">
+                                        <button type="button" wire:click="openEditDeductionRateModal({{ $deductionRate['id'] }})" title="Edit riwayat persentase" aria-label="Edit riwayat persentase {{ $deductionRate['period_label'] }}" class="inline-flex size-10 items-center justify-center rounded-lg text-primary transition-colors hover:bg-primary/10">
+                                            <span class="material-symbols-outlined text-[20px]" aria-hidden="true">edit</span>
+                                        </button>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="4" class="px-5 py-8 text-center text-body-md text-on-surface-variant">
+                                        Belum ada riwayat tarif.
+                                        @if (($selectedDriverCurrentRate['source'] ?? null) === \App\Services\JemputanDriverDeductionRateResolver::SOURCE_LEGACY)
+                                            Persentase lama masih digunakan sementara sampai tarif pertama ditambahkan.
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </section>
     @endif
 
@@ -165,6 +236,23 @@
                         <input id="driver-phone" type="text" wire:model="driverPhone" class="mt-1 h-11 w-full rounded-lg border-outline-variant focus:border-primary focus:ring-primary">
                         @error('driverPhone')<p class="mt-1 text-body-sm text-error">{{ $message }}</p>@enderror
                     </div>
+                    @if ($editingDriverId === null)
+                        <div>
+                            <label for="driver-foundation-deduction-percentage" class="block text-label-md text-on-surface">Potongan Yayasan (%) <span class="text-on-surface-variant">(opsional)</span></label>
+                            <input id="driver-foundation-deduction-percentage" type="number" min="0" max="100" step="0.01" inputmode="decimal" wire:model="driverFoundationDeductionPercentage" class="mt-1 h-11 w-full rounded-lg border-outline-variant focus:border-primary focus:ring-primary">
+                            @error('driverFoundationDeductionPercentage')<p class="mt-1 text-body-sm text-error">{{ $message }}</p>@enderror
+                            <p class="mt-1 text-body-sm text-on-surface-variant">Persentase awal disimpan sebagai riwayat tarif, bukan sebagai kolom persentase lama.</p>
+                        </div>
+                        <div>
+                            <label for="driver-deduction-effective-month" class="block text-label-md text-on-surface">Bulan Mulai Berlaku</label>
+                            <input id="driver-deduction-effective-month" type="month" wire:model="driverDeductionEffectiveMonth" class="mt-1 h-11 w-full rounded-lg border-outline-variant focus:border-primary focus:ring-primary">
+                            @error('driverDeductionEffectiveMonth')<p class="mt-1 text-body-sm text-error">{{ $message }}</p>@enderror
+                        </div>
+                    @else
+                        <div class="rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3">
+                            <p class="text-body-sm text-on-surface-variant">Persentase yayasan tidak diubah dari form ini. Gunakan tombol <span class="font-label-md text-on-surface">Ubah Persentase</span> pada detail sopir agar riwayat tarif tetap utuh.</p>
+                        </div>
+                    @endif
                     <label class="flex items-center gap-3 text-body-md text-on-surface">
                         <input type="checkbox" wire:model="driverIsActive" class="rounded border-outline-variant text-primary focus:ring-primary"> Sopir aktif
                     </label>
@@ -292,6 +380,142 @@
                 <div class="mt-6 flex justify-end gap-3">
                     <button type="button" wire:click="cancelDriverConfirmation" class="rounded-lg px-4 py-2.5 text-label-lg text-on-surface hover:bg-surface-container">Batal</button>
                     <button type="button" wire:click="confirmDriverAction" class="rounded-lg {{ $driverConfirmationAction === 'delete' ? 'bg-error text-on-error' : 'bg-primary text-on-primary' }} px-4 py-2.5 text-label-lg">Konfirmasi</button>
+                </div>
+            </div>
+            </div>
+        </div>
+        </template>
+    @endif
+
+    @if ($isDeductionRateModalOpen && $selectedDriver)
+        <template x-teleport="body">
+        <div class="fixed inset-0 z-[9999] overflow-y-auto bg-inverse-surface/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" wire:click.self="closeDeductionRateModal">
+            <div class="flex min-h-full items-center justify-center">
+            <div class="relative w-full max-w-lg rounded-xl border border-outline-variant bg-surface-container-lowest p-5 shadow-2xl sm:p-6">
+                <h2 class="text-title-lg font-title-lg text-on-surface">Ubah Persentase Yayasan</h2>
+                <p class="mt-1 text-body-sm text-on-surface-variant">{{ $selectedDriver->name }}</p>
+
+                <div class="mt-5 space-y-4">
+                    <div class="rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3">
+                        <p class="text-body-sm text-on-surface-variant">Persentase saat ini</p>
+                        <p class="mt-0.5 text-title-md font-title-md text-on-surface">{{ $selectedDriverCurrentRate['label'] ?? 'Belum diatur' }}</p>
+                        @if (($selectedDriverCurrentRate['source'] ?? null) === \App\Services\JemputanDriverDeductionRateResolver::SOURCE_LEGACY)
+                            <p class="mt-1 text-body-sm text-on-surface-variant">Persentase lama — bulan berlaku belum ditentukan</p>
+                        @elseif (! empty($selectedDriverCurrentRate['period_label']))
+                            <p class="mt-1 text-body-sm text-on-surface-variant">Mulai berlaku {{ $selectedDriverCurrentRate['period_label'] }}</p>
+                        @endif
+                    </div>
+
+                    <div>
+                        <label for="deduction-rate-percentage" class="block text-label-md text-on-surface">Persentase Baru (%)</label>
+                        <input id="deduction-rate-percentage" type="number" min="0" max="100" step="0.01" inputmode="decimal" wire:model.live.debounce.300ms="deductionRatePercentage" class="mt-1 h-11 w-full rounded-lg border-outline-variant focus:border-primary focus:ring-primary">
+                        @error('deductionRatePercentage')<p class="mt-1 text-body-sm text-error">{{ $message }}</p>@enderror
+                    </div>
+
+                    <div>
+                        <label for="deduction-rate-effective-month" class="block text-label-md text-on-surface">Bulan Mulai Berlaku</label>
+                        <input id="deduction-rate-effective-month" type="month" wire:model.live="deductionRateEffectiveMonth" class="mt-1 h-11 w-full rounded-lg border-outline-variant focus:border-primary focus:ring-primary">
+                        @error('deductionRateEffectiveMonth')<p class="mt-1 text-body-sm text-error">{{ $message }}</p>@enderror
+                    </div>
+
+                    <div>
+                        <label for="deduction-rate-notes" class="block text-label-md text-on-surface">Catatan <span class="text-on-surface-variant">(opsional)</span></label>
+                        <textarea id="deduction-rate-notes" rows="2" wire:model="deductionRateNotes" placeholder="Contoh: Penyesuaian tarif yayasan" class="mt-1 w-full rounded-lg border-outline-variant focus:border-primary focus:ring-primary"></textarea>
+                        @error('deductionRateNotes')<p class="mt-1 text-body-sm text-error">{{ $message }}</p>@enderror
+                    </div>
+
+                    @if ($deductionRatePreview)
+                        <div class="rounded-lg border border-primary/30 bg-primary-container/30 px-4 py-3">
+                            <p class="text-label-md font-label-md text-on-surface">Preview dampak perubahan</p>
+                            @if ($deductionRatePreview['previous_source'] === \App\Services\JemputanDriverDeductionRateResolver::SOURCE_LEGACY)
+                                <p class="mt-1 text-body-sm text-on-surface-variant">
+                                    Persentase lama {{ $deductionRatePreview['previous_label_percentage'] }} masih digunakan sementara sampai {{ $deductionRatePreview['effective_label'] }}.
+                                </p>
+                            @elseif ($deductionRatePreview['previous_configured'])
+                                <p class="mt-1 text-body-sm text-on-surface-variant">
+                                    {{ $deductionRatePreview['previous_label'] }} tetap {{ $deductionRatePreview['previous_label_percentage'] }}.
+                                </p>
+                            @else
+                                <p class="mt-1 text-body-sm text-on-surface-variant">
+                                    {{ $deductionRatePreview['previous_label'] }} belum diatur.
+                                </p>
+                            @endif
+                            <p class="text-body-sm text-on-surface-variant">
+                                {{ $deductionRatePreview['effective_label'] }} menjadi {{ $deductionRatePreview['new_label'] }}.
+                            </p>
+                        </div>
+
+                        @if ($deductionRatePreview['duplicate'])
+                            <div class="rounded-lg border border-error/30 bg-error-container/20 px-4 py-3 text-body-sm text-on-error-container">
+                                Tarif untuk {{ $deductionRatePreview['effective_label'] }} sudah ada. Pilih periode lain; data historis tidak akan ditimpa.
+                            </div>
+                        @endif
+
+                        @if ($deductionRatePreview['is_retroactive'])
+                            <div class="rounded-lg border border-tertiary/30 bg-tertiary-fixed/20 px-4 py-3 text-body-sm text-on-surface">
+                                <p class="font-label-md">Perubahan berlaku mundur.</p>
+                                <p class="mt-1 text-on-surface-variant">Menambahkan tarif untuk periode yang sudah lewat dapat mengubah laporan historis. Periksa dampaknya sebelum menyimpan.</p>
+                            </div>
+                        @endif
+                    @endif
+                </div>
+
+                @if ($deductionRateRequiresConfirmation)
+                    <div class="mt-5 rounded-lg border border-tertiary/30 bg-tertiary-fixed/20 px-4 py-3 text-body-sm text-on-surface">
+                        <p class="font-label-md">Konfirmasi tarif historis</p>
+                        <p class="mt-1 text-on-surface-variant">Tarif ini akan berlaku mundur. Simpan hanya jika dampak historis sudah diperiksa.</p>
+                    </div>
+                    <div class="mt-6 flex justify-end gap-3">
+                        <button type="button" wire:click="closeDeductionRateModal" class="rounded-lg px-4 py-2.5 text-label-lg text-on-surface hover:bg-surface-container">Batal</button>
+                        <button type="button" wire:click="confirmRetroactiveDeductionRate" class="rounded-lg bg-tertiary-fixed px-4 py-2.5 text-label-lg text-on-tertiary-fixed">Ya, Simpan Tarif Historis</button>
+                    </div>
+                @else
+                    <div class="mt-6 flex justify-end gap-3">
+                        <button type="button" wire:click="closeDeductionRateModal" class="rounded-lg px-4 py-2.5 text-label-lg text-on-surface hover:bg-surface-container">Batal</button>
+                        <button type="button" wire:click="saveDeductionRate" class="rounded-lg bg-primary px-4 py-2.5 text-label-lg text-on-primary">Simpan</button>
+                    </div>
+                @endif
+            </div>
+            </div>
+        </div>
+        </template>
+    @endif
+
+    @if ($isEditDeductionRateModalOpen && $selectedDriver)
+        <template x-teleport="body">
+        <div class="fixed inset-0 z-[9999] overflow-y-auto bg-inverse-surface/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="edit-deduction-rate-title" wire:click.self="closeEditDeductionRateModal">
+            <div class="flex min-h-full items-center justify-center">
+            <div class="relative w-full max-w-lg rounded-xl border border-outline-variant bg-surface-container-lowest p-5 shadow-2xl sm:p-6">
+                <h2 id="edit-deduction-rate-title" class="text-title-lg font-title-lg text-on-surface">Edit Riwayat Persentase</h2>
+                <p class="mt-1 text-body-sm text-on-surface-variant">{{ $selectedDriver->name }}</p>
+
+                <div class="mt-5 space-y-4">
+                    <div>
+                        <label for="edit-deduction-rate-percentage" class="block text-label-md text-on-surface">Persentase (%)</label>
+                        <input id="edit-deduction-rate-percentage" type="number" min="0" max="100" step="0.01" inputmode="decimal" wire:model="editDeductionRatePercentage" class="mt-1 h-11 w-full rounded-lg border-outline-variant focus:border-primary focus:ring-primary">
+                        @error('editDeductionRatePercentage')<p class="mt-1 text-body-sm text-error">{{ $message }}</p>@enderror
+                    </div>
+
+                    <div>
+                        <label for="edit-deduction-rate-effective-month" class="block text-label-md text-on-surface">Bulan Mulai Berlaku</label>
+                        <input id="edit-deduction-rate-effective-month" type="month" wire:model="editDeductionRateEffectiveMonth" class="mt-1 h-11 w-full rounded-lg border-outline-variant focus:border-primary focus:ring-primary">
+                        @error('editDeductionRateEffectiveMonth')<p class="mt-1 text-body-sm text-error">{{ $message }}</p>@enderror
+                    </div>
+
+                    <div>
+                        <label for="edit-deduction-rate-notes" class="block text-label-md text-on-surface">Catatan <span class="text-on-surface-variant">(opsional)</span></label>
+                        <textarea id="edit-deduction-rate-notes" rows="3" maxlength="500" wire:model="editDeductionRateNotes" class="mt-1 w-full rounded-lg border-outline-variant focus:border-primary focus:ring-primary"></textarea>
+                        @error('editDeductionRateNotes')<p class="mt-1 text-body-sm text-error">{{ $message }}</p>@enderror
+                    </div>
+                </div>
+                @error('editDeductionRate')<p class="mt-2 text-body-sm text-error">{{ $message }}</p>@enderror
+
+                <div class="mt-6 flex justify-end gap-3">
+                    <button type="button" wire:click="closeEditDeductionRateModal" class="rounded-lg px-4 py-2.5 text-label-lg text-on-surface hover:bg-surface-container">Batal</button>
+                    <button type="button" wire:click="saveDeductionRateCorrection" wire:loading.attr="disabled" wire:target="saveDeductionRateCorrection" class="rounded-lg bg-primary px-4 py-2.5 text-label-lg text-on-primary disabled:opacity-60">
+                        <span wire:loading.remove wire:target="saveDeductionRateCorrection">Simpan</span>
+                        <span wire:loading wire:target="saveDeductionRateCorrection">Menyimpan...</span>
+                    </button>
                 </div>
             </div>
             </div>

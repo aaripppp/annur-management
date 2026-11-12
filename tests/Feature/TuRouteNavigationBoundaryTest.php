@@ -57,7 +57,7 @@ function expectBoundarySidebarActive(string $html, string $activeUrl, string $in
         ->and($html)->toContain("sidebarMenu('siswa', true)");
 }
 
-it('shows each TU unit only the two pending student navigation links and logout', function (SchoolLevel $schoolLevel) {
+it('shows each TU unit only student links class recap and logout', function (SchoolLevel $schoolLevel) {
     $this->actingAs(tuBoundaryUser($schoolLevel));
 
     $sidebar = renderBoundarySidebar();
@@ -69,18 +69,19 @@ it('shows each TU unit only the two pending student navigation links and logout'
         ->toContain('Data Siswa')
         ->toContain('href="'.route('calon-siswa.index').'"')
         ->toContain('Calon Siswa')
+        ->toContain('href="'.route('laporan.index', ['tab' => 'class']).'"')
+        ->toContain('Laporan')
         ->toContain('action="'.route('logout').'"')
         ->toContain('Keluar')
         ->not->toContain('Dashboard')
         ->not->toContain('Kelayakan Ujian')
         ->not->toContain('Pembayaran')
-        ->not->toContain('Laporan')
         ->not->toContain('Daycare')
         ->not->toContain('Master Data')
         ->not->toContain('Pengaturan')
         ->not->toContain('Manajemen Akun');
 
-    expect(substr_count($sidebar, '<a '))->toBe(2);
+    expect(substr_count($sidebar, '<a '))->toBe(3);
 })->with([
     'TK' => SchoolLevel::TK,
     'SD' => SchoolLevel::SD,
@@ -120,6 +121,29 @@ it('highlights only the matching TU Student or Applicant submenu on index and de
         $html = $this->actingAs($tu)->get($url)->assertOk()->getContent();
         expectBoundarySidebarActive($html, $applicantUrl, $studentUrl);
     }
+});
+
+it('renders one active TU report link inside the expanded Student submenu', function () {
+    $tu = tuBoundaryUser(SchoolLevel::SMP);
+    $reportUrl = route('laporan.index', ['tab' => 'class']);
+    $html = $this->actingAs($tu)
+        ->get($reportUrl)
+        ->assertOk()
+        ->getContent();
+
+    expect($html)
+        ->toContain("sidebarMenu('siswa', true)")
+        ->and(substr_count($html, 'href="'.$reportUrl.'"'))->toBe(1)
+        ->and(sidebarBoundaryLinkClass($html, $reportUrl))
+        ->toContain('bg-secondary-container text-on-secondary-container font-bold');
+
+    $studentPanelStart = strpos($html, 'id="nav-student-panel"');
+    $studentPanelEnd = strpos($html, '</div>', strpos($html, $reportUrl));
+    $reportPosition = strpos($html, $reportUrl);
+
+    expect($studentPanelStart)->not->toBeFalse()
+        ->and($reportPosition)->toBeGreaterThan($studentPanelStart)
+        ->and($studentPanelEnd)->toBeGreaterThan($reportPosition);
 });
 
 it('keeps Admin and Superadmin Student submenu active styling unchanged', function (string $role, string $routeName, string $activeItem) {
@@ -189,7 +213,6 @@ it('redirects TU direct URL tampering to the safe pending boundary', function (s
     'student import' => fn () => route('siswa.import'),
     'exam eligibility' => fn () => route('siswa.exam-eligibility'),
     'payment' => fn () => route('pembayaran.index'),
-    'report' => fn () => route('laporan.index'),
     'report export' => fn () => route('laporan.harian.export'),
     'master data' => fn () => route('kelas.index'),
     'PPDB settings' => fn () => route('ppdb.default-class-mappings.index'),

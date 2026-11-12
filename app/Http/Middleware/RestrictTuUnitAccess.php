@@ -24,6 +24,7 @@ class RestrictTuUnitAccess
         'ppdb-applicant-editor',
         'prospective-student-bulk-update',
         'ppdb-document-replacer',
+        'school-daily-report',
     ];
 
     /**
@@ -65,6 +66,9 @@ class RestrictTuUnitAccess
             'calon-siswa.update',
             'ppdb.documents.preview',
             'ppdb.documents.download',
+            'laporan.index',
+            'laporan.kelas.export',
+            'laporan.kelas.unit.export',
         )) {
             return $next($request);
         }

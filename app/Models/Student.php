@@ -397,6 +397,12 @@ class Student extends Model
         return $this->hasMany(JemputanDriverAssignment::class);
     }
 
+    /** @return HasMany<JemputanDriverSalaryAllocation, $this> */
+    public function jemputanDriverSalaryAllocations(): HasMany
+    {
+        return $this->hasMany(JemputanDriverSalaryAllocation::class);
+    }
+
     /**
      * Canonical final-enrollment boundary: the academic year label of the
      * student's latest attended (active) enrollment, by academic year start date.

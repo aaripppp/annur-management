@@ -24,6 +24,15 @@ class StudentClassPaymentRecapExportController extends Controller
             'class_id' => ['required', 'integer', 'exists:school_classes,id'],
         ]);
         $schoolLevel = SchoolLevel::from($validated['school_level']);
+        $user = $request->user();
+
+        abort_unless($user !== null && ($user->isAdmin() || $user->isSuperAdmin() || $user->isTuUnit()), 403);
+
+        if ($user->isTuUnit()) {
+            abort_if($user->school_level === null || $schoolLevel !== $user->school_level, 403);
+            $schoolLevel = $user->school_level;
+        }
+
         $schoolClass = SchoolClass::query()
             ->whereKey((int) $validated['class_id'])
             ->whereIn('level', $schoolLevel->classLevels())
