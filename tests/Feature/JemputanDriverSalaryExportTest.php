@@ -15,6 +15,7 @@ use App\Models\Student;
 use App\Models\StudentAcademicEnrollment;
 use App\Models\StudentBill;
 use App\Models\User;
+use App\Services\JemputanDriverSalaryService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Livewire\Livewire;
@@ -64,6 +65,8 @@ function jemputanSalaryExportAssign(
     AcademicYear $year,
     string $from = '2026-07-01',
     ?string $until = null,
+    ?string $destination = null,
+    ?string $serviceType = null,
 ): void {
     JemputanDriverAssignment::query()->create([
         'jemputan_driver_id' => $driver->id,
@@ -71,6 +74,8 @@ function jemputanSalaryExportAssign(
         'academic_year_id' => $year->id,
         'effective_from' => $from,
         'effective_until' => $until,
+        'destination' => $destination,
+        'service_type' => $serviceType,
     ]);
 }
 
@@ -300,6 +305,81 @@ function jemputanSalaryExportCellFillColor(string $path, string $cell): ?string
     return $colors === false || $colors === [] ? null : (string) $colors[0]['rgb'];
 }
 
+/** @return array{horizontal: string, vertical: string}|null */
+function jemputanSalaryExportCellAlignment(string $path, string $cell): ?array
+{
+    $sheetXml = jemputanSalaryExportWorksheetXml($path);
+
+    if (preg_match('/<c r="'.preg_quote($cell, '/').'"[^>]*\bs="(\d+)"/', $sheetXml, $matches) !== 1) {
+        return null;
+    }
+
+    $styles = simplexml_load_string(jemputanSalaryExportStylesXml($path));
+
+    if ($styles === false) {
+        return null;
+    }
+
+    $xfs = $styles->xpath('//*[local-name()="cellXfs"]/*[local-name()="xf"]');
+    $alignments = $xfs[(int) $matches[1]]->xpath('./*[local-name()="alignment"]');
+
+    if ($alignments === false || $alignments === []) {
+        return null;
+    }
+
+    return [
+        'horizontal' => (string) $alignments[0]['horizontal'],
+        'vertical' => (string) $alignments[0]['vertical'],
+    ];
+}
+
+function jemputanSalaryExportColumnWidth(string $path, int $column): ?float
+{
+    $worksheet = simplexml_load_string(jemputanSalaryExportWorksheetXml($path));
+
+    if ($worksheet === false) {
+        return null;
+    }
+
+    $columns = $worksheet->xpath('//*[local-name()="cols"]/*[local-name()="col"]');
+
+    foreach ($columns ?: [] as $definition) {
+        if ($column >= (int) $definition['min'] && $column <= (int) $definition['max']) {
+            return (float) $definition['width'];
+        }
+    }
+
+    return null;
+}
+
+/** @return array{shrink_to_fit: bool, wrap_text: bool}|null */
+function jemputanSalaryExportCellTextLayout(string $path, string $cell): ?array
+{
+    $sheetXml = jemputanSalaryExportWorksheetXml($path);
+
+    if (preg_match('/<c r="'.preg_quote($cell, '/').'"[^>]*\bs="(\d+)"/', $sheetXml, $matches) !== 1) {
+        return null;
+    }
+
+    $styles = simplexml_load_string(jemputanSalaryExportStylesXml($path));
+
+    if ($styles === false) {
+        return null;
+    }
+
+    $xfs = $styles->xpath('//*[local-name()="cellXfs"]/*[local-name()="xf"]');
+    $alignments = $xfs[(int) $matches[1]]->xpath('./*[local-name()="alignment"]');
+
+    if ($alignments === false || $alignments === []) {
+        return null;
+    }
+
+    return [
+        'shrink_to_fit' => in_array((string) $alignments[0]['shrinkToFit'], ['1', 'true'], true),
+        'wrap_text' => in_array((string) $alignments[0]['wrapText'], ['1', 'true'], true),
+    ];
+}
+
 function jemputanSalaryExportZipEntries(string $path): array
 {
     $archive = new ZipArchive;
@@ -327,7 +407,7 @@ it('exports one worksheet with dynamic title period metadata and signature', fun
         'name' => 'Sopir Export',
         'foundation_deduction_percentage' => 10,
     ]);
-    jemputanSalaryExportAssign($driver, $student, $year);
+    jemputanSalaryExportAssign($driver, $student, $year, destination: 'Cikarang Baru', serviceType: 'PP');
     $type = PaymentType::factory()->create(['name' => 'Jemputan']);
     $bill = jemputanSalaryExportBill($student, $type, 7, 500000);
     $bank = Bank::factory()->create(['name' => 'Bank Export', 'account_number' => '987654']);
@@ -362,8 +442,27 @@ it('exports one worksheet with dynamic title period metadata and signature', fun
             ->and($data[0])->toBe(1)
             ->and($data[1])->toBe($student->nama_lengkap)
             ->and($data[2])->toBe('VIII Ekspor')
-            ->and($data[3])->toBe('')
-            ->and($data[4])->toBe('')
+            ->and($data[3])->toBe('Cikarang Baru')
+            ->and($data[4])->toBe('PP')
+            ->and(jemputanSalaryExportColumnWidth($path, 4))->toBe(16.0)
+            ->and(jemputanSalaryExportColumnWidth($path, 5))->toBe(11.0)
+            ->and(jemputanSalaryExportColumnWidth($path, 8))->toBe(31.0)
+            ->and(jemputanSalaryExportCellAlignment($path, 'D6'))->toBe([
+                'horizontal' => 'left',
+                'vertical' => 'center',
+            ])
+            ->and(jemputanSalaryExportCellAlignment($path, 'E4'))->toBe([
+                'horizontal' => 'center',
+                'vertical' => 'center',
+            ])
+            ->and(jemputanSalaryExportCellAlignment($path, 'E6'))->toBe([
+                'horizontal' => 'center',
+                'vertical' => 'center',
+            ])
+            ->and(jemputanSalaryExportCellTextLayout($path, 'H6'))->toBe([
+                'shrink_to_fit' => true,
+                'wrap_text' => false,
+            ])
             ->and($data[5])->toBe(500000)
             ->and($data[6])->toBe('15/07/2026')
             ->and($data[7])->toBe('Bank Export · 987654')
@@ -375,7 +474,54 @@ it('exports one worksheet with dynamic title period metadata and signature', fun
     }
 });
 
-it('writes full effective amounts for paid partial and unpaid students with editable numeric cells', function () {
+it('keeps short and long bank labels intact on one line with shrink to fit', function () {
+    $year = jemputanSalaryExportYear();
+    $driver = JemputanDriver::factory()->create(['foundation_deduction_percentage' => 10]);
+    $type = PaymentType::factory()->create(['name' => 'Jemputan']);
+    [$shortStudent] = jemputanSalaryExportStudent($year, 'Siswa Bank Pendek');
+    [$longStudent] = jemputanSalaryExportStudent($year, 'Siswa Bank Panjang');
+    jemputanSalaryExportAssign($driver, $shortStudent, $year, serviceType: 'PP');
+    jemputanSalaryExportAssign($driver, $longStudent, $year, serviceType: 'Pulang');
+    $shortBill = jemputanSalaryExportBill($shortStudent, $type, 7, 300000);
+    $longBill = jemputanSalaryExportBill($longStudent, $type, 7, 400000);
+    $shortBank = Bank::factory()->create(['name' => 'BSI', 'account_number' => '123456']);
+    $longBank = Bank::factory()->create([
+        'name' => 'Bank Internasional Nusantara Cabang Cikarang Baru',
+        'account_number' => '123456789012345678901234567890',
+    ]);
+    jemputanSalaryExportPayment($shortStudent, $shortBill, $shortBank, '2026-07-10', 300000);
+    jemputanSalaryExportPayment($longStudent, $longBill, $longBank, '2026-07-11', 400000);
+
+    $response = $this->get(route('jemputan.salary.export', [
+        'academic_year_id' => $year->id,
+        'driver_id' => $driver->id,
+        'month' => '2026-07',
+    ]));
+    $path = jemputanSalaryExportPath($response);
+
+    try {
+        $workbook = jemputanSalaryExportWorkbook($path);
+        $rows = reset($workbook);
+        $data = collect(jemputanSalaryExportDataRows($rows))->keyBy(fn (array $row): string => (string) $row[1]);
+
+        expect($data[$shortStudent->nama_lengkap][7])->toBe('BSI · 123456')
+            ->and($data[$longStudent->nama_lengkap][7])->toBe('Bank Internasional Nusantara Cabang Cikarang Baru · 123456789012345678901234567890')
+            ->and(jemputanSalaryExportColumnWidth($path, 5))->toBe(11.0)
+            ->and(jemputanSalaryExportColumnWidth($path, 8))->toBe(31.0)
+            ->and(jemputanSalaryExportCellTextLayout($path, 'H6'))->toBe([
+                'shrink_to_fit' => true,
+                'wrap_text' => false,
+            ])
+            ->and(jemputanSalaryExportCellTextLayout($path, 'H7'))->toBe([
+                'shrink_to_fit' => true,
+                'wrap_text' => false,
+            ]);
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('exports paid partial unpaid and zero bills while excluding students without bills', function () {
     $year = jemputanSalaryExportYear();
     $driver = JemputanDriver::factory()->create(['foundation_deduction_percentage' => 10]);
     $jemputan = PaymentType::factory()->create(['name' => 'Jemputan']);
@@ -385,16 +531,26 @@ it('writes full effective amounts for paid partial and unpaid students with edit
     [$paidStudent] = jemputanSalaryExportStudent($year, 'Siswa Lunas Ekspor', 'VIII Lunas Ekspor');
     [$partialStudent] = jemputanSalaryExportStudent($year, 'Siswa Sebagian Ekspor', 'VIII Sebagian Ekspor');
     [$unpaidStudent] = jemputanSalaryExportStudent($year, 'Siswa Belum Ekspor', 'VIII Belum Ekspor');
+    [$zeroBillStudent] = jemputanSalaryExportStudent($year, 'Siswa Tagihan Nol Ekspor', 'VIII Nol Ekspor');
+    [$noBillStudent] = jemputanSalaryExportStudent($year, 'Siswa Tanpa Tagihan Ekspor', 'VIII Tanpa Tagihan Ekspor');
 
-    foreach ([$paidStudent, $partialStudent, $unpaidStudent] as $student) {
+    foreach ([$paidStudent, $partialStudent, $unpaidStudent, $zeroBillStudent, $noBillStudent] as $student) {
         jemputanSalaryExportAssign($driver, $student, $year);
     }
 
     $paidBill = jemputanSalaryExportBill($paidStudent, $jemputan, 7, 500000);
     $partialBill = jemputanSalaryExportBill($partialStudent, $jemputan, 7, 400000);
     jemputanSalaryExportBill($unpaidStudent, $jemputan, 7, 300000);
+    jemputanSalaryExportBill($zeroBillStudent, $jemputan, 7, 0);
     jemputanSalaryExportPayment($paidStudent, $paidBill, $bank, '2026-07-10', 500000);
     jemputanSalaryExportPayment($partialStudent, $partialBill, $bank, '2026-07-11', 150000);
+
+    $webRows = collect(app(JemputanDriverSalaryService::class)->generate(
+        $year->id,
+        $driver->id,
+        '2026-07',
+        perPage: 25,
+    )['rows'])->keyBy('student_id');
 
     $response = $this->get(route('jemputan.salary.export', [
         'academic_year_id' => $year->id,
@@ -414,24 +570,79 @@ it('writes full effective amounts for paid partial and unpaid students with edit
         $revenueRowNumber = 6 + count($data) + 3;
         $deductionRowNumber = $revenueRowNumber + 1;
 
-        expect($data)->toHaveCount(3)
+        expect($webRows)->toHaveCount(5)
+            ->and($webRows[$noBillStudent->id]['has_bill'])->toBeFalse()
+            ->and($webRows[$noBillStudent->id]['payment_status_label'])->toBe('Belum Ada Tagihan')
+            ->and($data)->toHaveCount(4)
+            ->and($data->keys()->all())->not->toContain($noBillStudent->nama_lengkap)
+            ->and(array_column($data->values()->all(), 0))->toBe(range(1, 4))
             ->and($data[$paidStudent->nama_lengkap][5])->toBe(500000)
             ->and($data[$partialStudent->nama_lengkap][5])->toBe(400000)
             ->and($data[$unpaidStudent->nama_lengkap][5])->toBe(300000)
+            ->and($data[$zeroBillStudent->nama_lengkap][5])->toBe(0)
             ->and(is_numeric($data[$paidStudent->nama_lengkap][5]))->toBeTrue()
-            ->and($totalRow[5])->toBe('=SUM(F6:F8)')
+            ->and($totalRow[5])->toBe('=SUM(F6:F9)')
             ->and($totalRow[6])->toBe('')
             ->and($totalRow[7])->toBe('')
-            ->and($revenue[7])->toBe('=F9')
-            ->and($deduction[7])->toBe('=ROUND(F9*10/100,0)')
+            ->and($revenue[7])->toBe('=F10')
+            ->and($deduction[7])->toBe('=ROUND(F10*10/100,0)')
             ->and($net[7])->toBe('=H'.$revenueRowNumber.'-H'.$deductionRowNumber);
 
         $worksheetXml = jemputanSalaryExportWorksheetXml($path);
-        expect($worksheetXml)->toContain('<f>SUM(F6:F8)</f>')
-            ->and($worksheetXml)->toContain('<f>F9</f>')
-            ->and($worksheetXml)->toContain('<f>ROUND(F9*10/100,0)</f>')
+        expect($worksheetXml)->toContain('<f>SUM(F6:F9)</f>')
+            ->and($worksheetXml)->toContain('<f>F10</f>')
+            ->and($worksheetXml)->toContain('<f>ROUND(F10*10/100,0)</f>')
             ->and($worksheetXml)->toContain('<f>H'.$revenueRowNumber.'-H'.$deductionRowNumber.'</f>')
             ->and(preg_match('/<c r="F6"[^>]*><v>\d+<\/v><\/c>/', $worksheetXml))->toBe(1);
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('creates a valid zero-total worksheet when every student has no bill', function () {
+    $year = jemputanSalaryExportYear();
+    $driver = JemputanDriver::factory()->create([
+        'name' => 'Sopir Tanpa Tagihan',
+        'foundation_deduction_percentage' => 10,
+    ]);
+
+    foreach (['Siswa Tanpa Tagihan A', 'Siswa Tanpa Tagihan B'] as $name) {
+        [$student] = jemputanSalaryExportStudent($year, $name);
+        jemputanSalaryExportAssign($driver, $student, $year);
+    }
+
+    $report = app(JemputanDriverSalaryService::class)->exportData($year->id, $driver->id, '2026-07');
+
+    expect($report['rows'])->toBe([])
+        ->and($report['summary']['revenue'])->toBe(0)
+        ->and($report['summary']['deduction'])->toBe(0)
+        ->and($report['summary']['net_salary'])->toBe(0);
+
+    $response = $this->get(route('jemputan.salary.export', [
+        'academic_year_id' => $year->id,
+        'driver_id' => $driver->id,
+        'month' => '2026-07',
+    ]));
+    $path = jemputanSalaryExportPath($response);
+
+    try {
+        $sheets = jemputanSalaryExportWorkbook($path);
+        $rows = reset($sheets);
+        $total = jemputanSalaryExportRowByCell($rows, 0, 'TOTAL');
+        $revenue = jemputanSalaryExportRowCellStartingWith($rows, 5, 'Pendapatan ');
+        $deduction = jemputanSalaryExportRowCellStartingWith($rows, 5, 'Potongan Yayasan (10%)');
+        $net = jemputanSalaryExportRowByCell($rows, 5, 'Total');
+
+        expect(jemputanSalaryExportDataRows($rows))->toBe([])
+            ->and(collect($rows)->flatten()->all())->toContain('Tidak ada siswa yang sesuai dengan filter.')
+            ->and($total[5])->toBe('=SUM(F6:F6)')
+            ->and($revenue[7])->toBe('=F7')
+            ->and($deduction[7])->toBe('=ROUND(F7*10/100,0)')
+            ->and($net[7])->toBe('=H10-H11')
+            ->and(jemputanSalaryExportHeaderRow($rows))->toBe(['No', 'Nama', 'Kelas', 'Tujuan', 'Ket', 'JULI 2026', '', ''])
+            ->and(jemputanSalaryExportColumnWidth($path, 5))->toBe(11.0)
+            ->and(jemputanSalaryExportColumnWidth($path, 8))->toBe(31.0)
+            ->and(jemputanSalaryExportRowByCell($rows, 5, 'Penerima,')[5])->toBe('Penerima,');
     } finally {
         @unlink($path);
     }
@@ -586,13 +797,17 @@ it('exports each driver allocated amount when the multi-driver allocation is val
     [$student] = jemputanSalaryExportStudent($year, 'Siswa Multi Valid Ekspor', 'VIII Multi Valid Ekspor');
     $firstDriver = JemputanDriver::factory()->create(['name' => 'Sopir Valid A', 'foundation_deduction_percentage' => 10]);
     $secondDriver = JemputanDriver::factory()->create(['name' => 'Sopir Valid B', 'foundation_deduction_percentage' => 10]);
-    jemputanSalaryExportAssign($firstDriver, $student, $year);
-    jemputanSalaryExportAssign($secondDriver, $student, $year);
+    jemputanSalaryExportAssign($firstDriver, $student, $year, destination: 'Tujuan Sopir A', serviceType: 'Pergi');
+    jemputanSalaryExportAssign($secondDriver, $student, $year, destination: 'Tujuan Sopir B', serviceType: 'Pulang');
     jemputanSalaryExportBill($student, PaymentType::factory()->create(['name' => 'Jemputan']), 7, 700000);
     jemputanSalaryExportAllocation($student, $year, $firstDriver, 7, 450000);
     jemputanSalaryExportAllocation($student, $year, $secondDriver, 7, 250000);
 
     $expectedAmounts = [$firstDriver->id => 450000, $secondDriver->id => 250000];
+    $expectedDetails = [
+        $firstDriver->id => ['Tujuan Sopir A', 'Pergi'],
+        $secondDriver->id => ['Tujuan Sopir B', 'Pulang'],
+    ];
 
     foreach ([$firstDriver, $secondDriver] as $driver) {
         $response = $this->get(route('jemputan.salary.export', [
@@ -608,12 +823,13 @@ it('exports each driver allocated amount when the multi-driver allocation is val
             $data = jemputanSalaryExportDataRows($rows)[0];
             $flat = collect($rows)->flatten()->filter(fn ($value): bool => is_string($value))->implode(' ');
 
-            expect($data[3])->toBe('')
-                ->and($data[4])->toBe('MULTI SOPIR - ALOKASI')
+            expect($data[3])->toBe($expectedDetails[$driver->id][0])
+                ->and($data[4])->toBe($expectedDetails[$driver->id][1])
                 ->and($data[5])->toBe($expectedAmounts[$driver->id])
                 ->and(is_numeric($data[5]))->toBeTrue()
                 ->and($flat)->toContain('Catatan: Nominal siswa Multi-Sopir sudah mengikuti alokasi yang tersimpan.')
                 ->and($flat)->not->toContain('belum memiliki alokasi valid')
+                ->and($flat)->not->toContain('MULTI SOPIR - ALOKASI')
                 ->and(strtoupper((string) jemputanSalaryExportCellFillColor($path, 'F6')))->toEndWith('FFF2CC');
         } finally {
             @unlink($path);
@@ -644,7 +860,7 @@ it('marks missing multi-driver allocations with a fallback warning and soft yell
             $flat = collect($rows)->flatten()->filter(fn ($value): bool => is_string($value))->implode(' ');
 
             expect($data[3])->toBe('')
-                ->and($data[4])->toBe('MULTI SOPIR - BELUM DIALOKASIKAN')
+                ->and($data[4])->toBe('')
                 ->and($data[5])->toBe(700000)
                 ->and($flat)->toContain('Catatan: Masih ada siswa Multi-Sopir yang belum memiliki alokasi valid. Nominal merupakan angka sementara dan harus diperiksa sebelum laporan digunakan.')
                 ->and($flat)->not->toContain('Sesuaikan nominal sebelum laporan digunakan')
@@ -686,7 +902,7 @@ it('marks stale or orphan multi-driver allocations with a safe fallback warning'
         $data = jemputanSalaryExportDataRows($rows)[0];
         $flat = collect($rows)->flatten()->filter(fn ($value): bool => is_string($value))->implode(' ');
 
-        expect($data[4])->toBe('MULTI SOPIR - PERLU DIPERBAIKI')
+        expect($data[4])->toBe('')
             ->and($data[5])->toBe(700000)
             ->and($flat)->toContain('Catatan: Masih ada siswa Multi-Sopir yang belum memiliki alokasi valid. Nominal merupakan angka sementara dan harus diperiksa sebelum laporan digunakan.')
             ->and(strtoupper((string) jemputanSalaryExportCellFillColor($path, 'F6')))->toEndWith('FFF2CC');
@@ -698,10 +914,12 @@ it('marks stale or orphan multi-driver allocations with a safe fallback warning'
 it('exports every filtered student beyond the active pagination page', function () {
     $year = jemputanSalaryExportYear();
     $driver = JemputanDriver::factory()->create(['foundation_deduction_percentage' => 10]);
+    $type = PaymentType::factory()->create(['name' => 'Jemputan']);
 
     foreach (range(1, 201) as $index) {
         [$student] = jemputanSalaryExportStudent($year, 'Siswa Ekspor '.str_pad((string) $index, 3, '0', STR_PAD_LEFT), 'Kelas Ekspor');
         jemputanSalaryExportAssign($driver, $student, $year);
+        jemputanSalaryExportBill($student, $type, 7, 100000);
     }
 
     $response = $this->get(route('jemputan.salary.export', [
@@ -755,11 +973,43 @@ it('honors the selected driver month and academic year filters', function () {
         $rows = reset($sheets);
         $data = collect(jemputanSalaryExportDataRows($rows))->keyBy(fn (array $row): string => (string) $row[1]);
 
-        expect($data)->toHaveCount(2)
+        expect($data)->toHaveCount(1)
             ->and($data->keys()->all())->not->toContain($otherStudent->nama_lengkap)
+            ->and($data->keys()->all())->not->toContain($julyStudent->nama_lengkap)
             ->and(jemputanSalaryExportRowStartingWith($rows, 'Periode:')[0])->toBe('Periode: Agustus 2026')
-            ->and($data[$augustStudent->nama_lengkap][5])->toBe(250000)
-            ->and($data[$julyStudent->nama_lengkap][5])->toBe(0);
+            ->and($data[$augustStudent->nama_lengkap][5])->toBe(250000);
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('exports historical membership from the same selected-month salary result', function () {
+    $year = jemputanSalaryExportYear();
+    $driver = JemputanDriver::factory()->create([
+        'name' => 'Sopir Historis Export',
+        'foundation_deduction_percentage' => 10,
+    ]);
+    [$student] = jemputanSalaryExportStudent($year, 'Siswa Historis Export', 'VIII Historis Export');
+    jemputanSalaryExportAssign($driver, $student, $year, '2026-07-01', '2026-09-01');
+    jemputanSalaryExportBill($student, PaymentType::factory()->create(['name' => 'Jemputan']), 8, 475000);
+
+    $response = $this->get(route('jemputan.salary.export', [
+        'academic_year_id' => $year->id,
+        'driver_id' => $driver->id,
+        'month' => '2026-08',
+    ]));
+    $path = jemputanSalaryExportPath($response);
+
+    try {
+        $workbook = jemputanSalaryExportWorkbook($path);
+        $rows = reset($workbook);
+        $dataRows = jemputanSalaryExportDataRows($rows);
+
+        expect($dataRows)->toHaveCount(1)
+            ->and($dataRows[0][1])->toBe($student->nama_lengkap)
+            ->and($dataRows[0][5])->toBe(475000)
+            ->and(jemputanSalaryExportRowStartingWith($rows, 'Periode:')[0])->toBe('Periode: Agustus 2026')
+            ->and(jemputanSalaryExportHeaderRow($rows))->toBe(['No', 'Nama', 'Kelas', 'Tujuan', 'Ket', 'AGUSTUS 2026', '', '']);
     } finally {
         @unlink($path);
     }

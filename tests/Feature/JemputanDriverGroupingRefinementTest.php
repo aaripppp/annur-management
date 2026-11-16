@@ -6,6 +6,7 @@ use App\Models\AcademicYear;
 use App\Models\Bank;
 use App\Models\JemputanDriver;
 use App\Models\JemputanDriverAssignment;
+use App\Models\JemputanDriverDeductionRate;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
 use App\Models\PaymentType;
@@ -16,6 +17,7 @@ use App\Models\StudentBill;
 use App\Models\User;
 use App\Services\JemputanDriverAssignmentService;
 use App\Services\JemputanDriverRecapService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
@@ -134,7 +136,7 @@ beforeEach(function () {
     $this->actingAs(groupingRefinementUser());
 });
 
-it('adds a student through the UI without any month selection', function () {
+it('adds a student through the UI with the academic year start month by default', function () {
     $year = groupingRefinementYear();
     $student = groupingRefinementStudent($year, 'Siswa Tambah Langsung');
     $driver = JemputanDriver::factory()->create(['name' => 'Sopir Langsung']);
@@ -142,7 +144,8 @@ it('adds a student through the UI without any month selection', function () {
     Livewire::test(JemputanDriverManagement::class)
         ->call('viewGroup', $driver->id)
         ->call('openAssignmentModal')
-        ->assertDontSee('type="month"', false)
+        ->assertSee('type="month"', false)
+        ->assertSet('assignmentEffectiveMonth', '2026-07')
         ->call('selectStudent', $student->id)
         ->call('assignStudent')
         ->assertHasNoErrors()
@@ -240,7 +243,7 @@ it('rejects a tampered selected student id during save', function () {
     expect(JemputanDriverAssignment::query()->where('student_id', $ineligibleStudent->id)->exists())->toBeFalse();
 });
 
-it('removes a student from current membership recap and Excel without changing finances', function () {
+it('removes a student from current membership while preserving historical recap and Excel finances', function () {
     $year = groupingRefinementYear();
     $removedStudent = groupingRefinementStudent($year, 'Siswa Dikeluarkan');
     $remainingStudent = groupingRefinementStudent($year, 'Siswa Tetap', 'VIII Tetap');
@@ -263,6 +266,8 @@ it('removes a student from current membership recap and Excel without changing f
         ->assertSee('0 siswa')
         ->assertDispatched('annur-toast');
 
+    $historicalRow = app(JemputanDriverRecapService::class)->generate($year->id, $removedDriver->id)['rows'][0];
+
     expect($assignment->refresh()->effective_until)->not->toBeNull()
         ->and(Student::query()->whereKey($removedStudent->id)->exists())->toBeTrue()
         ->and(StudentBill::query()->count())->toBe($billCount)
@@ -270,22 +275,26 @@ it('removes a student from current membership recap and Excel without changing f
         ->and(PaymentDetail::query()->count())->toBe($detailCount)
         ->and($bill->refresh()->amount)->toBe('500000.00')
         ->and($payment->refresh()->status)->toBe(Payment::STATUS_ACTIVE)
-        ->and(app(JemputanDriverRecapService::class)->generate($year->id, $removedDriver->id)['rows'])->toBe([]);
+        ->and($historicalRow['student_id'])->toBe($removedStudent->id)
+        ->and($historicalRow['months']['2026-07']['paid_amount'])->toBe(250000.0)
+        ->and($historicalRow['months']['2026-11']['status'])->toBe(JemputanDriverRecapService::STATUS_NO_ASSIGNMENT);
 
-    $this->get(route('jemputan.recap.export', [
+    $filteredSheets = groupingRefinementWorkbook($this->get(route('jemputan.recap.export', [
         'mode' => 'filtered',
         'academic_year_id' => $year->id,
         'driver_id' => $removedDriver->id,
-    ]))->assertSessionHasErrors('driver_id');
+    ])));
 
     $sheets = groupingRefinementWorkbook($this->get(route('jemputan.recap.export', [
         'mode' => 'all',
         'academic_year_id' => $year->id,
     ])));
 
-    expect($sheets)->not->toHaveKey('SOPIR DIHAPUS ANGGOTA')
+    expect($filteredSheets)->toHaveKey('SOPIR DIHAPUS ANGGOTA')
+        ->and(collect($filteredSheets)->flatten()->all())->toContain('SISWA DIKELUARKAN')
+        ->and($sheets)->toHaveKey('SOPIR DIHAPUS ANGGOTA')
         ->and($sheets)->toHaveKey('SOPIR TETAP')
-        ->and(collect($sheets)->flatten()->all())->not->toContain('SISWA DIKELUARKAN');
+        ->and(collect($sheets)->flatten()->all())->toContain('SISWA DIKELUARKAN');
 });
 
 it('moves current membership immediately from the old driver to the new driver', function () {
@@ -312,7 +321,7 @@ it('moves current membership immediately from the old driver to the new driver',
     expect($assignment->refresh()->effective_until)->not->toBeNull()
         ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->count())->toBe(1)
         ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->value('jemputan_driver_id'))->toBe($newDriver->id)
-        ->and(app(JemputanDriverRecapService::class)->generate($year->id, $oldDriver->id)['rows'])->toBe([])
+        ->and(app(JemputanDriverRecapService::class)->generate($year->id, $oldDriver->id)['rows'][0]['student_id'])->toBe($student->id)
         ->and(app(JemputanDriverRecapService::class)->generate($year->id, $newDriver->id)['rows'][0]['student_id'])->toBe($student->id);
 
     $sheets = groupingRefinementWorkbook($this->get(route('jemputan.recap.export', [
@@ -320,11 +329,11 @@ it('moves current membership immediately from the old driver to the new driver',
         'academic_year_id' => $year->id,
     ])));
 
-    expect($sheets)->not->toHaveKey('SOPIR LAMA CURRENT')
+    expect($sheets)->toHaveKey('SOPIR LAMA CURRENT')
         ->and($sheets)->toHaveKey('SOPIR BARU CURRENT');
 });
 
-it('supports immediate same-month re-addition and academic-year isolation', function () {
+it('supports historical re-addition and academic-year isolation', function () {
     $firstYear = groupingRefinementYear();
     $nextYear = groupingRefinementYear('2027/2028');
     $student = groupingRefinementStudent($firstYear, 'Siswa Readd');
@@ -338,15 +347,16 @@ it('supports immediate same-month re-addition and academic-year isolation', func
     $firstDriver = JemputanDriver::factory()->create(['name' => 'Sopir Readd']);
     $otherDriver = JemputanDriver::factory()->create(['name' => 'Sopir Rollover']);
     $service = app(JemputanDriverAssignmentService::class);
-    $first = $service->assign($firstDriver->id, $student->id, $firstYear->id);
-    $closed = $service->remove($first->id);
-    $readded = $service->assign($firstDriver->id, $student->id, $firstYear->id);
-    $nextYearAssignment = $service->assign($otherDriver->id, $student->id, $nextYear->id);
-    $nextYearSameDriver = $service->assign($firstDriver->id, $student->id, $nextYear->id);
+    $first = $service->assign($firstDriver->id, $student->id, $firstYear->id, '2026-07');
+    $closed = $service->remove($first->id, '2026-09');
+    $readded = $service->assign($firstDriver->id, $student->id, $firstYear->id, '2026-11');
+    $nextYearAssignment = $service->assign($otherDriver->id, $student->id, $nextYear->id, '2027-07');
+    $nextYearSameDriver = $service->assign($firstDriver->id, $student->id, $nextYear->id, '2027-07');
 
     expect(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->where('academic_year_id', $firstYear->id)->count())->toBe(1)
         ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->where('academic_year_id', $nextYear->id)->count())->toBe(2)
-        ->and($closed->effective_until?->toDateString())->toBe($readded->effective_from->toDateString())
+        ->and($closed->effective_until?->toDateString())->toBe('2026-09-01')
+        ->and($readded->effective_from->toDateString())->toBe('2026-11-01')
         ->and($readded->effective_until)->toBeNull()
         ->and($nextYearSameDriver->effective_until)->toBeNull()
         ->and(app(JemputanDriverRecapService::class)->generate($firstYear->id, $firstDriver->id)['rows'][0]['student_id'])->toBe($student->id)
@@ -362,9 +372,13 @@ it('supports immediate same-month re-addition and academic-year isolation', func
 
     expect(collect($sheets)->flatten()->filter(fn ($value): bool => $value === 'SISWA READD')->count())->toBe(1);
 
-    $service->remove($nextYearAssignment->id);
+    $service->remove($nextYearAssignment->id, '2027-09');
 
-    expect(app(JemputanDriverRecapService::class)->generate($nextYear->id, $otherDriver->id)['rows'])->toBe([]);
+    $historicalRow = app(JemputanDriverRecapService::class)->generate($nextYear->id, $otherDriver->id)['rows'][0];
+
+    expect($historicalRow['student_id'])->toBe($student->id)
+        ->and($historicalRow['months']['2027-07']['status'])->toBe(JemputanDriverRecapService::STATUS_NO_BILL)
+        ->and($historicalRow['months']['2027-09']['status'])->toBe(JemputanDriverRecapService::STATUS_NO_ASSIGNMENT);
 });
 
 it('renders accessible icon actions and full-viewport teleported confirmation modals', function () {
@@ -387,9 +401,8 @@ it('renders accessible icon actions and full-viewport teleported confirmation mo
         ->assertSee('aria-label="Pindah Sopir untuk SISWA IKON"', false)
         ->call('openAssignmentModal')
         ->assertSee('Tambah Siswa ke Sopir Ikon')
-        ->assertDontSee('Mulai Bulan')
-        ->assertDontSee('Akhir Periode')
-        ->assertDontSee('type="month"', false)
+        ->assertSee('Bulan Mulai Efektif')
+        ->assertSee('type="month"', false)
         ->assertSee('fixed inset-0 z-[9999] overflow-y-auto', false)
         ->call('closeAssignmentModal')
         ->call('openMoveAssignment', $assignment->id)
@@ -407,6 +420,118 @@ it('renders accessible icon actions and full-viewport teleported confirmation mo
         ->call('openDriverConfirmation', $driver->id, 'toggle')
         ->assertSee('Ubah Status Sopir')
         ->assertSee('fixed inset-0 z-[9999]', false);
+});
+
+it('opens the driver group as a responsive modal and closes it cleanly', function () {
+    $year = groupingRefinementYear();
+    $student = groupingRefinementStudent($year, 'Siswa Dalam Modal', 'VIII Modal');
+    $driver = JemputanDriver::factory()->create(['name' => 'Sopir Modal Grup']);
+    groupingRefinementAssignment($driver, $student, $year);
+
+    Livewire::test(JemputanDriverManagement::class)
+        ->call('viewGroup', $driver->id)
+        ->assertSet('isGroupModalOpen', true)
+        ->assertSet('isAssignmentModalOpen', false)
+        ->assertSet('isDeductionRateModalOpen', false)
+        ->assertSee('role="dialog" aria-modal="true" aria-labelledby="driver-group-title"', false)
+        ->assertSee('Kelompok Sopir Modal Grup')
+        ->assertSee('Anggota Aktif')
+        ->assertSee('Riwayat Anggota')
+        ->assertSee('2026/2027')
+        ->assertSee('SISWA DALAM MODAL')
+        ->assertSee('VIII Modal')
+        ->assertSee('overflow-y-auto overscroll-contain', false)
+        ->call('closeGroup')
+        ->assertSet('isGroupModalOpen', false)
+        ->assertSet('selectedDriverId', null)
+        ->assertDontSee('Kelompok Sopir Modal Grup');
+});
+
+it('opens percentage settings directly and keeps modal handoffs single-layered', function () {
+    groupingRefinementYear();
+    $driver = JemputanDriver::factory()->create(['name' => 'Sopir Persentase Langsung']);
+    $rate = JemputanDriverDeductionRate::factory()->create([
+        'jemputan_driver_id' => $driver->id,
+        'effective_year' => 2026,
+        'effective_month' => 7,
+        'percentage' => 7,
+        'notes' => 'Tarif awal langsung',
+    ]);
+
+    Livewire::test(JemputanDriverManagement::class)
+        ->assertSee('wire:click="openDriverDeductionRateModal('.$driver->id.')"', false)
+        ->assertSee('aria-label="Atur Persentase Sopir Persentase Langsung"', false)
+        ->call('openDriverDeductionRateModal', $driver->id)
+        ->assertSet('selectedDriverId', $driver->id)
+        ->assertSet('isGroupModalOpen', false)
+        ->assertSet('isDeductionRateModalOpen', true)
+        ->assertSet('isEditDeductionRateModalOpen', false)
+        ->assertViewHas('assignments', null)
+        ->assertSee('Riwayat Persentase Yayasan')
+        ->assertSee('Tarif awal langsung')
+        ->set('deductionRatePercentage', '12')
+        ->call('openEditDeductionRateModal', $rate->id)
+        ->assertSet('isDeductionRateModalOpen', false)
+        ->assertSet('isEditDeductionRateModalOpen', true)
+        ->call('closeEditDeductionRateModal')
+        ->assertSet('isEditDeductionRateModalOpen', false)
+        ->assertSet('isDeductionRateModalOpen', true)
+        ->assertSet('deductionRatePercentage', '12')
+        ->call('closeDeductionRateModal')
+        ->assertSet('isDeductionRateModalOpen', false)
+        ->assertSet('isGroupModalOpen', false);
+});
+
+it('returns member actions to the group modal without stacking overlays', function () {
+    $year = groupingRefinementYear();
+    $student = groupingRefinementStudent($year, 'Siswa Handoff Modal');
+    $driver = JemputanDriver::factory()->create(['name' => 'Sopir Handoff Modal']);
+    $assignment = groupingRefinementAssignment($driver, $student, $year);
+
+    Livewire::test(JemputanDriverManagement::class)
+        ->call('viewGroup', $driver->id)
+        ->call('openAssignmentModal')
+        ->assertSet('isGroupModalOpen', false)
+        ->assertSet('isAssignmentModalOpen', true)
+        ->call('closeAssignmentModal')
+        ->assertSet('isAssignmentModalOpen', false)
+        ->assertSet('isGroupModalOpen', true)
+        ->call('openCloseAssignment', $assignment->id)
+        ->assertSet('isGroupModalOpen', false)
+        ->assertSet('isCloseModalOpen', true)
+        ->call('cancelCloseAssignment')
+        ->assertSet('isCloseModalOpen', false)
+        ->assertSet('isGroupModalOpen', true);
+});
+
+it('keeps group modal queries bounded as member rows grow', function () {
+    $year = groupingRefinementYear();
+    $driver = JemputanDriver::factory()->create();
+    groupingRefinementAssignment($driver, groupingRefinementStudent($year, 'Siswa Query 01'), $year);
+
+    DB::enableQueryLog();
+    DB::flushQueryLog();
+    Livewire::test(JemputanDriverManagement::class)->call('viewGroup', $driver->id);
+    $smallSelects = collect(DB::getQueryLog())->filter(
+        fn (array $query): bool => str_starts_with(strtolower(ltrim($query['query'])), 'select'),
+    )->count();
+
+    foreach (range(2, 12) as $index) {
+        groupingRefinementAssignment(
+            $driver,
+            groupingRefinementStudent($year, 'Siswa Query '.str_pad((string) $index, 2, '0', STR_PAD_LEFT)),
+            $year,
+        );
+    }
+
+    DB::flushQueryLog();
+    Livewire::test(JemputanDriverManagement::class)->call('viewGroup', $driver->id);
+    $largeSelects = collect(DB::getQueryLog())->filter(
+        fn (array $query): bool => str_starts_with(strtolower(ltrim($query['query'])), 'select'),
+    )->count();
+    DB::disableQueryLog();
+
+    expect($largeSelects)->toBe($smallSelects);
 });
 
 it('reuses the shared timed toast for success and validation errors', function () {

@@ -7,6 +7,7 @@ use App\Enums\SchoolLevel;
 use App\Models\AcademicYear;
 use App\Models\Bank;
 use App\Models\JemputanDriver;
+use App\Models\JemputanDriverAssignment;
 use App\Models\Payment;
 use App\Models\PaymentDetail;
 use App\Models\PaymentType;
@@ -68,6 +69,7 @@ class JemputanDriverRecapService
             $page,
         );
         $studentIds = $students->getCollection()->pluck('id')->map(fn ($id): int => (int) $id)->all();
+        $memberships = $this->memberships($academicYear, $driver, $studentIds, $periods);
         $bills = $this->bills($studentIds, $paymentTypeIds, $periods);
         $billsByStudentAndPeriod = $bills->groupBy(
             fn (StudentBill $bill): string => $bill->student_id.'|'.sprintf('%04d-%02d', $bill->period_year, $bill->period_month)
@@ -82,9 +84,11 @@ class JemputanDriverRecapService
 
             foreach ($periods as $period) {
                 $periodBills = $billsByStudentAndPeriod->get($student->id.'|'.$period['key'], collect());
-                $months[$period['key']] = $periodBills->isEmpty()
-                    ? $this->emptyMonth(self::STATUS_NO_BILL)
-                    : $this->billMonth($periodBills, $allocationsByBill, $paymentMetadataByBill);
+                $months[$period['key']] = match (true) {
+                    ! $memberships->has($student->id.'|'.$period['key']) => $this->emptyMonth(self::STATUS_NO_ASSIGNMENT),
+                    $periodBills->isEmpty() => $this->emptyMonth(self::STATUS_NO_BILL),
+                    default => $this->billMonth($periodBills, $allocationsByBill, $paymentMetadataByBill),
+                };
             }
 
             $rows[] = [
@@ -185,13 +189,77 @@ class JemputanDriverRecapService
             ])
             ->whereHas('jemputanDriverAssignments', fn (Builder $query) => $query
                 ->where('jemputan_driver_id', $driver->id)
-                ->where('academic_year_id', $academicYear->id)
-                ->currentMembership())
+                ->where(function (Builder $periodQuery) use ($academicYear): void {
+                    foreach ($this->academicYearPeriods($academicYear) as $period) {
+                        $periodQuery->orWhere(fn (Builder $monthQuery) => $monthQuery->activeDuringMonth(
+                            $academicYear->id,
+                            $period['year'],
+                            $period['month'],
+                        ));
+                    }
+                })
+                ->where(function (Builder $validPeriodQuery): void {
+                    $validPeriodQuery
+                        ->whereNull('effective_until')
+                        ->orWhereColumn('effective_until', '>', 'effective_from');
+                }))
             ->when($schoolLevel !== null, fn (Builder $query) => $query->whereIn('recap_classes.level', $schoolLevel->classLevels()))
             ->when($schoolClassId !== null, fn (Builder $query) => $query->where('recap_classes.id', $schoolClassId))
             ->orderBy('students.nama_lengkap')
             ->orderBy('students.id')
             ->paginate(max(1, min($perPage, 500)), ['*'], 'page', max(1, $page));
+    }
+
+    /**
+     * @param  list<int>  $studentIds
+     * @param  list<array<string, mixed>>  $periods
+     * @return Collection<string, bool>
+     */
+    private function memberships(
+        AcademicYear $academicYear,
+        JemputanDriver $driver,
+        array $studentIds,
+        array $periods,
+    ): Collection {
+        if ($studentIds === []) {
+            return collect();
+        }
+
+        $assignments = JemputanDriverAssignment::query()
+            ->where('jemputan_driver_id', $driver->id)
+            ->whereIn('student_id', $studentIds)
+            ->where(function (Builder $query) use ($academicYear, $periods): void {
+                foreach ($periods as $period) {
+                    $query->orWhere(fn (Builder $monthQuery) => $monthQuery->activeDuringMonth(
+                        $academicYear->id,
+                        $period['year'],
+                        $period['month'],
+                    ));
+                }
+            })
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNull('effective_until')
+                    ->orWhereColumn('effective_until', '>', 'effective_from');
+            })
+            ->get(['student_id', 'effective_from', 'effective_until']);
+
+        $memberships = collect();
+
+        foreach ($assignments as $assignment) {
+            foreach ($periods as $period) {
+                $monthStart = CarbonImmutable::createFromDate($period['year'], $period['month'], 1)->startOfDay();
+
+                if (
+                    $assignment->effective_from->lt($monthStart->addMonth())
+                    && ($assignment->effective_until === null || $assignment->effective_until->gt($monthStart))
+                ) {
+                    $memberships->put($assignment->student_id.'|'.$period['key'], true);
+                }
+            }
+        }
+
+        return $memberships;
     }
 
     /**
@@ -500,9 +568,22 @@ class JemputanDriverRecapService
                     });
                 }
             })
-            ->whereDoesntHave('student.jemputanDriverAssignments', fn (Builder $assignmentQuery) => $assignmentQuery
-                ->where('academic_year_id', $academicYear->id)
-                ->currentMembership())
+            ->where(function (Builder $billQuery) use ($academicYear, $periods): void {
+                foreach ($periods as $period) {
+                    $billQuery->orWhere(function (Builder $periodBillQuery) use ($academicYear, $period): void {
+                        $periodBillQuery
+                            ->where('period_month', $period['month'])
+                            ->where('period_year', $period['year'])
+                            ->whereDoesntHave('student.jemputanDriverAssignments', fn (Builder $assignmentQuery) => $assignmentQuery
+                                ->activeDuringMonth($academicYear->id, $period['year'], $period['month'])
+                                ->where(function (Builder $validPeriodQuery): void {
+                                    $validPeriodQuery
+                                        ->whereNull('effective_until')
+                                        ->orWhereColumn('effective_until', '>', 'effective_from');
+                                }));
+                    });
+                }
+            })
             ->count();
     }
 }

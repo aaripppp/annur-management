@@ -747,3 +747,124 @@ it('does not change financial data when reading allocation aware reports', funct
         ->and(JemputanDriverAssignment::query()->count())->toBe(2)
         ->and(JemputanDriverSalaryAllocation::query()->count())->toBe(2);
 });
+
+it('keeps stopped months historical and uses a new driver when the student rejoins', function () {
+    $year = jemputanSalaryYear();
+    $type = jemputanSalaryPaymentType();
+    $oldDriver = JemputanDriver::factory()->create(['foundation_deduction_percentage' => 10]);
+    $newDriver = JemputanDriver::factory()->create(['foundation_deduction_percentage' => 20]);
+    [$student] = jemputanSalaryStudent($year, 'Siswa Berhenti Dan Kembali', 'VIII Historis');
+    jemputanSalaryAssign($oldDriver, $student, $year, '2026-07-01', '2026-09-01');
+    jemputanSalaryAssign($newDriver, $student, $year, '2026-11-01');
+
+    foreach ([7, 8, 9, 10] as $month) {
+        jemputanSalaryBill($student, $type, $month, 2026, 500000);
+    }
+
+    $novemberBill = jemputanSalaryBill($student, $type, 11, 2026, 600000);
+    $july = jemputanSalaryReport($year, $oldDriver, '2026-07');
+    $august = jemputanSalaryReport($year, $oldDriver, '2026-08');
+    $september = jemputanSalaryReport($year, $oldDriver, '2026-09');
+    $october = jemputanSalaryReport($year, $oldDriver, '2026-10');
+    $oldDriverNovember = jemputanSalaryReport($year, $oldDriver, '2026-11');
+    $newDriverNovember = jemputanSalaryReport($year, $newDriver, '2026-11');
+
+    expect($july['rows'])->toHaveCount(1)
+        ->and($august['rows'])->toHaveCount(1)
+        ->and($july['summary']['revenue'])->toBe(500000)
+        ->and($july['summary']['deduction'])->toBe(50000)
+        ->and($september['rows'])->toBe([])
+        ->and($october['rows'])->toBe([])
+        ->and($oldDriverNovember['rows'])->toBe([])
+        ->and($newDriverNovember['rows'])->toHaveCount(1)
+        ->and($newDriverNovember['rows'][0]['student_id'])->toBe($student->id)
+        ->and($newDriverNovember['summary']['revenue'])->toBe(600000)
+        ->and($newDriverNovember['summary']['deduction'])->toBe(120000)
+        ->and(StudentBill::query()->where('student_id', $student->id)->count())->toBe(5)
+        ->and($novemberBill->fresh()?->amount)->toBe('600000.00');
+});
+
+it('attributes salary before and after a move to the correct driver', function () {
+    $year = jemputanSalaryYear();
+    $type = jemputanSalaryPaymentType();
+    $oldDriver = JemputanDriver::factory()->create();
+    $newDriver = JemputanDriver::factory()->create();
+    [$student] = jemputanSalaryStudent($year, 'Siswa Pindah Historis', 'VIII Pindah Historis');
+    jemputanSalaryAssign($oldDriver, $student, $year, '2026-07-01', '2026-11-01');
+    jemputanSalaryAssign($newDriver, $student, $year, '2026-11-01');
+    jemputanSalaryBill($student, $type, 10, 2026, 450000);
+    jemputanSalaryBill($student, $type, 11, 2026, 550000);
+
+    $oldOctober = jemputanSalaryReport($year, $oldDriver, '2026-10');
+    $oldNovember = jemputanSalaryReport($year, $oldDriver, '2026-11');
+    $newOctober = jemputanSalaryReport($year, $newDriver, '2026-10');
+    $newNovember = jemputanSalaryReport($year, $newDriver, '2026-11');
+
+    expect($oldOctober['summary']['revenue'])->toBe(450000)
+        ->and($oldNovember['rows'])->toBe([])
+        ->and($newOctober['rows'])->toBe([])
+        ->and($newNovember['summary']['revenue'])->toBe(550000)
+        ->and($newNovember['rows'][0]['student_id'])->toBe($student->id);
+});
+
+it('detects multi-driver membership and stored allocations for the selected month only', function () {
+    $year = jemputanSalaryYear();
+    $type = jemputanSalaryPaymentType();
+    $firstDriver = JemputanDriver::factory()->create();
+    $secondDriver = JemputanDriver::factory()->create();
+    [$student] = jemputanSalaryStudent($year, 'Siswa Multi Historis', 'VIII Multi Historis');
+    jemputanSalaryAssign($firstDriver, $student, $year, '2026-07-01');
+    jemputanSalaryAssign($secondDriver, $student, $year, '2026-07-01', '2026-09-01');
+    jemputanSalaryBill($student, $type, 8, 2026, 700000);
+    jemputanSalaryBill($student, $type, 11, 2026, 700000);
+    jemputanSalaryAllocation($student, $year, $firstDriver, 8, 2026, 450000);
+    jemputanSalaryAllocation($student, $year, $secondDriver, 8, 2026, 250000);
+
+    $firstAugust = jemputanSalaryReport($year, $firstDriver, '2026-08');
+    $secondAugust = jemputanSalaryReport($year, $secondDriver, '2026-08');
+    $firstNovember = jemputanSalaryReport($year, $firstDriver, '2026-11');
+    $secondNovember = jemputanSalaryReport($year, $secondDriver, '2026-11');
+
+    expect($firstAugust['rows'][0]['current_driver_count'])->toBe(2)
+        ->and($firstAugust['rows'][0]['is_multi_driver'])->toBeTrue()
+        ->and($firstAugust['rows'][0]['allocation_status'])->toBe(JemputanDriverAllocationService::STATUS_VALID)
+        ->and($firstAugust['rows'][0]['salary_amount'])->toBe(450000.0)
+        ->and($secondAugust['rows'][0]['salary_amount'])->toBe(250000.0)
+        ->and($firstNovember['rows'][0]['current_driver_count'])->toBe(1)
+        ->and($firstNovember['rows'][0]['is_multi_driver'])->toBeFalse()
+        ->and($firstNovember['rows'][0]['allocation_status'])->toBe(JemputanDriverAllocationService::STATUS_NOT_REQUIRED)
+        ->and($firstNovember['rows'][0]['salary_amount'])->toBe(700000.0)
+        ->and($secondNovember['rows'])->toBe([]);
+});
+
+it('keeps no-bill status at zero for a historical membership', function () {
+    $year = jemputanSalaryYear();
+    $driver = JemputanDriver::factory()->create();
+    [$student] = jemputanSalaryStudent($year, 'Siswa Historis Tanpa Tagihan', 'VIII Historis Kosong');
+    jemputanSalaryAssign($driver, $student, $year, '2026-07-01', '2026-09-01');
+
+    $august = jemputanSalaryReport($year, $driver, '2026-08');
+    $september = jemputanSalaryReport($year, $driver, '2026-09');
+
+    expect($august['rows'])->toHaveCount(1)
+        ->and($august['rows'][0]['student_id'])->toBe($student->id)
+        ->and($august['rows'][0]['salary_amount'])->toBe(0.0)
+        ->and($august['rows'][0]['payment_status'])->toBe(JemputanDriverSalaryService::PAYMENT_STATUS_NO_BILL)
+        ->and($august['rows'][0]['payment_status_label'])->toBe('Belum Ada Tagihan')
+        ->and($august['summary']['revenue'])->toBe(0)
+        ->and($september['rows'])->toBe([]);
+});
+
+it('does not treat an invalid empty assignment as November membership', function () {
+    $year = jemputanSalaryYear();
+    $driver = JemputanDriver::factory()->create();
+    [$student] = jemputanSalaryStudent($year, 'Siswa Periode Kosong', 'VIII Periode Kosong');
+    jemputanSalaryAssign($driver, $student, $year, '2026-11-10', '2026-11-10');
+    jemputanSalaryBill($student, jemputanSalaryPaymentType(), 11, 2026, 500000);
+
+    $report = jemputanSalaryReport($year, $driver, '2026-11');
+
+    expect($report['rows'])->toBe([])
+        ->and($report['summary']['revenue'])->toBe(0)
+        ->and(JemputanDriverAssignment::query()->where('student_id', $student->id)->count())->toBe(1);
+});

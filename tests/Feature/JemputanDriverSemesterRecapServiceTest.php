@@ -49,14 +49,19 @@ function semesterRecapStudent(AcademicYear $year, string $name, int $level = 8):
     return [$student, $class];
 }
 
-function semesterRecapAssign(JemputanDriver $driver, Student $student, AcademicYear $year): void
-{
+function semesterRecapAssign(
+    JemputanDriver $driver,
+    Student $student,
+    AcademicYear $year,
+    string $effectiveFrom = '2026-07-01',
+    ?string $effectiveUntil = null,
+): void {
     JemputanDriverAssignment::query()->create([
         'jemputan_driver_id' => $driver->id,
         'student_id' => $student->id,
         'academic_year_id' => $year->id,
-        'effective_from' => '2026-07-01',
-        'effective_until' => null,
+        'effective_from' => $effectiveFrom,
+        'effective_until' => $effectiveUntil,
     ]);
 }
 
@@ -206,6 +211,102 @@ it('uses effective bills and valid multi-driver allocations without double count
         'foundation_fee' => 80000,
         'total' => 600000,
     ])->and($report['warnings']['allocation']['total_count'])->toBe(0);
+});
+
+it('resolves moves gaps and rejoining independently for every semester month', function () {
+    $year = semesterRecapYear();
+    $type = PaymentType::factory()->create(['name' => 'Jemputan']);
+    $oldDriver = JemputanDriver::factory()->create(['name' => 'Sopir Juli Agustus']);
+    $newDriver = JemputanDriver::factory()->create(['name' => 'Sopir November Desember']);
+    [$student] = semesterRecapStudent($year, 'Siswa Gap dan Join Ulang');
+    semesterRecapAssign($oldDriver, $student, $year, '2026-07-01', '2026-09-01');
+    semesterRecapAssign($newDriver, $student, $year, '2026-11-01');
+    semesterRecapRate($oldDriver, 2026, 7, 10);
+    semesterRecapRate($newDriver, 2026, 11, 20);
+
+    foreach (range(7, 12) as $month) {
+        semesterRecapBill($student, $type, 2026, $month, 100000);
+    }
+
+    semesterRecapAllocation($student, $year, $oldDriver, 2026, 9, 100000);
+
+    $report = semesterRecapReport($year);
+    $rows = collect($report['rows'])->keyBy('driver_name');
+
+    expect($rows['Sopir Juli Agustus']['months']['2026-07']['revenue'])->toBe(100000)
+        ->and($rows['Sopir Juli Agustus']['months']['2026-08']['revenue'])->toBe(100000)
+        ->and($rows['Sopir Juli Agustus']['months']['2026-09']['revenue'])->toBe(0)
+        ->and($rows['Sopir Juli Agustus']['months']['2026-11']['revenue'])->toBe(0)
+        ->and($rows['Sopir November Desember']['months']['2026-09']['revenue'])->toBe(0)
+        ->and($rows['Sopir November Desember']['months']['2026-10']['revenue'])->toBe(0)
+        ->and($rows['Sopir November Desember']['months']['2026-11'])->toMatchArray([
+            'revenue' => 100000,
+            'foundation_fee' => 20000,
+            'driver_income' => 80000,
+            'total' => 100000,
+        ])
+        ->and($rows['Sopir November Desember']['months']['2026-12']['revenue'])->toBe(100000)
+        ->and($report['warnings']['allocation']['orphan_count'])->toBe(1)
+        ->and($report['is_final'])->toBeFalse();
+});
+
+it('uses each months multi-driver composition and keeps historical allocations valid', function () {
+    $year = semesterRecapYear();
+    $type = PaymentType::factory()->create(['name' => 'Jemputan']);
+    $firstDriver = JemputanDriver::factory()->create(['name' => 'Sopir Tetap']);
+    $augustDriver = JemputanDriver::factory()->create(['name' => 'Sopir Agustus']);
+    $novemberDriver = JemputanDriver::factory()->create(['name' => 'Sopir November']);
+    [$student] = semesterRecapStudent($year, 'Siswa Komposisi Bulanan');
+    semesterRecapAssign($firstDriver, $student, $year);
+    semesterRecapAssign($augustDriver, $student, $year, '2026-07-01', '2026-09-01');
+    semesterRecapAssign($novemberDriver, $student, $year, '2026-11-01');
+
+    foreach ([$firstDriver, $augustDriver, $novemberDriver] as $driver) {
+        semesterRecapRate($driver, 2026, 7, 10);
+    }
+
+    semesterRecapBill($student, $type, 2026, 8, 700000);
+    semesterRecapBill($student, $type, 2026, 11, 700000);
+    semesterRecapAllocation($student, $year, $firstDriver, 2026, 8, 450000);
+    semesterRecapAllocation($student, $year, $augustDriver, 2026, 8, 250000);
+    semesterRecapAllocation($student, $year, $firstDriver, 2026, 11, 400000);
+    semesterRecapAllocation($student, $year, $novemberDriver, 2026, 11, 300000);
+
+    $report = semesterRecapReport($year);
+    $rows = collect($report['rows'])->keyBy('driver_name');
+
+    expect($rows['Sopir Tetap']['months']['2026-08']['revenue'])->toBe(450000)
+        ->and($rows['Sopir Agustus']['months']['2026-08']['revenue'])->toBe(250000)
+        ->and($rows['Sopir Agustus']['months']['2026-11']['revenue'])->toBe(0)
+        ->and($rows['Sopir Tetap']['months']['2026-11']['revenue'])->toBe(400000)
+        ->and($rows['Sopir November']['months']['2026-11']['revenue'])->toBe(300000)
+        ->and($report['warnings']['allocation']['total_count'])->toBe(0)
+        ->and($report['warnings']['historical_membership_limited'])->toBeFalse();
+});
+
+it('ignores zero-length and reversed assignments without modifying them', function () {
+    $year = semesterRecapYear();
+    $type = PaymentType::factory()->create(['name' => 'Jemputan']);
+    $driver = JemputanDriver::factory()->create();
+    [$student] = semesterRecapStudent($year, 'Siswa Periode Invalid');
+    $zeroLength = JemputanDriverAssignment::query()->forceCreate([
+        'id' => 67,
+        'jemputan_driver_id' => $driver->id,
+        'student_id' => $student->id,
+        'academic_year_id' => $year->id,
+        'effective_from' => '2026-11-10',
+        'effective_until' => '2026-11-10',
+    ]);
+    semesterRecapAssign($driver, $student, $year, '2026-12-10', '2026-12-01');
+    semesterRecapBill($student, $type, 2026, 11, 700000);
+
+    $report = semesterRecapReport($year);
+
+    expect($report['rows'])->toBe([])
+        ->and($zeroLength->fresh()?->id)->toBe(67)
+        ->and($zeroLength->fresh()?->effective_from->toDateString())->toBe('2026-11-10')
+        ->and($zeroLength->fresh()?->effective_until?->toDateString())->toBe('2026-11-10')
+        ->and(JemputanDriverAssignment::query()->where('student_id', $student->id)->count())->toBe(2);
 });
 
 it('keeps missing stale and orphan allocations visible and marks the report not final', function () {

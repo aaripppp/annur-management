@@ -54,14 +54,19 @@ function semesterExportStudent(AcademicYear $year, string $name, int $level = 8)
     return $student;
 }
 
-function semesterExportAssign(JemputanDriver $driver, Student $student, AcademicYear $year): void
-{
+function semesterExportAssign(
+    JemputanDriver $driver,
+    Student $student,
+    AcademicYear $year,
+    ?string $effectiveFrom = null,
+    ?string $effectiveUntil = null,
+): void {
     JemputanDriverAssignment::query()->create([
         'jemputan_driver_id' => $driver->id,
         'student_id' => $student->id,
         'academic_year_id' => $year->id,
-        'effective_from' => $year->start_date,
-        'effective_until' => null,
+        'effective_from' => $effectiveFrom ?? $year->start_date,
+        'effective_until' => $effectiveUntil,
     ]);
 }
 
@@ -264,6 +269,44 @@ it('exports January through June for semester two with the correct title', funct
     }
 });
 
+it('exports each historical driver only in the months resolved by the shared report service', function () {
+    $year = semesterExportYear();
+    $type = PaymentType::factory()->create(['name' => 'Jemputan']);
+    $oldDriver = JemputanDriver::factory()->create(['name' => 'A Sopir Lama Semester']);
+    $newDriver = JemputanDriver::factory()->create(['name' => 'B Sopir Baru Semester']);
+    $student = semesterExportStudent($year, 'Siswa Pindah Semester');
+    semesterExportAssign($oldDriver, $student, $year, '2026-07-01', '2026-09-01');
+    semesterExportAssign($newDriver, $student, $year, '2026-11-01');
+    semesterExportRate($oldDriver, 2026, 7, 10);
+    semesterExportRate($newDriver, 2026, 7, 20);
+    semesterExportBill($student, $type, 2026, 7, 100000);
+    semesterExportBill($student, $type, 2026, 9, 300000);
+    semesterExportBill($student, $type, 2026, 11, 500000);
+    $report = app(JemputanDriverSemesterRecapService::class)->generate($year->id, null, 1);
+
+    $response = semesterExportResponse(['academic_year_id' => $year->id, 'semester' => 1]);
+    $path = semesterExportPath($response);
+
+    try {
+        $rows = semesterExportRows($path);
+        $serviceRows = collect($report['rows'])->keyBy('driver_name');
+        $oldRowIndex = collect($rows)->search(fn (array $row): bool => ($row[1] ?? null) === 'A Sopir Lama Semester');
+        $newRowIndex = collect($rows)->search(fn (array $row): bool => ($row[1] ?? null) === 'B Sopir Baru Semester');
+
+        expect($oldRowIndex)->toBeInt()
+            ->and($newRowIndex)->toBeInt()
+            ->and($rows[$oldRowIndex][3])->toBe($serviceRows['A Sopir Lama Semester']['months']['2026-07']['driver_income'])
+            ->and($rows[$oldRowIndex][5])->toBe(0)
+            ->and($rows[$oldRowIndex][7])->toBe(0)
+            ->and($rows[$newRowIndex][3])->toBe(0)
+            ->and($rows[$newRowIndex][5])->toBe(0)
+            ->and($rows[$newRowIndex][7])->toBe($serviceRows['B Sopir Baru Semester']['months']['2026-11']['driver_income'])
+            ->and($rows[4][0])->toContain('masing-masing bulan laporan');
+    } finally {
+        @unlink($path);
+    }
+});
+
 it('keeps valid multi-driver allocations free from double counting and rounds fees monthly', function () {
     $year = semesterExportYear();
     $type = PaymentType::factory()->create(['name' => 'Jemputan']);
@@ -367,7 +410,7 @@ it('keeps null amounts blank-like and warns for missing and legacy rates', funct
             ->and($rows[$nullDriverStart][3])->toBe('—')
             ->and($rows[$nullDriverStart + 1][3])->toBe('—')
             ->and($rows[$nullDriverStart + 2][3])->toBe('—')
-            ->and($rows[4][0])->toContain('membership aktif');
+            ->and($rows[4][0])->toContain('membership aktif pada masing-masing bulan laporan');
     } finally {
         @unlink($path);
     }

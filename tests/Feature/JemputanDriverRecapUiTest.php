@@ -213,7 +213,7 @@ it('does not render the unassigned Jemputan bill banner', function () {
         ->assertDontSee('belum memiliki penugasan sopir untuk bulan tagihannya');
 });
 
-it('shows a moved student only under the current driver', function () {
+it('shows a moved student under each driver only for their historical months', function () {
     $year = jemputanRecapUiYear();
     [$student] = jemputanRecapUiStudent($year, 'Siswa Pindah Sopir');
     $oldDriver = JemputanDriver::factory()->create(['name' => 'Sopir Lama']);
@@ -229,14 +229,17 @@ it('shows a moved student only under the current driver', function () {
 
     Livewire::test(JemputanDriverRecap::class)
         ->set('selectedDriverId', (string) $oldDriver->id)
-        ->assertDontSee('SISWA PINDAH SOPIR');
+        ->assertSee('SISWA PINDAH SOPIR')
+        ->assertSee('Tagihan efektif Rp 500.000', false)
+        ->assertDontSee('Tagihan efektif Rp 600.000', false)
+        ->assertSee('Tidak Ditugaskan', false);
 
     Livewire::test(JemputanDriverRecap::class)
         ->set('selectedDriverId', (string) $newDriver->id)
         ->assertSee('SISWA PINDAH SOPIR')
-        ->assertSee('Tagihan efektif Rp 500.000', false)
         ->assertSee('Tagihan efektif Rp 600.000', false)
-        ->assertDontSee('Tidak Ditugaskan', false);
+        ->assertDontSee('Tagihan efektif Rp 500.000', false)
+        ->assertSee('Tidak Ditugaskan', false);
 });
 
 it('paginates supported page sizes and labels summaries as page scoped', function () {
@@ -318,5 +321,5 @@ it('keeps full-page SELECT queries bounded as row counts grow', function (int $s
     )->count();
     DB::disableQueryLog();
 
-    expect($selectCount)->toBe(11);
+    expect($selectCount)->toBe(12);
 })->with([1, 10, 25, 50]);

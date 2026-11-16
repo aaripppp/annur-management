@@ -29,6 +29,8 @@ class JemputanDriverAssignmentFactory extends Factory
             )->id,
             'effective_from' => '2026-07-01',
             'effective_until' => null,
+            'destination' => null,
+            'service_type' => null,
         ];
     }
 }

@@ -52,6 +52,8 @@ function rateEditComponent(JemputanDriver $driver, JemputanDriverDeductionRate $
 {
     return Livewire::test(JemputanDriverManagement::class)
         ->set('selectedDriverId', $driver->id)
+        ->call('openDeductionRateModal')
+        ->assertSee('wire:click="openEditDeductionRateModal('.$rate->id.')"', false)
         ->call('openEditDeductionRateModal', $rate->id);
 }
 
@@ -127,7 +129,6 @@ it('opens a compact prefilled edit modal from each history row', function () {
         ->assertSee('Pak Ahmad')
         ->assertSee('id="edit-deduction-rate-effective-month" type="month"', false)
         ->assertDontSee('id="edit-deduction-rate-year"', false)
-        ->assertSee('wire:click="openEditDeductionRateModal('.$rate->id.')"', false)
         ->assertDontSee('SEBELUM')
         ->assertDontSee('Alasan Koreksi')
         ->assertDontSee('Saya telah memeriksa');

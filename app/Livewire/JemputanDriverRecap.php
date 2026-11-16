@@ -137,8 +137,12 @@ class JemputanDriverRecap extends Component
         $drivers = JemputanDriver::query()
             ->when(ctype_digit($this->selectedAcademicYearId), fn (Builder $query) => $query
                 ->whereHas('assignments', fn (Builder $assignmentQuery) => $assignmentQuery
-                    ->where('academic_year_id', (int) $this->selectedAcademicYearId)
-                    ->currentMembership()))
+                    ->forAcademicYear((int) $this->selectedAcademicYearId)
+                    ->where(function (Builder $validPeriodQuery): void {
+                        $validPeriodQuery
+                            ->whereNull('effective_until')
+                            ->orWhereColumn('effective_until', '>', 'effective_from');
+                    })))
             ->orderByDesc('is_active')
             ->orderBy('name')
             ->get(['id', 'name', 'is_active']);

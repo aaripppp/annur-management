@@ -153,6 +153,21 @@ it('defaults to the active year and waits for a driver selection', function () {
         ->assertSee('Pilih sopir untuk menghitung gaji.');
 });
 
+it('keeps a driver with only historical membership available in the salary filter', function () {
+    $year = jemputanSalaryUiYear();
+    [$student] = jemputanSalaryUiStudent($year, 'Siswa Filter Historis', 'VIII Filter Historis');
+    $driver = JemputanDriver::factory()->create(['name' => 'Sopir Filter Historis']);
+    jemputanSalaryUiAssign($driver, $student, $year, '2026-07-01', '2026-09-01');
+
+    Livewire::test(JemputanDriverSalary::class)
+        ->assertSee('Sopir Filter Historis')
+        ->set('selectedDriverId', (string) $driver->id)
+        ->set('selectedMonth', '2026-08')
+        ->assertSee('SISWA FILTER HISTORIS')
+        ->set('selectedMonth', '2026-09')
+        ->assertDontSee('SISWA FILTER HISTORIS');
+});
+
 it('renders the revenue foundation deduction and net salary', function () {
     $year = jemputanSalaryUiYear();
     [$student] = jemputanSalaryUiStudent($year, 'Siswa Gaji');
@@ -711,4 +726,67 @@ it('keeps financial data unchanged when saving an allocation', function () {
         ->and(StudentBill::query()->count())->toBe(1)
         ->and(JemputanDriverAssignment::query()->count())->toBe(2)
         ->and(JemputanDriverSalaryAllocation::query()->count())->toBe(2);
+});
+
+it('opens the allocation modal with drivers from the historical report month', function () {
+    $year = jemputanSalaryUiYear();
+    [$student] = jemputanSalaryUiStudent($year, 'Siswa Modal Historis', 'VIII Modal Historis');
+    $firstDriver = JemputanDriver::factory()->create(['name' => 'Sopir Modal Historis A']);
+    $secondDriver = JemputanDriver::factory()->create(['name' => 'Sopir Modal Historis B']);
+    jemputanSalaryUiAssign($firstDriver, $student, $year, '2026-07-01', '2026-09-01');
+    jemputanSalaryUiAssign($secondDriver, $student, $year, '2026-07-01', '2026-09-01');
+    jemputanSalaryUiBill($student, PaymentType::factory()->create(['name' => 'Jemputan']), 8, 700000);
+
+    Livewire::test(JemputanDriverSalary::class)
+        ->set('selectedDriverId', (string) $firstDriver->id)
+        ->set('selectedMonth', '2026-08')
+        ->call('openAllocationModal', $student->id)
+        ->assertSet('isAllocationModalOpen', true)
+        ->assertSet('allocationMonthKey', '2026-08')
+        ->assertSet('allocationPreview.driver_count', 2)
+        ->assertSee('Sopir Modal Historis A')
+        ->assertSee('Sopir Modal Historis B');
+});
+
+it('rejects opening allocation outside the students selected report membership month', function () {
+    $year = jemputanSalaryUiYear();
+    [$student] = jemputanSalaryUiStudent($year, 'Siswa Modal Di Luar Periode', 'VIII Luar Periode');
+    $driver = JemputanDriver::factory()->create();
+    jemputanSalaryUiAssign($driver, $student, $year, '2026-07-01', '2026-09-01');
+
+    Livewire::test(JemputanDriverSalary::class)
+        ->set('selectedDriverId', (string) $driver->id)
+        ->set('selectedMonth', '2026-09')
+        ->call('openAllocationModal', $student->id)
+        ->assertSet('isAllocationModalOpen', false)
+        ->assertDispatched('annur-toast', type: 'error');
+});
+
+it('rolls back copied allocation when another month has a different driver composition', function () {
+    $year = jemputanSalaryUiYear();
+    [$student] = jemputanSalaryUiStudent($year, 'Siswa Modal Komposisi Beda', 'VIII Komposisi Beda');
+    $firstDriver = JemputanDriver::factory()->create();
+    $julyDriver = JemputanDriver::factory()->create();
+    $augustDriver = JemputanDriver::factory()->create();
+    jemputanSalaryUiAssign($firstDriver, $student, $year);
+    jemputanSalaryUiAssign($julyDriver, $student, $year, '2026-07-01', '2026-08-01');
+    jemputanSalaryUiAssign($augustDriver, $student, $year, '2026-08-01');
+    $type = PaymentType::factory()->create(['name' => 'Jemputan']);
+    jemputanSalaryUiBill($student, $type, 7, 700000);
+    jemputanSalaryUiBill($student, $type, 8, 700000);
+
+    Livewire::test(JemputanDriverSalary::class)
+        ->set('selectedDriverId', (string) $firstDriver->id)
+        ->set('selectedMonth', '2026-07')
+        ->call('openAllocationModal', $student->id)
+        ->set('allocationAmounts.'.$firstDriver->id, '450000')
+        ->set('allocationAmounts.'.$julyDriver->id, '250000')
+        ->set('applyAllocationToOtherMonths', true)
+        ->set('additionalAllocationMonthKeys', ['2026-08'])
+        ->call('saveAllocation')
+        ->assertHasErrors('allocationForm')
+        ->assertSet('isAllocationModalOpen', true)
+        ->assertDispatched('annur-toast', type: 'error');
+
+    expect(JemputanDriverSalaryAllocation::query()->where('student_id', $student->id)->count())->toBe(0);
 });

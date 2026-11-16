@@ -13,6 +13,7 @@ use App\Models\StudentBill;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -56,19 +57,24 @@ class JemputanDriverAllocationService
     }
 
     /**
-     * Read every driver that is still an active member of the student in the year.
+     * Read every driver assigned to the student during the selected month.
      *
      * Inactive drivers are deliberately included: they remain members until the
      * assignment is closed, so their allocation still belongs to the period.
      *
      * @return Collection<int, JemputanDriver>
      */
-    public function currentDrivers(int $studentId, int $academicYearId): Collection
-    {
-        return JemputanDriverAssignment::query()
-            ->where('student_id', $studentId)
-            ->where('academic_year_id', $academicYearId)
-            ->currentMembership()
+    public function driversDuringMonth(
+        int $studentId,
+        int $academicYearId,
+        int $periodYear,
+        int $periodMonth,
+    ): Collection {
+        return $this->validMemberships(
+            JemputanDriverAssignment::query()
+                ->where('student_id', $studentId)
+                ->activeDuringMonth($academicYearId, $periodYear, $periodMonth)
+        )
             ->with('driver')
             ->get()
             ->pluck('driver')
@@ -76,6 +82,27 @@ class JemputanDriverAllocationService
             ->unique('id')
             ->sortBy('name')
             ->values();
+    }
+
+    /**
+     * Preserve the existing current-driver API while resolving the current calendar month.
+     *
+     * @return Collection<int, JemputanDriver>
+     */
+    public function currentDrivers(int $studentId, int $academicYearId): Collection
+    {
+        $academicYear = AcademicYear::query()->findOrFail($academicYearId);
+        $month = CarbonImmutable::today()
+            ->startOfMonth()
+            ->max($academicYear->start_date->toImmutable()->startOfMonth())
+            ->min($academicYear->end_date->toImmutable()->startOfMonth());
+
+        return $this->driversDuringMonth(
+            $studentId,
+            $academicYearId,
+            $month->year,
+            $month->month,
+        );
     }
 
     /**
@@ -136,7 +163,12 @@ class JemputanDriverAllocationService
         $student = Student::query()->findOrFail($studentId);
         $academicYear = AcademicYear::query()->findOrFail($academicYearId);
         $bills = $this->periodBills($studentId, $periodYear, $periodMonth);
-        $drivers = $this->currentDrivers($studentId, $academicYearId);
+        $drivers = $this->driversDuringMonth(
+            $studentId,
+            $academicYearId,
+            $periodYear,
+            $periodMonth,
+        );
         $allocations = $this->allocations($studentId, $academicYearId, $periodYear, $periodMonth);
         $billCents = $this->billTotalCents($bills);
         $totalAllocatedCents = $allocations->sum(
@@ -231,56 +263,46 @@ class JemputanDriverAllocationService
             $student = Student::query()->lockForUpdate()->findOrFail($studentId);
             $academicYear = AcademicYear::query()->findOrFail($academicYearId);
             $periods = $this->normalizePeriods($allocationsByPeriod, $this->academicYearMonths($academicYear));
-
-            $assignments = JemputanDriverAssignment::query()
-                ->where('student_id', $student->id)
-                ->where('academic_year_id', $academicYear->id)
-                ->currentMembership()
-                ->lockForUpdate()
-                ->get(['id', 'jemputan_driver_id']);
-            $currentDriverIds = $assignments
-                ->pluck('jemputan_driver_id')
-                ->map(fn ($id): int => (int) $id)
-                ->unique()
-                ->sort()
-                ->values()
-                ->all();
-
-            $billsByPeriod = [];
-
-            foreach ($periods as $key => $period) {
-                $billsByPeriod[$key] = $this->periodBills(
-                    $student->id,
-                    $period['year'],
-                    $period['month'],
-                    lock: true,
-                );
-            }
-
-            $existingByPeriod = [];
-
-            foreach ($periods as $key => $period) {
-                $existingByPeriod[$key] = JemputanDriverSalaryAllocation::query()
+            $assignments = $this->validMemberships(
+                JemputanDriverAssignment::query()
                     ->where('student_id', $student->id)
-                    ->where('academic_year_id', $academicYear->id)
-                    ->where('period_year', $period['year'])
-                    ->where('period_month', $period['month'])
-                    ->lockForUpdate()
-                    ->get();
-            }
+                    ->forAcademicYear($academicYear->id)
+            )
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['id', 'jemputan_driver_id', 'effective_from', 'effective_until']);
+            $driverIdsByPeriod = collect($periods)->mapWithKeys(
+                fn (array $period, string $key): array => [
+                    $key => $this->driverIdsDuringPeriod($assignments, $period['year'], $period['month']),
+                ]
+            );
+            $billsByPeriod = $this->billsForPeriods($student->id, $periods, lock: true)
+                ->groupBy(fn (StudentBill $bill): string => $this->periodKey(
+                    (int) $bill->period_year,
+                    (int) $bill->period_month,
+                ));
+            $existingByPeriod = $this->allocationsForPeriods(
+                $student->id,
+                $academicYear->id,
+                $periods,
+                lock: true,
+            )->groupBy(fn (JemputanDriverSalaryAllocation $allocation): string => $this->periodKey(
+                (int) $allocation->period_year,
+                (int) $allocation->period_month,
+            ));
 
             foreach ($periods as $key => $period) {
                 $this->validatePeriod(
                     $period,
-                    $billsByPeriod[$key],
-                    $currentDriverIds,
+                    $billsByPeriod->get($key, collect()),
+                    $driverIdsByPeriod->get($key, []),
                 );
             }
 
             $saved = collect();
 
             foreach ($periods as $key => $period) {
-                $existingByDriver = $existingByPeriod[$key]->keyBy('jemputan_driver_id');
+                $existingByDriver = $existingByPeriod->get($key, collect())->keyBy('jemputan_driver_id');
 
                 foreach ($period['allocations'] as $driverId => $amountCents) {
                     $allocation = $existingByDriver->get($driverId);
@@ -290,7 +312,7 @@ class JemputanDriverAllocationService
                             'allocated_amount' => $this->formatCents($amountCents),
                             'updated_by' => $actor->id,
                         ]);
-                        $saved->push($allocation->refresh());
+                        $saved->push($allocation);
                     } else {
                         $saved->push(JemputanDriverSalaryAllocation::query()->create([
                             'student_id' => $student->id,
@@ -304,14 +326,6 @@ class JemputanDriverAllocationService
                         ]));
                     }
                 }
-
-                JemputanDriverSalaryAllocation::query()
-                    ->where('student_id', $student->id)
-                    ->where('academic_year_id', $academicYear->id)
-                    ->where('period_year', $period['year'])
-                    ->where('period_month', $period['month'])
-                    ->whereNotIn('jemputan_driver_id', $currentDriverIds)
-                    ->delete();
             }
 
             return $saved->values();
@@ -395,14 +409,14 @@ class JemputanDriverAllocationService
     /**
      * @param  array{year: int, month: int, allocations: array<int, int>}  $period
      * @param  Collection<int, StudentBill>  $bills
-     * @param  list<int>  $currentDriverIds
+     * @param  list<int>  $periodDriverIds
      */
     private function validatePeriod(
         array $period,
         Collection $bills,
-        array $currentDriverIds,
+        array $periodDriverIds,
     ): void {
-        if (count($currentDriverIds) < 2) {
+        if (count($periodDriverIds) < 2) {
             throw ValidationException::withMessages([
                 'allocations' => 'Siswa dengan satu sopir tidak memerlukan alokasi.',
             ]);
@@ -417,9 +431,9 @@ class JemputanDriverAllocationService
         $submittedDriverIds = array_keys($period['allocations']);
         sort($submittedDriverIds);
 
-        if ($submittedDriverIds !== $currentDriverIds) {
+        if ($submittedDriverIds !== $periodDriverIds) {
             throw ValidationException::withMessages([
-                'allocations' => 'Daftar sopir alokasi harus sama dengan anggota aktif siswa.',
+                'allocations' => 'Daftar sopir alokasi harus sama dengan membership siswa pada bulan alokasi.',
             ]);
         }
 
@@ -462,6 +476,100 @@ class JemputanDriverAllocationService
             ->orderBy('id')
             ->when($lock, fn ($query) => $query->lockForUpdate())
             ->get();
+    }
+
+    /**
+     * @param  array<string, array{year: int, month: int, allocations: array<int, int>}>  $periods
+     * @return Collection<int, StudentBill>
+     */
+    private function billsForPeriods(int $studentId, array $periods, bool $lock = false): Collection
+    {
+        $paymentTypeIds = PaymentType::query()
+            ->where('name', self::PAYMENT_TYPE_NAME)
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
+        if ($paymentTypeIds === []) {
+            return collect();
+        }
+
+        return StudentBill::query()
+            ->where('student_id', $studentId)
+            ->whereIn('payment_type_id', $paymentTypeIds)
+            ->where('billing_frequency', BillFrequency::Monthly->value)
+            ->where(fn (Builder $query): Builder => $this->wherePeriods($query, $periods))
+            ->withSum('adjustments as allocation_adjustment_total', 'amount')
+            ->orderBy('id')
+            ->when($lock, fn (Builder $query): Builder => $query->lockForUpdate())
+            ->get();
+    }
+
+    /**
+     * @param  array<string, array{year: int, month: int, allocations: array<int, int>}>  $periods
+     * @return Collection<int, JemputanDriverSalaryAllocation>
+     */
+    private function allocationsForPeriods(
+        int $studentId,
+        int $academicYearId,
+        array $periods,
+        bool $lock = false,
+    ): Collection {
+        return JemputanDriverSalaryAllocation::query()
+            ->where('student_id', $studentId)
+            ->where('academic_year_id', $academicYearId)
+            ->where(fn (Builder $query): Builder => $this->wherePeriods($query, $periods))
+            ->orderBy('id')
+            ->when($lock, fn (Builder $query): Builder => $query->lockForUpdate())
+            ->get();
+    }
+
+    /**
+     * @param  Collection<int, JemputanDriverAssignment>  $assignments
+     * @return list<int>
+     */
+    private function driverIdsDuringPeriod(Collection $assignments, int $year, int $month): array
+    {
+        $monthStart = CarbonImmutable::createFromDate($year, $month, 1)->startOfDay();
+        $nextMonth = $monthStart->addMonth();
+
+        return $assignments
+            ->filter(fn (JemputanDriverAssignment $assignment): bool => $assignment->effective_from->lt($nextMonth)
+                && ($assignment->effective_until === null || $assignment->effective_until->gt($monthStart)))
+            ->pluck('jemputan_driver_id')
+            ->map(fn ($id): int => (int) $id)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    /** @param array<string, array{year: int, month: int, allocations: array<int, int>}> $periods */
+    private function wherePeriods(Builder $query, array $periods): Builder
+    {
+        foreach ($periods as $period) {
+            $query->orWhere(function (Builder $periodQuery) use ($period): void {
+                $periodQuery
+                    ->where('period_year', $period['year'])
+                    ->where('period_month', $period['month']);
+            });
+        }
+
+        return $query;
+    }
+
+    private function validMemberships(Builder $query): Builder
+    {
+        return $query->where(function (Builder $periodQuery): void {
+            $periodQuery
+                ->whereNull('effective_until')
+                ->orWhereColumn('effective_until', '>', 'effective_from');
+        });
+    }
+
+    private function periodKey(int $year, int $month): string
+    {
+        return sprintf('%04d-%02d', $year, $month);
     }
 
     /** @param Collection<int, StudentBill> $bills */

@@ -2,11 +2,15 @@
 
 namespace App\Livewire;
 
+use App\Enums\BillFrequency;
 use App\Models\AcademicYear;
 use App\Models\JemputanDriver;
 use App\Models\JemputanDriverAssignment;
 use App\Models\JemputanDriverDeductionRate;
+use App\Models\JemputanDriverSalaryAllocation;
+use App\Models\PaymentType;
 use App\Models\Student;
+use App\Models\StudentBill;
 use App\Services\JemputanDriverAssignmentService;
 use App\Services\JemputanDriverDeductionRateResolver;
 use Carbon\CarbonImmutable;
@@ -69,6 +73,14 @@ class JemputanDriverManagement extends Component
 
     public ?int $selectedDriverId = null;
 
+    public bool $isGroupModalOpen = false;
+
+    public string $groupTab = 'active';
+
+    public bool $returnToGroupModal = false;
+
+    public bool $returnToDeductionRateModal = false;
+
     public string $selectedAcademicYearId = '';
 
     public string $studentSearch = '';
@@ -77,15 +89,53 @@ class JemputanDriverManagement extends Component
 
     public bool $isAssignmentModalOpen = false;
 
+    public string $assignmentEffectiveMonth = '';
+
+    public string $assignmentDestination = '';
+
+    public string $assignmentServiceType = '';
+
     public bool $isCloseModalOpen = false;
 
     public ?int $closingAssignmentId = null;
+
+    public string $closeEffectiveMonth = '';
 
     public bool $isMoveModalOpen = false;
 
     public ?int $movingAssignmentId = null;
 
     public string $moveDriverId = '';
+
+    public string $moveEffectiveMonth = '';
+
+    public bool $isEditAssignmentPeriodModalOpen = false;
+
+    public ?int $editingAssignmentId = null;
+
+    public string $editAssignmentEffectiveFromMonth = '';
+
+    public string $editAssignmentEffectiveUntilMonth = '';
+
+    public string $editAssignmentStudentName = '';
+
+    public string $editAssignmentDriverName = '';
+
+    public bool $editPeriodRequiresConfirmation = false;
+
+    public bool $editPeriodImpactConfirmed = false;
+
+    public bool $isEditAssignmentDetailsModalOpen = false;
+
+    public ?int $editingAssignmentDetailsId = null;
+
+    public string $editAssignmentDetailsStudentName = '';
+
+    public string $editAssignmentDetailsDriverName = '';
+
+    public string $editAssignmentDestination = '';
+
+    public string $editAssignmentServiceType = '';
 
     public bool $isDriverConfirmationModalOpen = false;
 
@@ -109,12 +159,24 @@ class JemputanDriverManagement extends Component
     {
         $this->authorize('viewAny', JemputanDriver::class);
         $this->resetPage('assignmentsPage');
-        $this->reset('studentSearch', 'selectedStudentId');
+        $this->resetPage('assignmentHistoryPage');
+        $this->reset('studentSearch', 'selectedStudentId', 'assignmentDestination', 'assignmentServiceType');
+    }
+
+    public function updatedEditAssignmentEffectiveFromMonth(): void
+    {
+        $this->resetEditPeriodConfirmation();
+    }
+
+    public function updatedEditAssignmentEffectiveUntilMonth(): void
+    {
+        $this->resetEditPeriodConfirmation();
     }
 
     public function openCreateDriver(): void
     {
         $this->authorize('create', JemputanDriver::class);
+        $this->hideModalOverlays();
         $this->resetDriverForm();
         $this->isDriverModalOpen = true;
     }
@@ -124,6 +186,7 @@ class JemputanDriverManagement extends Component
         $driver = JemputanDriver::query()->findOrFail($driverId);
         $this->authorize('update', $driver);
 
+        $this->hideModalOverlays();
         $this->editingDriverId = $driver->id;
         $this->driverName = $driver->name;
         $this->driverPhone = $driver->phone ?? '';
@@ -211,6 +274,8 @@ class JemputanDriverManagement extends Component
         $driver = $this->selectedDriver();
         $this->authorize('update', $driver);
 
+        $this->returnToGroupModal = $this->isGroupModalOpen;
+        $this->hideModalOverlays();
         $this->resetDeductionRateForm();
         $this->deductionRateEffectiveMonth = CarbonImmutable::now()->format('Y-m');
         $this->isDeductionRateModalOpen = true;
@@ -221,6 +286,17 @@ class JemputanDriverManagement extends Component
         $this->authorize('viewAny', JemputanDriver::class);
         $this->isDeductionRateModalOpen = false;
         $this->resetDeductionRateForm();
+        $this->restoreGroupModalIfNeeded();
+    }
+
+    public function openDriverDeductionRateModal(int $driverId): void
+    {
+        $driver = JemputanDriver::query()->findOrFail($driverId);
+        $this->authorize('update', $driver);
+
+        $this->selectedDriverId = $driver->id;
+        $this->returnToGroupModal = false;
+        $this->openDeductionRateModal();
     }
 
     public function updatedDeductionRatePercentage(): void
@@ -291,6 +367,7 @@ class JemputanDriverManagement extends Component
 
         $this->isDeductionRateModalOpen = false;
         $this->resetDeductionRateForm();
+        $this->restoreGroupModalIfNeeded();
         $this->notify('Tarif potongan yayasan berhasil disimpan mulai '.$this->periodLabel($year, $month).'.');
     }
 
@@ -308,6 +385,8 @@ class JemputanDriverManagement extends Component
             ->where('jemputan_driver_id', $driver->id)
             ->findOrFail($rateId);
 
+        $this->returnToDeductionRateModal = $this->isDeductionRateModalOpen;
+        $this->hideModalOverlays();
         $this->resetEditDeductionRateForm();
         $this->editingDeductionRateId = $rate->id;
         $this->editDeductionRatePercentage = rtrim(rtrim((string) $rate->percentage, '0'), '.');
@@ -322,6 +401,7 @@ class JemputanDriverManagement extends Component
         $this->authorize('viewAny', JemputanDriver::class);
         $this->isEditDeductionRateModalOpen = false;
         $this->resetEditDeductionRateForm();
+        $this->restoreDeductionRateModalIfNeeded();
     }
 
     public function saveDeductionRateCorrection(): void
@@ -405,6 +485,7 @@ class JemputanDriverManagement extends Component
 
         $this->isEditDeductionRateModalOpen = false;
         $this->resetEditDeductionRateForm();
+        $this->restoreDeductionRateModalIfNeeded();
         $this->notify('Riwayat persentase berhasil dikoreksi.');
     }
 
@@ -444,6 +525,7 @@ class JemputanDriverManagement extends Component
             abort(404);
         }
 
+        $this->hideModalOverlays();
         $this->confirmingDriverId = $driver->id;
         $this->driverConfirmationAction = $action;
         $this->isDriverConfirmationModalOpen = true;
@@ -473,13 +555,31 @@ class JemputanDriverManagement extends Component
     {
         $driver = JemputanDriver::query()->findOrFail($driverId);
         $this->authorize('view', $driver);
+        $this->hideModalOverlays();
         $this->selectedDriverId = $driver->id;
+        $this->groupTab = 'active';
+        $this->isGroupModalOpen = true;
         $this->resetPage('assignmentsPage');
+        $this->resetPage('assignmentHistoryPage');
+    }
+
+    public function setGroupTab(string $tab): void
+    {
+        $this->authorize('view', $this->selectedDriver());
+
+        if (! in_array($tab, ['active', 'history'], true)) {
+            abort(404);
+        }
+
+        $this->groupTab = $tab;
+        $this->resetPage($tab === 'active' ? 'assignmentsPage' : 'assignmentHistoryPage');
     }
 
     public function closeGroup(): void
     {
         $this->authorize('viewAny', JemputanDriver::class);
+        $this->isGroupModalOpen = false;
+        $this->returnToGroupModal = false;
         $this->reset('selectedDriverId', 'studentSearch', 'selectedStudentId');
     }
 
@@ -495,7 +595,10 @@ class JemputanDriverManagement extends Component
             return;
         }
 
+        $this->returnToGroupModal = $this->isGroupModalOpen;
+        $this->hideModalOverlays();
         $this->reset('studentSearch', 'selectedStudentId');
+        $this->assignmentEffectiveMonth = $this->academicYearStartMonth();
         $this->isAssignmentModalOpen = true;
     }
 
@@ -523,6 +626,12 @@ class JemputanDriverManagement extends Component
         $validated = $this->validateWithToast([
             'selectedStudentId' => ['required', 'integer', 'exists:students,id'],
             'selectedAcademicYearId' => ['required', 'integer', 'exists:academic_years,id'],
+            'assignmentEffectiveMonth' => ['required', 'date_format:Y-m'],
+            'assignmentDestination' => ['nullable', 'string', 'max:255'],
+            'assignmentServiceType' => ['nullable', Rule::in(JemputanDriverAssignment::SERVICE_TYPES)],
+        ], [
+            'assignmentEffectiveMonth.required' => 'Bulan mulai efektif wajib dipilih.',
+            'assignmentEffectiveMonth.date_format' => 'Format bulan mulai efektif tidak valid.',
         ]);
 
         $student = $this->eligibleStudents()->find((int) $validated['selectedStudentId']);
@@ -540,6 +649,9 @@ class JemputanDriverManagement extends Component
                 $driver->id,
                 $student->id,
                 (int) $validated['selectedAcademicYearId'],
+                $validated['assignmentEffectiveMonth'],
+                $validated['assignmentDestination'] ?? null,
+                $validated['assignmentServiceType'] ?? null,
             );
         } catch (ValidationException $exception) {
             $this->notify('Siswa tidak dapat ditambahkan. Periksa keanggotaan aktifnya.', 'error');
@@ -555,15 +667,25 @@ class JemputanDriverManagement extends Component
     {
         $this->authorize('viewAny', JemputanDriver::class);
         $this->isAssignmentModalOpen = false;
-        $this->reset('studentSearch', 'selectedStudentId');
+        $this->reset(
+            'studentSearch',
+            'selectedStudentId',
+            'assignmentEffectiveMonth',
+            'assignmentDestination',
+            'assignmentServiceType',
+        );
         $this->resetValidation();
+        $this->restoreGroupModalIfNeeded();
     }
 
     public function openCloseAssignment(int $assignmentId): void
     {
-        $assignment = $this->assignmentForSelectedDriver($assignmentId);
+        $assignment = $this->assignmentForSelectedDriver($assignmentId)->loadMissing('student');
         $this->authorize('update', $assignment->driver);
+        $this->returnToGroupModal = $this->isGroupModalOpen;
+        $this->hideModalOverlays();
         $this->closingAssignmentId = $assignment->id;
+        $this->closeEffectiveMonth = $this->defaultActionEffectiveMonth(allowYearEndBoundary: true);
         $this->isCloseModalOpen = true;
     }
 
@@ -571,8 +693,15 @@ class JemputanDriverManagement extends Component
     {
         $assignment = $this->assignmentForSelectedDriver((int) $this->closingAssignmentId);
         $this->authorize('update', $assignment->driver);
+        $validated = $this->validateWithToast([
+            'closeEffectiveMonth' => ['required', 'date_format:Y-m'],
+        ], [
+            'closeEffectiveMonth.required' => 'Bulan efektif berhenti wajib dipilih.',
+            'closeEffectiveMonth.date_format' => 'Format bulan efektif berhenti tidak valid.',
+        ]);
+
         try {
-            $service->remove($assignment->id);
+            $service->remove($assignment->id, $validated['closeEffectiveMonth']);
         } catch (ValidationException $exception) {
             $this->notify('Siswa tidak dapat dikeluarkan dari kelompok sopir.', 'error');
 
@@ -587,16 +716,20 @@ class JemputanDriverManagement extends Component
     {
         $this->authorize('viewAny', JemputanDriver::class);
         $this->isCloseModalOpen = false;
-        $this->reset('closingAssignmentId');
+        $this->reset('closingAssignmentId', 'closeEffectiveMonth');
         $this->resetValidation();
+        $this->restoreGroupModalIfNeeded();
     }
 
     public function openMoveAssignment(int $assignmentId): void
     {
         $assignment = $this->assignmentForSelectedDriver($assignmentId);
         $this->authorize('update', $assignment->driver);
+        $this->returnToGroupModal = $this->isGroupModalOpen;
+        $this->hideModalOverlays();
         $this->movingAssignmentId = $assignment->id;
         $this->moveDriverId = '';
+        $this->moveEffectiveMonth = $this->defaultActionEffectiveMonth();
         $this->isMoveModalOpen = true;
     }
 
@@ -606,12 +739,17 @@ class JemputanDriverManagement extends Component
         $this->authorize('update', $assignment->driver);
         $validated = $this->validateWithToast([
             'moveDriverId' => ['required', 'integer', Rule::exists('jemputan_drivers', 'id')->where('is_active', true)],
+            'moveEffectiveMonth' => ['required', 'date_format:Y-m'],
+        ], [
+            'moveEffectiveMonth.required' => 'Bulan efektif pindah wajib dipilih.',
+            'moveEffectiveMonth.date_format' => 'Format bulan efektif pindah tidak valid.',
         ]);
 
         try {
             $service->move(
                 $assignment->id,
                 (int) $validated['moveDriverId'],
+                $validated['moveEffectiveMonth'],
             );
         } catch (ValidationException $exception) {
             $this->notify('Siswa tidak dapat dipindahkan. Periksa sopir tujuan.', 'error');
@@ -627,8 +765,140 @@ class JemputanDriverManagement extends Component
     {
         $this->authorize('viewAny', JemputanDriver::class);
         $this->isMoveModalOpen = false;
-        $this->reset('movingAssignmentId', 'moveDriverId');
+        $this->reset('movingAssignmentId', 'moveDriverId', 'moveEffectiveMonth');
         $this->resetValidation();
+        $this->restoreGroupModalIfNeeded();
+    }
+
+    public function openEditAssignmentPeriod(int $assignmentId): void
+    {
+        $assignment = $this->assignmentForSelectedDriver($assignmentId);
+        $this->authorize('update', $assignment->driver);
+        $this->returnToGroupModal = $this->isGroupModalOpen;
+        $this->hideModalOverlays();
+        $this->resetEditAssignmentPeriodForm();
+        $this->editingAssignmentId = $assignment->id;
+        $this->editAssignmentStudentName = $assignment->student->nama_lengkap;
+        $this->editAssignmentDriverName = $assignment->driver->name;
+        $this->editAssignmentEffectiveFromMonth = $assignment->effective_from->format('Y-m');
+        $this->editAssignmentEffectiveUntilMonth = $assignment->effective_until?->format('Y-m') ?? '';
+        $this->isEditAssignmentPeriodModalOpen = true;
+    }
+
+    public function saveAssignmentPeriod(JemputanDriverAssignmentService $service): void
+    {
+        $assignment = $this->assignmentForSelectedDriver((int) $this->editingAssignmentId);
+        $this->authorize('update', $assignment->driver);
+        $validated = $this->validateWithToast([
+            'editAssignmentEffectiveFromMonth' => ['required', 'date_format:Y-m'],
+            'editAssignmentEffectiveUntilMonth' => ['nullable', 'date_format:Y-m'],
+        ], [
+            'editAssignmentEffectiveFromMonth.required' => 'Bulan mulai efektif wajib dipilih.',
+            'editAssignmentEffectiveFromMonth.date_format' => 'Format bulan mulai efektif tidak valid.',
+            'editAssignmentEffectiveUntilMonth.date_format' => 'Format bulan berhenti efektif tidak valid.',
+        ]);
+        $effectiveUntilMonth = filled($validated['editAssignmentEffectiveUntilMonth'])
+            ? $validated['editAssignmentEffectiveUntilMonth']
+            : null;
+        $effectiveFrom = CarbonImmutable::createFromFormat('Y-m', $validated['editAssignmentEffectiveFromMonth'])->startOfMonth();
+        $effectiveUntil = $effectiveUntilMonth === null
+            ? null
+            : CarbonImmutable::createFromFormat('Y-m', $effectiveUntilMonth)->startOfMonth();
+
+        if ($effectiveUntil !== null && ! $effectiveFrom->lt($effectiveUntil)) {
+            $this->addError('editAssignmentEffectiveUntilMonth', 'Bulan berhenti harus setelah bulan mulai.');
+            $this->notify('Periode keanggotaan tidak valid.', 'error');
+
+            return;
+        }
+
+        if (
+            ! $this->editPeriodImpactConfirmed
+            && $this->assignmentPeriodHasFinancialImpact(
+                $assignment,
+                $validated['editAssignmentEffectiveFromMonth'],
+                $effectiveUntilMonth,
+            )
+        ) {
+            $this->editPeriodRequiresConfirmation = true;
+            $this->notify('Perubahan periode memengaruhi bulan yang memiliki tagihan atau alokasi. Konfirmasi dampak historis.', 'error');
+
+            return;
+        }
+
+        try {
+            $service->updatePeriod(
+                $assignment->id,
+                $validated['editAssignmentEffectiveFromMonth'],
+                $effectiveUntilMonth,
+            );
+        } catch (ValidationException $exception) {
+            $this->notify('Periode keanggotaan tidak dapat diperbarui.', 'error');
+
+            throw $exception;
+        }
+
+        $this->cancelEditAssignmentPeriod();
+        $this->notify('Periode keanggotaan berhasil diperbarui. Tagihan dan alokasi tidak diubah.');
+    }
+
+    public function confirmAssignmentPeriodImpact(JemputanDriverAssignmentService $service): void
+    {
+        $this->editPeriodImpactConfirmed = true;
+        $this->saveAssignmentPeriod($service);
+    }
+
+    public function cancelEditAssignmentPeriod(): void
+    {
+        $this->authorize('viewAny', JemputanDriver::class);
+        $this->isEditAssignmentPeriodModalOpen = false;
+        $this->resetEditAssignmentPeriodForm();
+        $this->restoreGroupModalIfNeeded();
+    }
+
+    public function openEditAssignmentDetails(int $assignmentId): void
+    {
+        $assignment = $this->assignmentForSelectedDriver($assignmentId)->loadMissing('student');
+        $this->authorize('update', $assignment->driver);
+        $this->returnToGroupModal = $this->isGroupModalOpen;
+        $this->hideModalOverlays();
+        $this->resetEditAssignmentDetailsForm();
+        $this->editingAssignmentDetailsId = $assignment->id;
+        $this->editAssignmentDetailsStudentName = $assignment->student->nama_lengkap;
+        $this->editAssignmentDetailsDriverName = $assignment->driver->name;
+        $this->editAssignmentDestination = $assignment->destination ?? '';
+        $this->editAssignmentServiceType = $assignment->service_type ?? '';
+        $this->isEditAssignmentDetailsModalOpen = true;
+    }
+
+    public function saveAssignmentDetails(JemputanDriverAssignmentService $service): void
+    {
+        $assignment = $this->assignmentForSelectedDriver((int) $this->editingAssignmentDetailsId);
+        $this->authorize('update', $assignment->driver);
+        $validated = $this->validateWithToast([
+            'editAssignmentDestination' => ['nullable', 'string', 'max:255'],
+            'editAssignmentServiceType' => ['nullable', Rule::in(JemputanDriverAssignment::SERVICE_TYPES)],
+        ], [
+            'editAssignmentDestination.max' => 'Tujuan maksimal 255 karakter.',
+            'editAssignmentServiceType.in' => 'Keterangan harus PP, Pulang, atau Pergi.',
+        ]);
+
+        $service->updateDetails(
+            $assignment->id,
+            $validated['editAssignmentDestination'] ?? null,
+            $validated['editAssignmentServiceType'] ?? null,
+        );
+
+        $this->cancelEditAssignmentDetails();
+        $this->notify('Detail Jemputan berhasil diperbarui.');
+    }
+
+    public function cancelEditAssignmentDetails(): void
+    {
+        $this->authorize('viewAny', JemputanDriver::class);
+        $this->isEditAssignmentDetailsModalOpen = false;
+        $this->resetEditAssignmentDetailsForm();
+        $this->restoreGroupModalIfNeeded();
     }
 
     public function render(): View
@@ -659,6 +929,7 @@ class JemputanDriverManagement extends Component
             ->all();
 
         $assignments = null;
+        $assignmentHistory = null;
         $selectedDriver = null;
         $selectedDriverCurrentRate = null;
         $selectedDriverRateHistory = collect();
@@ -671,21 +942,33 @@ class JemputanDriverManagement extends Component
                     ->orderBy('effective_month')])
                 ->find($this->selectedDriverId);
 
-            if ($selectedDriver !== null) {
-                $assignments = $selectedDriver->assignments()
+            if ($selectedDriver !== null && $this->isGroupModalOpen) {
+                $assignmentQuery = $selectedDriver->assignments()
                     ->where('academic_year_id', (int) $this->selectedAcademicYearId)
-                    ->currentMembership()
                     ->with([
                         'academicYear',
                         'student.schoolClass',
                         'student.enrollments' => fn ($query) => $query
                             ->where('academic_year_id', (int) $this->selectedAcademicYearId)
                             ->with('schoolClass'),
-                    ])
-                    ->orderBy('effective_from')
-                    ->orderBy('id')
-                    ->paginate(10, ['*'], 'assignmentsPage');
+                    ]);
 
+                if ($this->groupTab === 'history') {
+                    $assignmentHistory = $assignmentQuery
+                        ->orderByDesc('effective_from')
+                        ->orderByDesc('id')
+                        ->paginate(10, ['*'], 'assignmentHistoryPage');
+                } else {
+                    $assignments = $assignmentQuery
+                        ->currentMembership()
+                        ->orderBy('effective_from')
+                        ->orderBy('id')
+                        ->paginate(10, ['*'], 'assignmentsPage');
+                }
+
+            }
+
+            if ($selectedDriver !== null) {
                 $selectedDriverCurrentRate = $this->currentDeductionRate(
                     $selectedDriver,
                     (int) $now->year,
@@ -715,6 +998,7 @@ class JemputanDriverManagement extends Component
             'selectedDriverRateHistory' => $selectedDriverRateHistory,
             'deductionRatePreview' => $deductionRatePreview,
             'assignments' => $assignments,
+            'assignmentHistory' => $assignmentHistory,
             'academicYears' => AcademicYear::query()->orderByDesc('start_date')->get(['id', 'year', 'start_date', 'end_date']),
             'activeDrivers' => JemputanDriver::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'studentResults' => $this->studentResults(),
@@ -733,7 +1017,6 @@ class JemputanDriverManagement extends Component
             ->with('driver')
             ->where('jemputan_driver_id', $this->selectedDriverId)
             ->where('academic_year_id', (int) $this->selectedAcademicYearId)
-            ->currentMembership()
             ->findOrFail($assignmentId);
     }
 
@@ -773,6 +1056,70 @@ class JemputanDriverManagement extends Component
             'editDeductionRateOriginalSnapshot',
         );
         $this->resetValidation();
+    }
+
+    private function resetEditAssignmentPeriodForm(): void
+    {
+        $this->reset(
+            'editingAssignmentId',
+            'editAssignmentEffectiveFromMonth',
+            'editAssignmentEffectiveUntilMonth',
+            'editAssignmentStudentName',
+            'editAssignmentDriverName',
+            'editPeriodRequiresConfirmation',
+            'editPeriodImpactConfirmed',
+        );
+        $this->resetValidation();
+    }
+
+    private function resetEditPeriodConfirmation(): void
+    {
+        $this->editPeriodRequiresConfirmation = false;
+        $this->editPeriodImpactConfirmed = false;
+    }
+
+    private function resetEditAssignmentDetailsForm(): void
+    {
+        $this->reset(
+            'editingAssignmentDetailsId',
+            'editAssignmentDetailsStudentName',
+            'editAssignmentDetailsDriverName',
+            'editAssignmentDestination',
+            'editAssignmentServiceType',
+        );
+        $this->resetValidation();
+    }
+
+    private function hideModalOverlays(): void
+    {
+        $this->isDriverModalOpen = false;
+        $this->isGroupModalOpen = false;
+        $this->isAssignmentModalOpen = false;
+        $this->isCloseModalOpen = false;
+        $this->isMoveModalOpen = false;
+        $this->isDriverConfirmationModalOpen = false;
+        $this->isDeductionRateModalOpen = false;
+        $this->isEditDeductionRateModalOpen = false;
+        $this->isEditAssignmentPeriodModalOpen = false;
+        $this->isEditAssignmentDetailsModalOpen = false;
+    }
+
+    private function restoreGroupModalIfNeeded(): void
+    {
+        if ($this->returnToGroupModal && $this->selectedDriverId !== null) {
+            $this->isGroupModalOpen = true;
+        }
+
+        $this->returnToGroupModal = false;
+    }
+
+    private function restoreDeductionRateModalIfNeeded(): void
+    {
+        if ($this->returnToDeductionRateModal && $this->selectedDriverId !== null) {
+            $this->isDeductionRateModalOpen = true;
+        }
+
+        $this->returnToDeductionRateModal = false;
     }
 
     private function isRetroactivePeriod(CarbonImmutable $effective): bool
@@ -927,6 +1274,91 @@ class JemputanDriverManagement extends Component
         return in_array((string) $exception->getCode(), ['23000', '23505'], true)
             && (str_contains($message, 'jddr_driver_effective_unique')
                 || str_contains($message, 'effective_year, effective_month'));
+    }
+
+    private function academicYearStartMonth(): string
+    {
+        $academicYear = AcademicYear::query()->findOrFail((int) $this->selectedAcademicYearId);
+
+        return $academicYear->start_date->format('Y-m');
+    }
+
+    private function defaultActionEffectiveMonth(bool $allowYearEndBoundary = false): string
+    {
+        $academicYear = AcademicYear::query()->findOrFail((int) $this->selectedAcademicYearId);
+        $start = $academicYear->start_date->toImmutable()->startOfMonth();
+        $end = $academicYear->end_date->toImmutable()->startOfMonth();
+        $latest = $allowYearEndBoundary ? $end->addMonth() : $end;
+
+        return CarbonImmutable::today()->startOfMonth()->max($start)->min($latest)->format('Y-m');
+    }
+
+    private function assignmentPeriodHasFinancialImpact(
+        JemputanDriverAssignment $assignment,
+        string $effectiveFromMonth,
+        ?string $effectiveUntilMonth,
+    ): bool {
+        $academicYear = AcademicYear::query()->findOrFail($assignment->academic_year_id);
+        $newFrom = CarbonImmutable::createFromFormat('Y-m', $effectiveFromMonth)->startOfMonth();
+        $newUntil = $effectiveUntilMonth === null
+            ? null
+            : CarbonImmutable::createFromFormat('Y-m', $effectiveUntilMonth)->startOfMonth();
+        $periods = [];
+        $month = $academicYear->start_date->toImmutable()->startOfMonth();
+
+        while ($month->lte($academicYear->end_date->toImmutable()->startOfMonth())) {
+            $nextMonth = $month->addMonth();
+            $wasActive = $assignment->effective_from->lt($nextMonth)
+                && ($assignment->effective_until === null || $assignment->effective_until->gt($month));
+            $willBeActive = $newFrom->lt($nextMonth)
+                && ($newUntil === null || $newUntil->gt($month));
+
+            if ($wasActive !== $willBeActive) {
+                $periods[] = ['year' => $month->year, 'month' => $month->month];
+            }
+
+            $month = $nextMonth;
+        }
+
+        if ($periods === []) {
+            return false;
+        }
+
+        $allocationExists = JemputanDriverSalaryAllocation::query()
+            ->where('student_id', $assignment->student_id)
+            ->where('academic_year_id', $assignment->academic_year_id)
+            ->where(fn (Builder $query) => $this->whereReportPeriods($query, $periods))
+            ->exists();
+
+        if ($allocationExists) {
+            return true;
+        }
+
+        $paymentTypeIds = PaymentType::query()
+            ->where('name', 'Jemputan')
+            ->pluck('id')
+            ->all();
+
+        return $paymentTypeIds !== [] && StudentBill::query()
+            ->where('student_id', $assignment->student_id)
+            ->whereIn('payment_type_id', $paymentTypeIds)
+            ->where('billing_frequency', BillFrequency::Monthly->value)
+            ->where(fn (Builder $query) => $this->whereReportPeriods($query, $periods))
+            ->exists();
+    }
+
+    /** @param list<array{year: int, month: int}> $periods */
+    private function whereReportPeriods(Builder $query, array $periods): Builder
+    {
+        foreach ($periods as $period) {
+            $query->orWhere(function (Builder $periodQuery) use ($period): void {
+                $periodQuery
+                    ->where('period_year', $period['year'])
+                    ->where('period_month', $period['month']);
+            });
+        }
+
+        return $query;
     }
 
     private function studentResults(): mixed

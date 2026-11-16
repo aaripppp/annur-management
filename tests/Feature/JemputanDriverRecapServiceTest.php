@@ -332,7 +332,7 @@ it('preserves raw over-allocation for anomaly detection', function () {
         ->and($december['is_overallocated'])->toBeTrue();
 });
 
-it('shows all academic-year months for a moved current member regardless of legacy dates', function () {
+it('keeps old bills with the historical driver and applies a move from its effective month', function () {
     $academicYear = recapAcademicYear();
     [$student] = recapStudent($academicYear);
     $oldDriver = JemputanDriver::factory()->create(['name' => 'Sopir Lama']);
@@ -346,15 +346,16 @@ it('shows all academic-year months for a moved current member regardless of lega
     recapPayment($student, $bank, '2026-10-05', [$septemberBill->id => 500000, $octoberBill->id => 600000]);
     $service = app(JemputanDriverRecapService::class);
 
-    $oldReport = $service->generate($academicYear->id, $oldDriver->id);
+    $oldRow = $service->generate($academicYear->id, $oldDriver->id)['rows'][0];
     $newRow = $service->generate($academicYear->id, $newDriver->id)['rows'][0];
 
-    expect($oldReport['rows'])->toBe([])
-        ->and($newRow['months']['2026-09']['paid_amount'])->toBe(500000.0)
+    expect($oldRow['months']['2026-09']['paid_amount'])->toBe(500000.0)
+        ->and($oldRow['months']['2026-10']['status'])->toBe(JemputanDriverRecapService::STATUS_NO_ASSIGNMENT)
+        ->and($newRow['months']['2026-09']['status'])->toBe(JemputanDriverRecapService::STATUS_NO_ASSIGNMENT)
         ->and($newRow['months']['2026-10']['paid_amount'])->toBe(600000.0);
 });
 
-it('shows July through June payment values regardless of the current legacy start date', function () {
+it('shows no assignment before a historical join while keeping later bill values', function () {
     $academicYear = recapAcademicYear();
     [$student] = recapStudent($academicYear);
     $driver = JemputanDriver::factory()->create();
@@ -370,15 +371,66 @@ it('shows July through June payment values regardless of the current legacy star
     $row = app(JemputanDriverRecapService::class)->generate($academicYear->id, $driver->id)['rows'][0];
 
     expect($row['months'])->toHaveCount(12)
-        ->and($row['months']['2026-07']['paid_amount'])->toBe(410000.0)
-        ->and($row['months']['2026-07']['payment_date'])->toBe('2026-07-15')
-        ->and($row['months']['2026-07']['bank_name'])->toBe('Bank Juli')
-        ->and($row['months']['2026-07']['bank_display'])->toBe('Bank Juli · 1234567890')
+        ->and($row['months']['2026-07']['status'])->toBe(JemputanDriverRecapService::STATUS_NO_ASSIGNMENT)
+        ->and($row['months']['2026-07']['paid_amount'])->toBe(0.0)
+        ->and($row['months']['2026-07']['payment_date'])->toBeNull()
         ->and($row['months']['2027-06']['paid_amount'])->toBe(730000.0)
         ->and($row['months']['2027-06']['payment_date'])->toBe('2027-06-20')
         ->and($row['months']['2027-06']['bank_name'])->toBe('Bank Juni')
         ->and($row['months']['2027-06']['bank_account_number'])->toBeNull()
         ->and($row['months']['2027-06']['bank_display'])->toBe('Bank Juni');
+});
+
+it('keeps gap months unassigned and restores a rejoined student in the effective month', function () {
+    $academicYear = recapAcademicYear();
+    [$student] = recapStudent($academicYear);
+    $driver = JemputanDriver::factory()->create();
+    recapAssign($driver, $student, $academicYear, '2026-07-01', '2026-09-01');
+    recapAssign($driver, $student, $academicYear, '2026-11-01');
+    $type = recapPaymentType('Jemputan');
+
+    foreach (range(8, 11) as $month) {
+        recapBill($student, $type, $month, 2026, 500000);
+    }
+
+    $row = app(JemputanDriverRecapService::class)->generate($academicYear->id, $driver->id)['rows'][0];
+
+    expect($row['months']['2026-08']['status'])->toBe(JemputanDriverRecapService::STATUS_UNPAID)
+        ->and($row['months']['2026-09']['status'])->toBe(JemputanDriverRecapService::STATUS_NO_ASSIGNMENT)
+        ->and($row['months']['2026-10']['status'])->toBe(JemputanDriverRecapService::STATUS_NO_ASSIGNMENT)
+        ->and($row['months']['2026-11']['status'])->toBe(JemputanDriverRecapService::STATUS_UNPAID)
+        ->and($row['totals']['effective_billed_amount'])->toBe(1000000.0);
+});
+
+it('counts a bill as unassigned according to its own month', function () {
+    $academicYear = recapAcademicYear();
+    [$student] = recapStudent($academicYear);
+    $driver = JemputanDriver::factory()->create();
+    recapAssign($driver, $student, $academicYear, '2026-11-01');
+    $type = recapPaymentType('Jemputan');
+    recapBill($student, $type, 8, 2026, 500000);
+    recapBill($student, $type, 11, 2026, 500000);
+
+    $report = app(JemputanDriverRecapService::class)->generate($academicYear->id, $driver->id);
+
+    expect($report['unassigned_bill_exception_count'])->toBe(1)
+        ->and($report['rows'][0]['months']['2026-08']['status'])->toBe(JemputanDriverRecapService::STATUS_NO_ASSIGNMENT)
+        ->and($report['rows'][0]['months']['2026-11']['status'])->toBe(JemputanDriverRecapService::STATUS_UNPAID);
+});
+
+it('excludes zero-length and reversed assignments from recap membership', function () {
+    $academicYear = recapAcademicYear();
+    [$student] = recapStudent($academicYear);
+    $driver = JemputanDriver::factory()->create();
+    recapAssign($driver, $student, $academicYear, '2026-11-10', '2026-11-10');
+    recapAssign($driver, $student, $academicYear, '2026-12-10', '2026-12-01');
+    recapBill($student, recapPaymentType('Jemputan'), 11, 2026, 500000);
+
+    $report = app(JemputanDriverRecapService::class)->generate($academicYear->id, $driver->id);
+
+    expect($report['rows'])->toBe([])
+        ->and($report['unassigned_bill_exception_count'])->toBe(1)
+        ->and(JemputanDriverAssignment::query()->where('student_id', $student->id)->count())->toBe(2);
 });
 
 it('includes assignments without bills and counts unassigned Jemputan bill exceptions', function () {
@@ -453,7 +505,7 @@ it('keeps SELECT queries constant as the student chunk grows', function (int $st
     DB::disableQueryLog();
 
     expect($report['rows'])->toHaveCount($studentCount)
-        ->and($selectCount)->toBe(9);
+        ->and($selectCount)->toBe(10);
 })->with([1, 10, 25, 50]);
 
 it('allows active Admin and Superadmin users to generate a recap', function (string $role) {

@@ -65,7 +65,7 @@ it('opens and closes the deduction rate modal with the driver context', function
 
     Livewire::test(JemputanDriverManagement::class)
         ->call('viewGroup', $driver->id)
-        ->assertSee('Ubah Persentase')
+        ->assertSee('Atur Persentase')
         ->call('openDeductionRateModal')
         ->assertSet('isDeductionRateModalOpen', true)
         ->assertSee('Ubah Persentase Yayasan')
@@ -269,6 +269,7 @@ it('labels a legacy percentage without claiming a known effective month', functi
         ->call('viewGroup', $driver->id)
         ->assertSee('9,5%')
         ->assertSee('Persentase lama — bulan berlaku belum ditentukan')
+        ->call('openDeductionRateModal')
         ->assertSee('Belum ada riwayat tarif')
         ->assertViewHas('selectedDriverCurrentRate', fn (array $rate): bool => $rate['source'] === JemputanDriverDeductionRateResolver::SOURCE_LEGACY
             && $rate['effective_year'] === null);
@@ -282,6 +283,7 @@ it('shows the rate history in period order', function () {
 
     Livewire::test(JemputanDriverManagement::class)
         ->call('viewGroup', $driver->id)
+        ->call('openDeductionRateModal')
         ->assertViewHas('selectedDriverRateHistory', fn ($history): bool => collect($history)->pluck('period_label')->all() === [
             'Juli 2026',
             'November 2026',

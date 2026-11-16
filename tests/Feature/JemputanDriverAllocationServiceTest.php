@@ -17,6 +17,7 @@ use App\Models\StudentBill;
 use App\Models\User;
 use App\Services\JemputanDriverAllocationService;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 function jemputanAllocationYear(string $label = '2026/2027'): AcademicYear
@@ -62,13 +63,14 @@ function jemputanAllocationAssign(
     JemputanDriver $driver,
     Student $student,
     AcademicYear $academicYear,
+    string $effectiveFrom = '2026-07-01',
     ?string $effectiveUntil = null,
 ): JemputanDriverAssignment {
     return JemputanDriverAssignment::query()->create([
         'jemputan_driver_id' => $driver->id,
         'student_id' => $student->id,
         'academic_year_id' => $academicYear->id,
-        'effective_from' => '2026-07-01',
+        'effective_from' => $effectiveFrom,
         'effective_until' => $effectiveUntil,
     ]);
 }
@@ -513,7 +515,7 @@ it('marks allocations stale when membership grows', function () {
         ->toBe(JemputanDriverAllocationService::STATUS_STALE);
 });
 
-it('marks allocations orphan when an allocated driver leaves the membership', function () {
+it('keeps an old allocation valid after a driver leaves in a later month', function () {
     $academicYear = jemputanAllocationYear();
     $admin = jemputanAllocationUser();
     [$student, $firstDriver, $secondDriver] = jemputanAllocationMultiDriverStudent($academicYear);
@@ -535,7 +537,218 @@ it('marks allocations orphan when an allocated driver leaves the membership', fu
         ->update(['effective_until' => '2026-08-01']);
 
     expect(jemputanAllocationService()->preview($student->id, $academicYear->id, 2026, 7)['status'])
+        ->toBe(JemputanDriverAllocationService::STATUS_VALID)
+        ->and(jemputanAllocationService()->preview($student->id, $academicYear->id, 2026, 8)['status'])
+        ->toBe(JemputanDriverAllocationService::STATUS_NOT_REQUIRED);
+});
+
+it('marks an allocation orphan only when its driver was not a member in that month', function () {
+    $academicYear = jemputanAllocationYear();
+    [$student, $firstDriver, $secondDriver] = jemputanAllocationMultiDriverStudent($academicYear);
+    $outsider = jemputanAllocationDriver('Sopir Orphan Historis '.uniqid());
+    jemputanAllocationBill($student, 700000);
+    JemputanDriverSalaryAllocation::query()->create([
+        'student_id' => $student->id,
+        'academic_year_id' => $academicYear->id,
+        'period_year' => 2026,
+        'period_month' => 7,
+        'jemputan_driver_id' => $firstDriver->id,
+        'allocated_amount' => 450000,
+    ]);
+    JemputanDriverSalaryAllocation::query()->create([
+        'student_id' => $student->id,
+        'academic_year_id' => $academicYear->id,
+        'period_year' => 2026,
+        'period_month' => 7,
+        'jemputan_driver_id' => $secondDriver->id,
+        'allocated_amount' => 250000,
+    ]);
+    JemputanDriverSalaryAllocation::query()->create([
+        'student_id' => $student->id,
+        'academic_year_id' => $academicYear->id,
+        'period_year' => 2026,
+        'period_month' => 7,
+        'jemputan_driver_id' => $outsider->id,
+        'allocated_amount' => 0,
+    ]);
+
+    expect(jemputanAllocationService()->preview($student->id, $academicYear->id, 2026, 7)['status'])
         ->toBe(JemputanDriverAllocationService::STATUS_ORPHAN);
+});
+
+it('resolves two August drivers and one November driver independently', function () {
+    $academicYear = jemputanAllocationYear();
+    $admin = jemputanAllocationUser();
+    $student = jemputanAllocationStudent($academicYear, 'Siswa Komposisi Historis');
+    $firstDriver = jemputanAllocationDriver('Sopir Historis A '.uniqid());
+    $secondDriver = jemputanAllocationDriver('Sopir Historis B '.uniqid());
+    jemputanAllocationAssign($firstDriver, $student, $academicYear);
+    jemputanAllocationAssign($secondDriver, $student, $academicYear, '2026-07-01', '2026-09-01');
+    jemputanAllocationBill($student, 700000, 8);
+    jemputanAllocationBill($student, 700000, 11);
+
+    jemputanAllocationService()->save(
+        $student->id,
+        $academicYear->id,
+        ['2026-08' => jemputanAllocationRows([
+            $firstDriver->id => 450000,
+            $secondDriver->id => 250000,
+        ])],
+        $admin,
+    );
+
+    $august = jemputanAllocationService()->preview($student->id, $academicYear->id, 2026, 8);
+    $november = jemputanAllocationService()->preview($student->id, $academicYear->id, 2026, 11);
+
+    expect($august['driver_count'])->toBe(2)
+        ->and($august['status'])->toBe(JemputanDriverAllocationService::STATUS_VALID)
+        ->and(array_column($august['drivers'], 'id'))->toContain($firstDriver->id, $secondDriver->id)
+        ->and($november['driver_count'])->toBe(1)
+        ->and($november['status'])->toBe(JemputanDriverAllocationService::STATUS_NOT_REQUIRED)
+        ->and(array_column($november['drivers'], 'id'))->toBe([$firstDriver->id]);
+});
+
+it('validates each month against its own driver composition', function () {
+    $academicYear = jemputanAllocationYear();
+    $admin = jemputanAllocationUser();
+    $student = jemputanAllocationStudent($academicYear, 'Siswa Multi Periode Historis');
+    $firstDriver = jemputanAllocationDriver('Sopir Multi Bulan A '.uniqid());
+    $julyDriver = jemputanAllocationDriver('Sopir Multi Bulan B '.uniqid());
+    $augustDriver = jemputanAllocationDriver('Sopir Multi Bulan C '.uniqid());
+    jemputanAllocationAssign($firstDriver, $student, $academicYear);
+    jemputanAllocationAssign($julyDriver, $student, $academicYear, '2026-07-01', '2026-08-01');
+    jemputanAllocationAssign($augustDriver, $student, $academicYear, '2026-08-01');
+    jemputanAllocationBill($student, 700000, 7);
+    jemputanAllocationBill($student, 700000, 8);
+
+    $saved = jemputanAllocationService()->save(
+        $student->id,
+        $academicYear->id,
+        [
+            '2026-07' => jemputanAllocationRows([
+                $firstDriver->id => 450000,
+                $julyDriver->id => 250000,
+            ]),
+            '2026-08' => jemputanAllocationRows([
+                $firstDriver->id => 400000,
+                $augustDriver->id => 300000,
+            ]),
+        ],
+        $admin,
+    );
+
+    expect($saved)->toHaveCount(4)
+        ->and(jemputanAllocationService()->preview($student->id, $academicYear->id, 2026, 7)['status'])
+        ->toBe(JemputanDriverAllocationService::STATUS_VALID)
+        ->and(jemputanAllocationService()->preview($student->id, $academicYear->id, 2026, 8)['status'])
+        ->toBe(JemputanDriverAllocationService::STATUS_VALID);
+});
+
+it('rolls back every month when one month uses another months driver composition', function () {
+    $academicYear = jemputanAllocationYear();
+    $admin = jemputanAllocationUser();
+    $student = jemputanAllocationStudent($academicYear, 'Siswa Rollback Komposisi');
+    $firstDriver = jemputanAllocationDriver('Sopir Rollback A '.uniqid());
+    $julyDriver = jemputanAllocationDriver('Sopir Rollback B '.uniqid());
+    $augustDriver = jemputanAllocationDriver('Sopir Rollback C '.uniqid());
+    jemputanAllocationAssign($firstDriver, $student, $academicYear);
+    jemputanAllocationAssign($julyDriver, $student, $academicYear, '2026-07-01', '2026-08-01');
+    jemputanAllocationAssign($augustDriver, $student, $academicYear, '2026-08-01');
+    jemputanAllocationBill($student, 700000, 7);
+    jemputanAllocationBill($student, 700000, 8);
+
+    expect(fn () => jemputanAllocationService()->save(
+        $student->id,
+        $academicYear->id,
+        [
+            '2026-07' => jemputanAllocationRows([
+                $firstDriver->id => 450000,
+                $julyDriver->id => 250000,
+            ]),
+            '2026-08' => jemputanAllocationRows([
+                $firstDriver->id => 450000,
+                $julyDriver->id => 250000,
+            ]),
+        ],
+        $admin,
+    ))->toThrow(ValidationException::class);
+
+    expect(JemputanDriverSalaryAllocation::query()->where('student_id', $student->id)->count())->toBe(0);
+});
+
+it('ignores zero-length assignments when resolving allocation drivers', function () {
+    $academicYear = jemputanAllocationYear();
+    $student = jemputanAllocationStudent($academicYear, 'Siswa Assignment Kosong');
+    $driver = jemputanAllocationDriver('Sopir Assignment Kosong '.uniqid());
+    jemputanAllocationAssign($driver, $student, $academicYear, '2026-11-10', '2026-11-10');
+    jemputanAllocationBill($student, 700000, 11);
+
+    $preview = jemputanAllocationService()->preview($student->id, $academicYear->id, 2026, 11);
+
+    expect($preview['driver_count'])->toBe(0)
+        ->and($preview['drivers'])->toBe([])
+        ->and($preview['status'])->toBe(JemputanDriverAllocationService::STATUS_NOT_REQUIRED)
+        ->and(JemputanDriverAssignment::query()->where('student_id', $student->id)->count())->toBe(1);
+});
+
+it('does not automatically delete an orphan historical allocation while saving valid members', function () {
+    $academicYear = jemputanAllocationYear();
+    $admin = jemputanAllocationUser();
+    [$student, $firstDriver, $secondDriver] = jemputanAllocationMultiDriverStudent($academicYear);
+    $outsider = jemputanAllocationDriver('Sopir Lama Tidak Valid '.uniqid());
+    jemputanAllocationBill($student, 700000);
+    JemputanDriverSalaryAllocation::query()->create([
+        'student_id' => $student->id,
+        'academic_year_id' => $academicYear->id,
+        'period_year' => 2026,
+        'period_month' => 7,
+        'jemputan_driver_id' => $outsider->id,
+        'allocated_amount' => 0,
+    ]);
+
+    jemputanAllocationService()->save(
+        $student->id,
+        $academicYear->id,
+        ['2026-07' => jemputanAllocationRows([
+            $firstDriver->id => 450000,
+            $secondDriver->id => 250000,
+        ])],
+        $admin,
+    );
+
+    expect(JemputanDriverSalaryAllocation::query()->where('student_id', $student->id)->count())->toBe(3)
+        ->and(JemputanDriverSalaryAllocation::query()->where('jemputan_driver_id', $outsider->id)->exists())->toBeTrue()
+        ->and(jemputanAllocationService()->preview($student->id, $academicYear->id, 2026, 7)['status'])
+        ->toBe(JemputanDriverAllocationService::STATUS_ORPHAN);
+});
+
+it('keeps allocation save SELECT queries bounded as the month count grows', function () {
+    $academicYear = jemputanAllocationYear();
+    $admin = jemputanAllocationUser();
+    $selectCounts = [];
+
+    foreach ([1, 3, 6] as $monthCount) {
+        [$student, $firstDriver, $secondDriver] = jemputanAllocationMultiDriverStudent($academicYear);
+        $periods = [];
+
+        foreach (range(7, 6 + $monthCount) as $month) {
+            jemputanAllocationBill($student, 700000, $month);
+            $periods[sprintf('2026-%02d', $month)] = jemputanAllocationRows([
+                $firstDriver->id => 450000,
+                $secondDriver->id => 250000,
+            ]);
+        }
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        jemputanAllocationService()->save($student->id, $academicYear->id, $periods, $admin);
+        $selectCounts[] = collect(DB::getQueryLog())->pluck('query')->filter(
+            fn (string $query): bool => str_starts_with(strtolower(ltrim($query)), 'select')
+        )->count();
+        DB::disableQueryLog();
+    }
+
+    expect(array_unique($selectCounts))->toHaveCount(1);
 });
 
 it('rejects saving for users outside the existing admin policy', function (string $role, bool $active) {

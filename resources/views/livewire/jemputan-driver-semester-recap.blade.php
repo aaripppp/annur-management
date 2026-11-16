@@ -99,7 +99,7 @@
             @endif
 
             <div class="rounded-xl border border-outline-variant bg-surface-container-low px-4 py-3 text-body-sm text-on-surface-variant">
-                <p><span class="font-semibold text-on-surface">Catatan membership historis:</span> pembagian sopir menggunakan membership aktif saat laporan dibuka; perubahan membership lama belum direkonstruksi sebagai kondisi per bulan.</p>
+                <p><span class="font-semibold text-on-surface">Catatan membership historis:</span> pembagian sopir menggunakan membership aktif pada masing-masing bulan laporan.</p>
             </div>
         </section>
 
@@ -116,24 +116,24 @@
                     <p class="mt-1 text-body-sm text-on-surface-variant">Fee dibulatkan per sopir per bulan sebelum dijumlahkan ke total semester.</p>
                 </header>
 
-                <div class="overflow-x-auto overscroll-x-contain">
+                <div data-semester-recap-scroll class="max-h-[calc(100vh-8rem)] overflow-auto overscroll-contain">
                     <table data-semester-recap-table class="min-w-[1600px] border-collapse text-left text-body-sm leading-5">
                         <thead class="uppercase tracking-wider text-on-surface-variant">
                             <tr class="border-b-2 border-primary bg-surface-container-low">
-                                <th class="w-14 min-w-14 border-r border-outline-variant px-3 py-3.5 text-center align-middle">No</th>
-                                <th class="w-64 min-w-64 border-r border-outline-variant px-4 py-3.5 align-middle">Nama Sopir</th>
-                                <th class="w-40 min-w-40 border-r-2 border-outline px-4 py-3.5 align-middle">Pembayaran</th>
+                                <th data-sticky-no class="sticky left-0 top-0 z-40 w-14 min-w-14 border-r border-outline-variant bg-surface-container-low px-3 py-3.5 text-center align-middle">No</th>
+                                <th data-sticky-driver class="sticky left-14 top-0 z-40 w-64 min-w-64 border-r border-outline-variant bg-surface-container-low px-4 py-3.5 align-middle shadow-[2px_0_4px_-2px_rgba(0,0,0,0.18)]">Nama Sopir</th>
+                                <th data-sticky-header class="sticky top-0 z-20 w-40 min-w-40 border-r-2 border-outline bg-surface-container-low px-4 py-3.5 align-middle">Pembayaran</th>
                                 @foreach($report['months'] as $month)
-                                    <th class="w-40 min-w-40 whitespace-nowrap border-r border-outline-variant px-3 py-3.5 text-right align-middle">{{ $month['label'] }}</th>
+                                    <th data-sticky-header class="sticky top-0 z-20 w-40 min-w-40 whitespace-nowrap border-r border-outline-variant bg-surface-container-low px-3 py-3.5 text-right align-middle">{{ $month['label'] }}</th>
                                 @endforeach
-                                <th class="w-40 min-w-40 whitespace-nowrap px-4 py-3.5 text-right align-middle">Total</th>
+                                <th data-sticky-header class="sticky top-0 z-20 w-40 min-w-40 whitespace-nowrap bg-surface-container-low px-4 py-3.5 text-right align-middle">Total</th>
                             </tr>
                         </thead>
                         <tbody class="text-on-surface">
                             @foreach($report['rows'] as $index => $row)
                                 <tr class="h-14 border-b border-outline-variant bg-surface-container-lowest">
-                                    <td rowspan="3" class="border-r border-outline-variant bg-surface-container-lowest px-3 py-3 text-center align-middle font-numeric-data">{{ $index + 1 }}</td>
-                                    <td rowspan="3" class="border-r border-outline-variant bg-surface-container-lowest px-4 py-3 align-middle font-medium">
+                                    <td data-sticky-no rowspan="3" class="sticky left-0 z-10 w-14 min-w-14 border-r border-outline-variant bg-surface-container-lowest px-3 py-3 text-center align-middle font-numeric-data">{{ $index + 1 }}</td>
+                                    <td data-sticky-driver rowspan="3" class="sticky left-14 z-10 w-64 min-w-64 border-r border-outline-variant bg-surface-container-lowest px-4 py-3 align-middle font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.18)]">
                                         {{ $row['driver_name'] }}
                                         @unless($row['is_active'])
                                             <span class="mt-1 block text-label-sm text-on-surface-variant">Nonaktif</span>
@@ -178,7 +178,7 @@
                             ] as $recapIndex => [$label, $key, $background])
                                 <tr class="h-14 {{ $recapIndex === 2 ? 'border-t border-outline border-b-2 border-primary' : 'border-b border-outline-variant' }} font-semibold">
                                     @if($recapIndex === 0)
-                                        <th rowspan="3" colspan="2" class="border-r border-outline bg-surface-container-high px-4 py-3 align-middle text-title-md font-title-md">REKAP</th>
+                                        <th data-sticky-summary rowspan="3" colspan="2" class="sticky left-0 z-10 border-r border-outline bg-surface-container-high px-4 py-3 align-middle text-title-md font-title-md shadow-[2px_0_4px_-2px_rgba(0,0,0,0.18)]">REKAP</th>
                                     @endif
                                     <th class="whitespace-nowrap border-r-2 border-outline px-4 py-3 align-middle {{ $background }}">{{ $label }}</th>
                                     @foreach($report['months'] as $month)

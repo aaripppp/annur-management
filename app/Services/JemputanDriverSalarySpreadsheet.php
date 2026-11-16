@@ -95,10 +95,10 @@ class JemputanDriverSalarySpreadsheet
         $sheet->setColumnWidth(30, 2);
         $sheet->setColumnWidth(12, 3);
         $sheet->setColumnWidth(16, 4);
-        $sheet->setColumnWidth(22, 5);
+        $sheet->setColumnWidth(11, 5);
         $sheet->setColumnWidth(14, 6);
         $sheet->setColumnWidth(11, 7);
-        $sheet->setColumnWidth(20, 8);
+        $sheet->setColumnWidth(31, 8);
         $sheet->setPrintTitleRows(self::GROUP_HEADER_ROW.':'.self::DETAIL_HEADER_ROW);
         $sheet->setSheetView(
             (new SheetView)
@@ -194,8 +194,8 @@ class JemputanDriverSalarySpreadsheet
             $number,
             $row['student_name'],
             $row['historical_class'] ?? '',
-            '',
-            $this->allocationNote($row),
+            $row['destination'] ?? '',
+            $row['service_type'] ?? '',
             (float) $row['salary_amount'],
             $row['payment_date'] === null
                 ? ''
@@ -207,10 +207,10 @@ class JemputanDriverSalarySpreadsheet
             $this->nameStyle(),
             $this->centerStyle(),
             $this->textStyle(),
-            $isMultiDriver ? $this->multiDriverTextStyle() : $this->textStyle(),
+            $this->centerStyle(),
             $this->currencyStyle($isMultiDriver),
             $this->centerStyle(),
-            $this->textStyle(),
+            $this->paymentTypeStyle(),
         ];
 
         return Row::fromValuesWithStyles($values, $styles, 18);
@@ -352,20 +352,6 @@ class JemputanDriverSalarySpreadsheet
             ];
 
         return Row::fromValuesWithStyles($values, $styles, $withNote ? 30 : 18);
-    }
-
-    /** @param array<string, mixed> $row */
-    private function allocationNote(array $row): string
-    {
-        if (! ($row['is_multi_driver'] ?? false)) {
-            return '';
-        }
-
-        return match ($row['allocation_status'] ?? null) {
-            JemputanDriverAllocationService::STATUS_VALID => 'MULTI SOPIR - ALOKASI',
-            JemputanDriverAllocationService::STATUS_MISSING => 'MULTI SOPIR - BELUM DIALOKASIKAN',
-            default => 'MULTI SOPIR - PERLU DIPERBAIKI',
-        };
     }
 
     /** @param array<string, mixed> $report */
@@ -523,6 +509,19 @@ class JemputanDriverSalarySpreadsheet
             cellAlignment: CellAlignment::LEFT,
             cellVerticalAlignment: CellVerticalAlignment::CENTER,
             shouldWrapText: false,
+            border: $this->border(),
+            backgroundColor: 'FFFFFF',
+        );
+    }
+
+    private function paymentTypeStyle(): Style
+    {
+        return new Style(
+            fontSize: 9,
+            cellAlignment: CellAlignment::LEFT,
+            cellVerticalAlignment: CellVerticalAlignment::CENTER,
+            shouldWrapText: false,
+            shouldShrinkToFit: true,
             border: $this->border(),
             backgroundColor: 'FFFFFF',
         );

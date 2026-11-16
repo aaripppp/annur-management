@@ -35,8 +35,16 @@ class JemputanDriverSemesterRecapService
 
         $academicYear = AcademicYear::query()->findOrFail($academicYearId);
         $periods = $this->semesterPeriods($academicYear, $semester);
-        $studentIds = $this->studentIds($academicYear, $schoolLevel);
-        $memberships = $this->memberships($academicYear, $studentIds);
+        $eligibleStudentIds = $this->eligibleStudentIds($academicYear, $schoolLevel);
+        $memberships = $this->memberships($academicYear, $eligibleStudentIds, $periods);
+        $studentIds = collect($eligibleStudentIds)
+            ->filter(fn (int $studentId): bool => collect($periods)->contains(
+                fn (array $period): bool => $memberships->has(
+                    $this->studentPeriodKey($studentId, $period['year'], $period['month'])
+                )
+            ))
+            ->values()
+            ->all();
         $drivers = $this->drivers($memberships);
         $paymentTypeIds = PaymentType::query()
             ->where('name', self::PAYMENT_TYPE_NAME)
@@ -66,10 +74,9 @@ class JemputanDriverSemesterRecapService
         ];
 
         foreach ($studentIds as $studentId) {
-            $driverIds = $memberships->get($studentId, []);
-
             foreach ($periods as $period) {
                 $key = $this->studentPeriodKey($studentId, $period['year'], $period['month']);
+                $driverIds = $memberships->get($key, []);
                 $periodBills = $billsByStudentAndPeriod->get($key, collect());
                 $periodAllocations = $allocationsByStudentAndPeriod->get($key, collect());
 
@@ -155,7 +162,7 @@ class JemputanDriverSemesterRecapService
                 ],
                 'missing_rate_count' => $missingRateCount,
                 'legacy_rate_count' => $legacyRateCount,
-                'historical_membership_limited' => true,
+                'historical_membership_limited' => false,
             ],
             'is_final' => $allocationWarningCount === 0 && $missingRateCount === 0 && $legacyRateCount === 0,
         ];
@@ -183,7 +190,7 @@ class JemputanDriverSemesterRecapService
     }
 
     /** @return list<int> */
-    private function studentIds(AcademicYear $academicYear, ?SchoolLevel $schoolLevel): array
+    private function eligibleStudentIds(AcademicYear $academicYear, ?SchoolLevel $schoolLevel): array
     {
         return Student::query()
             ->whereHas('enrollments', fn (Builder $query) => $query
@@ -192,9 +199,6 @@ class JemputanDriverSemesterRecapService
                     'schoolClass',
                     fn (Builder $classQuery) => $classQuery->whereIn('level', $schoolLevel->classLevels()),
                 )))
-            ->whereHas('jemputanDriverAssignments', fn (Builder $query) => $query
-                ->where('academic_year_id', $academicYear->id)
-                ->currentMembership())
             ->pluck('id')
             ->map(fn ($id): int => (int) $id)
             ->unique()
@@ -202,31 +206,66 @@ class JemputanDriverSemesterRecapService
             ->all();
     }
 
-    /** @param list<int> $studentIds
-     * @return Collection<int, list<int>>
+    /**
+     * @param  list<int>  $studentIds
+     * @param  list<array{key: string, year: int, month: int, label: string}>  $periods
+     * @return Collection<string, list<int>>
      */
-    private function memberships(AcademicYear $academicYear, array $studentIds): Collection
+    private function memberships(AcademicYear $academicYear, array $studentIds, array $periods): Collection
     {
         if ($studentIds === []) {
             return collect();
         }
 
-        return JemputanDriverAssignment::query()
-            ->where('academic_year_id', $academicYear->id)
+        $assignments = JemputanDriverAssignment::query()
             ->whereIn('student_id', $studentIds)
-            ->currentMembership()
-            ->get(['student_id', 'jemputan_driver_id'])
-            ->groupBy('student_id')
-            ->map(fn (Collection $assignments): array => $assignments
-                ->pluck('jemputan_driver_id')
-                ->map(fn ($id): int => (int) $id)
-                ->unique()
-                ->sort()
-                ->values()
-                ->all());
+            ->where(function (Builder $query) use ($academicYear, $periods): void {
+                foreach ($periods as $period) {
+                    $query->orWhere(fn (Builder $monthQuery) => $monthQuery->activeDuringMonth(
+                        $academicYear->id,
+                        $period['year'],
+                        $period['month'],
+                    ));
+                }
+            })
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNull('effective_until')
+                    ->orWhereColumn('effective_until', '>', 'effective_from');
+            })
+            ->get(['student_id', 'jemputan_driver_id', 'effective_from', 'effective_until']);
+
+        $memberships = collect();
+
+        foreach ($assignments as $assignment) {
+            foreach ($periods as $period) {
+                $monthStart = CarbonImmutable::createFromDate($period['year'], $period['month'], 1)->startOfDay();
+
+                if (
+                    $assignment->effective_from->lt($monthStart->addMonth())
+                    && ($assignment->effective_until === null || $assignment->effective_until->gt($monthStart))
+                ) {
+                    $key = $this->studentPeriodKey(
+                        (int) $assignment->student_id,
+                        $period['year'],
+                        $period['month'],
+                    );
+                    $memberships->put($key, [
+                        ...$memberships->get($key, []),
+                        (int) $assignment->jemputan_driver_id,
+                    ]);
+                }
+            }
+        }
+
+        return $memberships->map(fn (array $driverIds): array => collect($driverIds)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all());
     }
 
-    /** @param Collection<int, list<int>> $memberships
+    /** @param Collection<string, list<int>> $memberships
      * @return Collection<int, JemputanDriver>
      */
     private function drivers(Collection $memberships): Collection
@@ -305,6 +344,15 @@ class JemputanDriverSemesterRecapService
         array $driverIds,
         Collection $allocations,
     ): array {
+        if ($driverIds === []) {
+            return [
+                'status' => $allocations->isEmpty()
+                    ? JemputanDriverAllocationService::STATUS_NOT_REQUIRED
+                    : JemputanDriverAllocationService::STATUS_ORPHAN,
+                'amounts' => [],
+            ];
+        }
+
         $status = JemputanDriverAllocationService::STATUS_NOT_REQUIRED;
         $amounts = [];
 

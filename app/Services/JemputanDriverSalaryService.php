@@ -43,7 +43,7 @@ class JemputanDriverSalaryService
      * The summary always covers every student that matches the filters, not just the
      * returned page. Single-driver students keep their full bill amount. Multi-driver
      * students use a stored allocation only when it is valid for the current bill and
-     * membership; missing, stale, and orphan allocations fall back to the full bill
+     * report-period membership; missing, stale, and orphan allocations fall back to the full bill
      * and are flagged as not final. No amount is ever split automatically.
      *
      * @return array<string, mixed>
@@ -66,11 +66,11 @@ class JemputanDriverSalaryService
             ->pluck('id')
             ->map(fn ($id): int => (int) $id)
             ->all();
-        $students = $this->students($academicYear, $driver, $perPage, $page);
-        $allStudentIds = $this->allStudentIds($academicYear, $driver);
+        $students = $this->students($academicYear, $driver, $selectedMonth, $perPage, $page);
+        $allStudentIds = $this->allStudentIds($academicYear, $driver, $selectedMonth);
         $billsByStudent = $this->bills($allStudentIds, $paymentTypeIds, $selectedMonth)
             ->groupBy('student_id');
-        $driverMemberships = $this->currentDriverMemberships($allStudentIds, $academicYear);
+        $driverMemberships = $this->driverMembershipsDuringMonth($allStudentIds, $academicYear, $selectedMonth);
         $allocationsByStudent = $this->allocationsForPeriod($allStudentIds, $academicYear, $selectedMonth)
             ->groupBy('student_id');
         $deductionRate = $this->deductionRates->resolve(
@@ -112,6 +112,8 @@ class JemputanDriverSalaryService
                 'student_name' => $student->nama_lengkap,
                 'historical_class_id' => $student->historical_class_id === null ? null : (int) $student->historical_class_id,
                 'historical_class' => $student->historical_class_name,
+                'destination' => $student->assignment_destination,
+                'service_type' => $student->assignment_service_type,
                 'bill_amount' => $billAmount,
                 'salary_amount' => $resolution['salary_amount'],
                 'allocation_status' => $resolution['allocation_status'],
@@ -188,7 +190,7 @@ class JemputanDriverSalaryService
         $unallocatedMultiDriverCount = 0;
         $staleAllocationCount = 0;
 
-        $this->studentsQuery($academicYear, $driver)
+        $this->studentsQuery($academicYear, $driver, $selectedMonth)
             ->orderBy('students.nama_lengkap')
             ->orderBy('students.id')
             ->chunk(self::EXPORT_CHUNK_SIZE, function (Collection $students) use (
@@ -202,20 +204,26 @@ class JemputanDriverSalaryService
                 &$unallocatedMultiDriverCount,
                 &$staleAllocationCount,
             ): void {
-                $studentIds = $students->pluck('id')->map(fn ($id): int => (int) $id)->all();
-                $chunkBills = $this->bills($studentIds, $paymentTypeIds, $selectedMonth)
+                $candidateStudentIds = $students->pluck('id')->map(fn ($id): int => (int) $id)->all();
+                $chunkBills = $this->bills($candidateStudentIds, $paymentTypeIds, $selectedMonth)
                     ->groupBy('student_id');
+                $studentsWithBills = $students
+                    ->filter(fn (Student $student): bool => $chunkBills->has($student->id));
+                $studentIds = $studentsWithBills
+                    ->pluck('id')
+                    ->map(fn ($id): int => (int) $id)
+                    ->all();
                 $billIds = $chunkBills
                     ->flatten(1)
                     ->pluck('id')
                     ->map(fn ($id): int => (int) $id)
                     ->all();
-                $driverMemberships = $this->currentDriverMemberships($studentIds, $academicYear);
+                $driverMemberships = $this->driverMembershipsDuringMonth($studentIds, $academicYear, $selectedMonth);
                 $allocationsByStudent = $this->allocationsForPeriod($studentIds, $academicYear, $selectedMonth)
                     ->groupBy('student_id');
                 $paymentMetadataByBill = $this->activePaymentMetadata($billIds)->groupBy('bill_id');
 
-                foreach ($students as $student) {
+                foreach ($studentsWithBills as $student) {
                     $studentBills = $chunkBills->get($student->id, collect());
                     $billAmount = $this->effectiveBillTotal($studentBills);
                     $currentDriverIds = $driverMemberships->get($student->id, []);
@@ -241,6 +249,8 @@ class JemputanDriverSalaryService
                         'student_name' => $student->nama_lengkap,
                         'historical_class_id' => $student->historical_class_id === null ? null : (int) $student->historical_class_id,
                         'historical_class' => $student->historical_class_name,
+                        'destination' => $student->assignment_destination,
+                        'service_type' => $student->assignment_service_type,
                         'bill_amount' => $billAmount,
                         'salary_amount' => $resolution['salary_amount'],
                         'allocation_status' => $resolution['allocation_status'],
@@ -339,22 +349,27 @@ class JemputanDriverSalaryService
     }
 
     /**
+     * @param  array{key: string, month: int, year: int, label: string}  $month
      * @return LengthAwarePaginator<int, Student>
      */
     private function students(
         AcademicYear $academicYear,
         JemputanDriver $driver,
+        array $month,
         int $perPage,
         int $page,
     ): LengthAwarePaginator {
-        return $this->studentsQuery($academicYear, $driver)
+        return $this->studentsQuery($academicYear, $driver, $month)
             ->orderBy('students.nama_lengkap')
             ->orderBy('students.id')
             ->paginate(max(1, min($perPage, 500)), ['*'], 'salaryPage', max(1, $page));
     }
 
-    /** @return Builder<Student> */
-    private function studentsQuery(AcademicYear $academicYear, JemputanDriver $driver): Builder
+    /**
+     * @param  array{key: string, month: int, year: int, label: string}  $month
+     * @return Builder<Student>
+     */
+    private function studentsQuery(AcademicYear $academicYear, JemputanDriver $driver, array $month): Builder
     {
         return Student::query()
             ->leftJoin('student_academic_enrollments as salary_enrollments', function ($join) use ($academicYear): void {
@@ -368,16 +383,54 @@ class JemputanDriverSalaryService
                 'salary_classes.id as historical_class_id',
                 'salary_classes.name as historical_class_name',
             ])
-            ->whereHas('jemputanDriverAssignments', fn (Builder $query) => $query
-                ->where('jemputan_driver_id', $driver->id)
-                ->where('academic_year_id', $academicYear->id)
-                ->currentMembership());
+            ->addSelect([
+                'assignment_destination' => $this->assignmentDetailQuery(
+                    $academicYear,
+                    $driver,
+                    $month,
+                    'destination',
+                ),
+                'assignment_service_type' => $this->assignmentDetailQuery(
+                    $academicYear,
+                    $driver,
+                    $month,
+                    'service_type',
+                ),
+            ])
+            ->whereHas('jemputanDriverAssignments', fn (Builder $query): Builder => $this
+                ->activeMembershipsDuringMonth($query, $academicYear, $month)
+                ->where('jemputan_driver_id', $driver->id));
     }
 
-    /** @return list<int> */
-    private function allStudentIds(AcademicYear $academicYear, JemputanDriver $driver): array
+    /**
+     * @param  array{key: string, month: int, year: int, label: string}  $month
+     */
+    private function assignmentDetailQuery(
+        AcademicYear $academicYear,
+        JemputanDriver $driver,
+        array $month,
+        string $column,
+    ): Builder {
+        return $this->activeMembershipsDuringMonth(
+            JemputanDriverAssignment::query()
+                ->select($column)
+                ->whereColumn('student_id', 'students.id'),
+            $academicYear,
+            $month,
+        )
+            ->where('jemputan_driver_id', $driver->id)
+            ->orderByDesc('effective_from')
+            ->orderByDesc('id')
+            ->limit(1);
+    }
+
+    /**
+     * @param  array{key: string, month: int, year: int, label: string}  $month
+     * @return list<int>
+     */
+    private function allStudentIds(AcademicYear $academicYear, JemputanDriver $driver, array $month): array
     {
-        return $this->studentsQuery($academicYear, $driver)
+        return $this->studentsQuery($academicYear, $driver, $month)
             ->pluck('students.id')
             ->map(fn ($id): int => (int) $id)
             ->unique()
@@ -449,7 +502,7 @@ class JemputanDriverSalaryService
      * Resolve the amount that belongs to one driver for one student row.
      *
      * A single-driver student always uses the full effective bill. Multi-driver
-     * students use their stored allocation only when every current member has
+     * students use their stored allocation only when every report-period member has
      * exactly one allocation and the total matches the live effective bill.
      * Missing, stale, and orphan allocations fall back to the full bill so the
      * report stays usable while clearly flagged as not final.
@@ -613,18 +666,23 @@ class JemputanDriverSalaryService
 
     /**
      * @param  list<int>  $studentIds
+     * @param  array{key: string, month: int, year: int, label: string}  $month
      * @return Collection<int, list<int>>
      */
-    private function currentDriverMemberships(array $studentIds, AcademicYear $academicYear): Collection
-    {
+    private function driverMembershipsDuringMonth(
+        array $studentIds,
+        AcademicYear $academicYear,
+        array $month,
+    ): Collection {
         if ($studentIds === []) {
             return collect();
         }
 
-        return JemputanDriverAssignment::query()
-            ->whereIn('student_id', $studentIds)
-            ->where('academic_year_id', $academicYear->id)
-            ->currentMembership()
+        return $this->activeMembershipsDuringMonth(
+            JemputanDriverAssignment::query()->whereIn('student_id', $studentIds),
+            $academicYear,
+            $month,
+        )
             ->orderBy('student_id')
             ->orderBy('jemputan_driver_id')
             ->get(['student_id', 'jemputan_driver_id'])
@@ -636,6 +694,25 @@ class JemputanDriverSalaryService
                 ->sort()
                 ->values()
                 ->all());
+    }
+
+    /**
+     * Apply historical month membership and ignore invalid empty or reversed periods.
+     *
+     * @param  array{key: string, month: int, year: int, label: string}  $month
+     */
+    private function activeMembershipsDuringMonth(
+        Builder $query,
+        AcademicYear $academicYear,
+        array $month,
+    ): Builder {
+        return $query
+            ->activeDuringMonth($academicYear->id, $month['year'], $month['month'])
+            ->where(function (Builder $periodQuery): void {
+                $periodQuery
+                    ->whereNull('effective_until')
+                    ->orWhereColumn('effective_until', '>', 'effective_from');
+            });
     }
 
     /**

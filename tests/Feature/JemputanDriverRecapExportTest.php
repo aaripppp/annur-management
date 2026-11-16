@@ -284,7 +284,7 @@ it('writes July through June headers numeric allocations and latest active metad
     }
 })->with(['filtered', 'all']);
 
-it('exports a moved student only on the current driver sheet', function () {
+it('exports a moved student on each historical driver sheet for the applicable months', function () {
     $year = jemputanExportYear();
     [$student] = jemputanExportStudent($year, 'Siswa Pindah Export');
     $oldDriver = JemputanDriver::factory()->create(['name' => 'A Sopir Lama']);
@@ -303,10 +303,12 @@ it('exports a moved student only on the current driver sheet', function () {
 
     try {
         $sheets = jemputanExportWorkbook($path);
+        $oldRow = jemputanExportDataRows($sheets['A SOPIR LAMA'])[0];
         $newRow = jemputanExportDataRows($sheets['B SOPIR BARU'])[0];
 
-        expect($sheets)->not->toHaveKey('A SOPIR LAMA')
-            ->and($newRow[4])->toBe(500000)
+        expect($oldRow[4])->toBe(500000)
+            ->and($oldRow[37])->toBe(0)
+            ->and($newRow[4])->toBe(0)
             ->and($newRow[37])->toBe(600000);
     } finally {
         @unlink($path);
@@ -494,5 +496,5 @@ it('keeps one-chunk export queries constant as students grow', function (int $st
     $path = jemputanExportPath($response);
     @unlink($path);
 
-    expect($selectCount)->toBe(10);
+    expect($selectCount)->toBe(11);
 })->with([1, 10, 25, 50]);

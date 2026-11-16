@@ -139,7 +139,7 @@ class JemputanDriverSemesterRecapSpreadsheet
         ));
         $writer->addRow($this->fullWidthRow($this->warningDetails($report), $this->warningDetailStyle(), 28));
         $writer->addRow($this->fullWidthRow(
-            'Catatan membership historis: pembagian sopir menggunakan membership aktif saat laporan dibuat; kondisi per bulan belum direkonstruksi.',
+            'Catatan membership historis: pembagian sopir menggunakan membership aktif pada masing-masing bulan laporan.',
             $this->membershipNoteStyle(),
             28,
         ));

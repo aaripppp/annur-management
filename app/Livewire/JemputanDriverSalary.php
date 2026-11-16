@@ -386,8 +386,12 @@ class JemputanDriverSalary extends Component
         $drivers = JemputanDriver::query()
             ->when(ctype_digit($this->selectedAcademicYearId), fn (Builder $query) => $query
                 ->whereHas('assignments', fn (Builder $assignmentQuery) => $assignmentQuery
-                    ->where('academic_year_id', (int) $this->selectedAcademicYearId)
-                    ->currentMembership()))
+                    ->forAcademicYear((int) $this->selectedAcademicYearId)
+                    ->where(function (Builder $periodQuery): void {
+                        $periodQuery
+                            ->whereNull('effective_until')
+                            ->orWhereColumn('effective_until', '>', 'effective_from');
+                    })))
             ->orderByDesc('is_active')
             ->orderBy('name')
             ->get(['id', 'name', 'is_active']);
@@ -460,15 +464,27 @@ class JemputanDriverSalary extends Component
 
     private function studentBelongsToSelectedReport(int $studentId): bool
     {
-        if (! ctype_digit($this->selectedAcademicYearId) || ! ctype_digit($this->selectedDriverId)) {
+        if (
+            ! ctype_digit($this->selectedAcademicYearId)
+            || ! ctype_digit($this->selectedDriverId)
+            || preg_match('/^(\d{4})-(0[1-9]|1[0-2])$/', $this->selectedMonth, $matches) !== 1
+        ) {
             return false;
         }
 
         return JemputanDriverAssignment::query()
             ->where('student_id', $studentId)
-            ->where('academic_year_id', (int) $this->selectedAcademicYearId)
             ->where('jemputan_driver_id', (int) $this->selectedDriverId)
-            ->currentMembership()
+            ->activeDuringMonth(
+                (int) $this->selectedAcademicYearId,
+                (int) $matches[1],
+                (int) $matches[2],
+            )
+            ->where(function (Builder $periodQuery): void {
+                $periodQuery
+                    ->whereNull('effective_until')
+                    ->orWhereColumn('effective_until', '>', 'effective_from');
+            })
             ->exists();
     }
 

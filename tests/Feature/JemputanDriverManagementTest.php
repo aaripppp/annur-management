@@ -44,6 +44,69 @@ function jemputanStudent(AcademicYear $academicYear): Student
     return $student;
 }
 
+/** @return list<int> */
+function jemputanDriverRowNumbers(string $html, string $cellClass): array
+{
+    preg_match_all('/<td class="'.preg_quote($cellClass, '/').'">(\d+)<\/td>/', $html, $matches);
+
+    return array_map('intval', $matches[1]);
+}
+
+it('numbers displayed drivers continuously across pagination and resets after search', function () {
+    jemputanAcademicYear();
+    $this->actingAs(jemputanManager());
+
+    foreach (range(1, 11) as $index) {
+        JemputanDriver::factory()->create([
+            'name' => 'Sopir Nomor '.str_pad((string) $index, 2, '0', STR_PAD_LEFT),
+            'is_active' => true,
+        ]);
+    }
+
+    $numberCellClass = 'whitespace-nowrap px-4 py-4 text-center font-numeric-data text-on-surface-variant';
+    $component = Livewire::test(JemputanDriverManagement::class)
+        ->assertSee('No');
+
+    expect(jemputanDriverRowNumbers($component->html(), $numberCellClass))->toBe(range(1, 10));
+
+    $component->call('setPage', 2, 'driversPage');
+
+    expect(jemputanDriverRowNumbers($component->html(), $numberCellClass))->toBe([11]);
+
+    $component->set('search', 'Sopir Nomor 11');
+
+    expect(jemputanDriverRowNumbers($component->html(), $numberCellClass))->toBe([1]);
+});
+
+it('numbers driver group members continuously across pagination', function () {
+    $academicYear = jemputanAcademicYear();
+    $this->actingAs(jemputanManager());
+    $driver = JemputanDriver::factory()->create(['name' => 'Sopir Anggota Bernomor']);
+
+    foreach (range(1, 11) as $index) {
+        $student = jemputanStudent($academicYear);
+        $student->update(['nama_lengkap' => 'Siswa Anggota '.str_pad((string) $index, 2, '0', STR_PAD_LEFT)]);
+
+        JemputanDriverAssignment::query()->create([
+            'jemputan_driver_id' => $driver->id,
+            'student_id' => $student->id,
+            'academic_year_id' => $academicYear->id,
+            'effective_from' => '2026-07-01',
+            'effective_until' => null,
+        ]);
+    }
+
+    $numberCellClass = 'whitespace-nowrap px-5 py-4 text-center font-numeric-data text-on-surface-variant';
+    $component = Livewire::test(JemputanDriverManagement::class)
+        ->call('viewGroup', $driver->id);
+
+    expect(jemputanDriverRowNumbers($component->html(), $numberCellClass))->toBe(range(1, 10));
+
+    $component->call('setPage', 2, 'assignmentsPage');
+
+    expect(jemputanDriverRowNumbers($component->html(), $numberCellClass))->toBe([11]);
+});
+
 it('creates edits toggles and deletes an unassigned driver', function () {
     $academicYear = jemputanAcademicYear();
     $this->actingAs(jemputanManager());
@@ -111,8 +174,8 @@ it('creates a driver with an initial historical rate and keeps rates independent
         ->assertHasNoErrors()
         ->call('viewGroup', $driver->id)
         ->assertSee('10,5%')
-        ->assertSee('Mulai berlaku Juli 2026')
         ->call('openDeductionRateModal')
+        ->assertSee('Mulai berlaku Juli 2026')
         ->set('deductionRatePercentage', '15.25')
         ->set('deductionRateEffectiveMonth', '2026-11')
         ->call('saveDeductionRate')
@@ -214,19 +277,19 @@ it('allows different drivers and rejects a duplicate current membership for the 
         ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->count())->toBe(2);
 });
 
-it('removes only the selected driver membership and supports immediate re-addition', function () {
+it('removes only the selected driver membership and supports a later re-addition', function () {
     $academicYear = jemputanAcademicYear();
     $student = jemputanStudent($academicYear);
     $drivers = JemputanDriver::factory()->count(2)->create();
     $service = app(JemputanDriverAssignmentService::class);
 
-    $first = $service->assign($drivers[0]->id, $student->id, $academicYear->id);
-    $other = $service->assign($drivers[1]->id, $student->id, $academicYear->id);
-    $closed = $service->remove($first->id);
-    $readded = $service->assign($drivers[0]->id, $student->id, $academicYear->id);
+    $first = $service->assign($drivers[0]->id, $student->id, $academicYear->id, '2026-07');
+    $other = $service->assign($drivers[1]->id, $student->id, $academicYear->id, '2026-07');
+    $closed = $service->remove($first->id, '2026-09');
+    $readded = $service->assign($drivers[0]->id, $student->id, $academicYear->id, '2026-11');
 
-    expect($closed->effective_until?->toDateString())->toBe($closed->effective_from->toDateString())
-        ->and($readded->effective_from->toDateString())->toBe($closed->effective_until?->toDateString())
+    expect($closed->effective_until?->toDateString())->toBe('2026-09-01')
+        ->and($readded->effective_from->toDateString())->toBe('2026-11-01')
         ->and($readded->effective_until)->toBeNull()
         ->and($other->fresh()?->effective_until)->toBeNull()
         ->and(JemputanDriverAssignment::query()->currentMembership()->where('student_id', $student->id)->count())->toBe(2)
@@ -261,10 +324,10 @@ it('moves only the selected membership and preserves membership with another dri
     $otherDriver = JemputanDriver::factory()->create();
     $newDriver = JemputanDriver::factory()->create();
     $service = app(JemputanDriverAssignmentService::class);
-    $oldAssignment = $service->assign($oldDriver->id, $student->id, $academicYear->id);
-    $otherAssignment = $service->assign($otherDriver->id, $student->id, $academicYear->id);
+    $oldAssignment = $service->assign($oldDriver->id, $student->id, $academicYear->id, '2026-07');
+    $otherAssignment = $service->assign($otherDriver->id, $student->id, $academicYear->id, '2026-07');
 
-    $newAssignment = $service->move($oldAssignment->id, $newDriver->id);
+    $newAssignment = $service->move($oldAssignment->id, $newDriver->id, '2026-11');
 
     expect($oldAssignment->refresh()->effective_until?->toDateString())->toBe($newAssignment->effective_from->toDateString())
         ->and($newAssignment->effective_until)->toBeNull()

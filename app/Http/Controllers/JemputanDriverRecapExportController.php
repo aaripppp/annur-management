@@ -45,12 +45,20 @@ class JemputanDriverRecapExportController extends Controller
             $driversQuery
                 ->whereKey((int) $validated['driver_id'])
                 ->whereHas('assignments', fn (Builder $query) => $query
-                    ->where('academic_year_id', $academicYear->id)
-                    ->currentMembership());
+                    ->forAcademicYear($academicYear->id)
+                    ->where(function (Builder $validPeriodQuery): void {
+                        $validPeriodQuery
+                            ->whereNull('effective_until')
+                            ->orWhereColumn('effective_until', '>', 'effective_from');
+                    }));
         } else {
             $driversQuery->whereHas('assignments', fn (Builder $query) => $query
-                ->where('academic_year_id', $academicYear->id)
-                ->currentMembership());
+                ->forAcademicYear($academicYear->id)
+                ->where(function (Builder $validPeriodQuery): void {
+                    $validPeriodQuery
+                        ->whereNull('effective_until')
+                        ->orWhereColumn('effective_until', '>', 'effective_from');
+                }));
         }
 
         $driverCount = (clone $driversQuery)->count();
