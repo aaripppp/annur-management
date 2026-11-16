@@ -77,7 +77,7 @@ function seedInitialMembershipAuditDataset(): AcademicYear
             'effective_from' => '2026-11-10',
             'effective_until' => match ($assignmentId) {
                 1 => '2026-09-01',
-                18 => '2026-12-01',
+                22 => '2026-11-12',
                 default => null,
             },
             'created_at' => $now,
@@ -188,9 +188,14 @@ it('executes exact scope A only, preserves every other column and is idempotent'
     expect($afterRows[23]->effective_from->toDateString())->toBe('2026-11-10')
         ->and($afterRows[110]->effective_from->toDateString())->toBe('2026-11-10')
         ->and($afterRows[18]->effective_from->toDateString())->toBe('2026-07-01')
-        ->and($afterRows[18]->effective_until?->toDateString())->toBe('2026-12-01')
+        ->and($afterRows[18]->effective_until)->toBeNull()
+        ->and($afterRows[22]->effective_from->toDateString())->toBe('2026-07-01')
+        ->and($afterRows[22]->effective_until?->toDateString())->toBe('2026-11-12')
         ->and($afterRows[67]->effective_from->toDateString())->toBe('2026-11-10')
-        ->and($afterRows[111]->effective_from->toDateString())->toBe('2026-12-01')
+        ->and($afterRows[111]->student_id)->toBe(1528)
+        ->and($afterRows[111]->jemputan_driver_id)->toBe(3)
+        ->and($afterRows[111]->effective_from->toDateString())->toBe('2026-11-12')
+        ->and($afterRows[111]->effective_until)->toBeNull()
         ->and(initialMembershipFinancialSnapshot())->toBe($financialBefore)
         ->and($writeQueries)->toHaveCount(107)
         ->and(collect($writeQueries)->every(
@@ -228,11 +233,12 @@ it('recognizes the current audited state and leaves only assignment 18 pending i
         ->assertSuccessful();
 
     expect(JemputanDriverAssignment::query()->findOrFail(18)->effective_from->toDateString())->toBe('2026-07-01')
-        ->and(JemputanDriverAssignment::query()->findOrFail(18)->effective_until?->toDateString())->toBe('2026-12-01')
+        ->and(JemputanDriverAssignment::query()->findOrFail(18)->effective_until)->toBeNull()
+        ->and(JemputanDriverAssignment::query()->findOrFail(22)->effective_until?->toDateString())->toBe('2026-11-12')
         ->and(JemputanDriverAssignment::query()->findOrFail(23)->effective_from->toDateString())->toBe('2026-07-01')
         ->and(JemputanDriverAssignment::query()->findOrFail(110)->effective_from->toDateString())->toBe('2026-07-01')
         ->and(JemputanDriverAssignment::query()->findOrFail(67)->effective_from->toDateString())->toBe('2026-11-10')
-        ->and(JemputanDriverAssignment::query()->findOrFail(111)->effective_from->toDateString())->toBe('2026-12-01');
+        ->and(JemputanDriverAssignment::query()->findOrFail(111)->effective_from->toDateString())->toBe('2026-11-12');
 });
 
 it('processes the two multi-driver assignments together only when explicitly included', function () {
@@ -294,10 +300,7 @@ it('audits the moved assignment by identity and actual period instead of its old
     seedInitialMembershipAuditDataset();
     DB::table('jemputan_driver_assignments')
         ->where('id', 111)
-        ->update([
-            'id' => 511,
-            'effective_until' => '2027-02-01',
-        ]);
+        ->update(['id' => 511]);
 
     $this->artisan('jemputan:adjust-initial-membership', ['--execute' => true])
         ->expectsOutputToContain('Updated: 107; sudah sesuai: 0')
@@ -305,10 +308,10 @@ it('audits the moved assignment by identity and actual period instead of its old
 
     $movedAssignment = JemputanDriverAssignment::query()->findOrFail(511);
 
-    expect($movedAssignment->student_id)->toBe(1615)
-        ->and($movedAssignment->jemputan_driver_id)->toBe(5)
-        ->and($movedAssignment->effective_from->toDateString())->toBe('2026-12-01')
-        ->and($movedAssignment->effective_until?->toDateString())->toBe('2027-02-01')
+    expect($movedAssignment->student_id)->toBe(1528)
+        ->and($movedAssignment->jemputan_driver_id)->toBe(3)
+        ->and($movedAssignment->effective_from->toDateString())->toBe('2026-11-12')
+        ->and($movedAssignment->effective_until)->toBeNull()
         ->and(JemputanDriverAssignment::query()->whereKey(111)->exists())->toBeFalse();
 });
 
@@ -316,10 +319,10 @@ it('rejects an ambiguous moved-assignment identity without partial updates', fun
     $academicYear = seedInitialMembershipAuditDataset();
     JemputanDriverAssignment::query()->forceCreate([
         'id' => 511,
-        'jemputan_driver_id' => 5,
-        'student_id' => 1615,
+        'jemputan_driver_id' => 3,
+        'student_id' => 1528,
         'academic_year_id' => $academicYear->id,
-        'effective_from' => '2026-12-01',
+        'effective_from' => '2026-11-12',
         'effective_until' => '2027-02-01',
     ]);
 

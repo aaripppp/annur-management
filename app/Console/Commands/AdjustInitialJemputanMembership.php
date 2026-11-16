@@ -161,12 +161,12 @@ class AdjustInitialJemputanMembership extends Command
             'reason' => 'Periode zero-length/invalid.',
         ],
         111 => [
-            'student_id' => 1615,
-            'driver_id' => 5,
-            'effective_from' => '2026-12-01',
+            'student_id' => 1528,
+            'driver_id' => 3,
+            'effective_from' => '2026-11-12',
             'effective_until' => null,
             'match_by_identity' => true,
-            'reason' => 'Hasil perpindahan dan bukan pengisian awal November.',
+            'reason' => 'Periode lanjutan Raffasya dan bukan pengisian awal November.',
         ],
     ];
 
