@@ -183,8 +183,8 @@ class AdjustInitialJemputanMembership extends Command
             return self::FAILURE;
         }
 
-        if ($includeMultiDriver && ! $execute) {
-            $this->error('--include-multi-driver hanya boleh digunakan bersama --execute.');
+        if ($includeMultiDriver && ! $execute && ! $dryRun) {
+            $this->error('--include-multi-driver harus digunakan bersama --dry-run atau --execute.');
 
             return self::FAILURE;
         }

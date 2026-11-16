@@ -157,6 +157,58 @@ it('requires execute and rejects conflicting or unapproved multi-driver options'
     expect(JemputanDriverAssignment::query()->whereDate('effective_from', '2026-07-01')->count())->toBe(0);
 });
 
+it('previews all 110 candidates with multi-driver validation in read-only mode', function () {
+    seedInitialMembershipAuditDataset();
+    $assignmentsBefore = DB::table('jemputan_driver_assignments')->orderBy('id')->get()->all();
+    $financialBefore = initialMembershipFinancialSnapshot();
+    $writeQueries = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$writeQueries): void {
+        if (preg_match('/^\s*(update|insert|delete|replace)\b/i', $query->sql) === 1) {
+            $writeQueries[] = $query->sql;
+        }
+    });
+
+    $this->artisan('jemputan:adjust-initial-membership', [
+        '--dry-run' => true,
+        '--include-multi-driver' => true,
+    ])->expectsOutputToContain('Kandidat: 110')
+        ->expectsOutputToContain('Stored allocation Fatih Juli–Oktober tervalidasi read-only: 0 record.')
+        ->expectsOutputToContain('DRY RUN: tidak ada data yang diubah')
+        ->assertSuccessful();
+
+    expect($writeQueries)->toBe([])
+        ->and(DB::table('jemputan_driver_assignments')->orderBy('id')->get()->all())->toEqual($assignmentsBefore)
+        ->and(initialMembershipFinancialSnapshot())->toBe($financialBefore);
+});
+
+it('detects a scope B mismatch during dry-run without changing the database', function () {
+    seedInitialMembershipAuditDataset();
+    DB::table('jemputan_driver_assignments')->where('id', 118)->update([
+        'effective_from' => '2026-11-13',
+    ]);
+    $assignmentsBefore = DB::table('jemputan_driver_assignments')->orderBy('id')->get()->all();
+    $financialBefore = initialMembershipFinancialSnapshot();
+    $writeQueries = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$writeQueries): void {
+        if (preg_match('/^\s*(update|insert|delete|replace)\b/i', $query->sql) === 1) {
+            $writeQueries[] = $query->sql;
+        }
+    });
+
+    $this->artisan('jemputan:adjust-initial-membership', [
+        '--dry-run' => true,
+        '--include-multi-driver' => true,
+    ])->expectsOutputToContain('Kandidat: 110')
+        ->expectsOutputToContain('tanggal berubah sejak audit')
+        ->assertExitCode(Command::FAILURE);
+
+    expect($writeQueries)->toBe([])
+        ->and(DB::table('jemputan_driver_assignments')->orderBy('id')->get()->all())->toEqual($assignmentsBefore)
+        ->and(initialMembershipFinancialSnapshot())->toBe($financialBefore);
+});
+
 it('executes exact scope A only, preserves every other column and is idempotent', function () {
     seedInitialMembershipAuditDataset();
     $scopeAIds = array_keys(initialMembershipManifest('SCOPE_A'));
