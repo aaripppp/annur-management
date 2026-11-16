@@ -20,7 +20,6 @@ function seedInitialMembershipAuditDataset(): AcademicYear
 {
     $scopeA = initialMembershipManifest('SCOPE_A');
     $scopeB = initialMembershipManifest('SCOPE_B');
-    $expectedEffectiveUntil = initialMembershipManifest('EXPECTED_EFFECTIVE_UNTIL');
     $exclusions = initialMembershipManifest('PERMANENT_EXCLUSIONS');
     $manifest = $scopeA + $scopeB + $exclusions;
     $now = '2026-11-13 12:00:00';
@@ -76,7 +75,11 @@ function seedInitialMembershipAuditDataset(): AcademicYear
             'student_id' => $identity['student_id'],
             'academic_year_id' => $academicYear->id,
             'effective_from' => '2026-11-10',
-            'effective_until' => $expectedEffectiveUntil[$assignmentId] ?? null,
+            'effective_until' => match ($assignmentId) {
+                1 => '2026-09-01',
+                18 => '2026-12-01',
+                default => null,
+            },
             'created_at' => $now,
             'updated_at' => $now,
         ];
@@ -189,8 +192,11 @@ it('executes exact scope A only, preserves every other column and is idempotent'
         ->and($afterRows[67]->effective_from->toDateString())->toBe('2026-11-10')
         ->and($afterRows[111]->effective_from->toDateString())->toBe('2026-12-01')
         ->and(initialMembershipFinancialSnapshot())->toBe($financialBefore)
-        ->and($writeQueries)->toHaveCount(1)
-        ->and($writeQueries[0])->toContain('jemputan_driver_assignments');
+        ->and($writeQueries)->toHaveCount(107)
+        ->and(collect($writeQueries)->every(
+            fn (string $query): bool => str_contains($query, 'jemputan_driver_assignments')
+                && str_contains($query, 'effective_from'),
+        ))->toBeTrue();
 
     $this->artisan('jemputan:adjust-initial-membership', ['--execute' => true])
         ->expectsOutputToContain('Updated: 0; sudah sesuai: 107')
@@ -282,6 +288,47 @@ it('rejects the multi-driver package when either audited assignment is missing',
 
     expect(JemputanDriverAssignment::query()->findOrFail(23)->effective_from->toDateString())->toBe('2026-11-10')
         ->and(JemputanDriverAssignment::query()->whereDate('effective_from', '2026-07-01')->count())->toBe(0);
+});
+
+it('audits the moved assignment by identity and actual period instead of its old id', function () {
+    seedInitialMembershipAuditDataset();
+    DB::table('jemputan_driver_assignments')
+        ->where('id', 111)
+        ->update([
+            'id' => 511,
+            'effective_until' => '2027-02-01',
+        ]);
+
+    $this->artisan('jemputan:adjust-initial-membership', ['--execute' => true])
+        ->expectsOutputToContain('Updated: 107; sudah sesuai: 0')
+        ->assertSuccessful();
+
+    $movedAssignment = JemputanDriverAssignment::query()->findOrFail(511);
+
+    expect($movedAssignment->student_id)->toBe(1615)
+        ->and($movedAssignment->jemputan_driver_id)->toBe(5)
+        ->and($movedAssignment->effective_from->toDateString())->toBe('2026-12-01')
+        ->and($movedAssignment->effective_until?->toDateString())->toBe('2027-02-01')
+        ->and(JemputanDriverAssignment::query()->whereKey(111)->exists())->toBeFalse();
+});
+
+it('rejects an ambiguous moved-assignment identity without partial updates', function () {
+    $academicYear = seedInitialMembershipAuditDataset();
+    JemputanDriverAssignment::query()->forceCreate([
+        'id' => 511,
+        'jemputan_driver_id' => 5,
+        'student_id' => 1615,
+        'academic_year_id' => $academicYear->id,
+        'effective_from' => '2026-12-01',
+        'effective_until' => '2027-02-01',
+    ]);
+
+    $this->artisan('jemputan:adjust-initial-membership', ['--execute' => true])
+        ->expectsOutputToContain('exclusion perpindahan ambigu')
+        ->assertExitCode(Command::FAILURE);
+
+    expect(JemputanDriverAssignment::query()->whereKey(array_keys(initialMembershipManifest('SCOPE_A')))
+        ->whereDate('effective_from', '2026-07-01')->count())->toBe(0);
 });
 
 it('rolls back the whole batch when the target period overlaps', function () {

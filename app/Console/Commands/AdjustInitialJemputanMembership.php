@@ -150,18 +150,14 @@ class AdjustInitialJemputanMembership extends Command
         110 => ['student_id' => 1485, 'driver_id' => 7],
     ];
 
-    /** @var array<int, string> */
-    private const EXPECTED_EFFECTIVE_UNTIL = [
-        18 => '2026-12-01',
-    ];
-
-    /** @var array<int, array{student_id: int, driver_id: int, effective_from: string, effective_until: string|null, reason: string}> */
+    /** @var array<int, array{student_id: int, driver_id: int, effective_from: string, effective_until: string|null, match_by_identity: bool, reason: string}> */
     private const PERMANENT_EXCLUSIONS = [
         67 => [
             'student_id' => 1711,
             'driver_id' => 7,
             'effective_from' => '2026-11-10',
             'effective_until' => '2026-11-10',
+            'match_by_identity' => false,
             'reason' => 'Periode zero-length/invalid.',
         ],
         111 => [
@@ -169,6 +165,7 @@ class AdjustInitialJemputanMembership extends Command
             'driver_id' => 5,
             'effective_from' => '2026-12-01',
             'effective_until' => null,
+            'match_by_identity' => true,
             'reason' => 'Hasil perpindahan dan bukan pengisian awal November.',
         ],
     ];
@@ -233,13 +230,15 @@ class AdjustInitialJemputanMembership extends Command
 
         try {
             $result = DB::transaction(function () use ($manifest, $academicYear, $periodValidator): array {
-                JemputanDriverAssignment::query()
+                $lockedCandidates = JemputanDriverAssignment::query()
                     ->whereKey(array_keys($manifest))
                     ->orderBy('id')
                     ->lockForUpdate()
-                    ->get();
+                    ->get()
+                    ->keyBy('id');
                 JemputanDriverAssignment::query()
-                    ->whereKey(array_keys(self::PERMANENT_EXCLUSIONS))
+                    ->where('academic_year_id', $academicYear->id)
+                    ->whereIn('student_id', collect(self::PERMANENT_EXCLUSIONS)->pluck('student_id')->unique())
                     ->orderBy('id')
                     ->lockForUpdate()
                     ->get();
@@ -262,16 +261,27 @@ class AdjustInitialJemputanMembership extends Command
                     ->where('status', 'VALID')
                     ->pluck('assignment_id')
                     ->all();
-                $updated = $pendingIds === []
-                    ? 0
-                    : DB::table('jemputan_driver_assignments')
-                        ->whereIn('id', $pendingIds)
-                        ->where('academic_year_id', $academicYear->id)
-                        ->whereDate('effective_from', self::ORIGINAL_DATE)
-                        ->update(['effective_from' => self::TARGET_DATE]);
+                $updated = 0;
 
-                if ($updated !== count($pendingIds)) {
-                    throw new RuntimeException('Jumlah record yang diperbarui tidak sesuai manifest.');
+                foreach ($pendingIds as $pendingId) {
+                    $assignment = $lockedCandidates->get($pendingId);
+
+                    if (
+                        ! $assignment instanceof JemputanDriverAssignment
+                        || $assignment->academic_year_id !== $academicYear->id
+                        || $assignment->effective_from->toDateString() !== self::ORIGINAL_DATE
+                    ) {
+                        throw new RuntimeException('Assignment berubah setelah validasi dan batch dibatalkan.');
+                    }
+
+                    $assignment->timestamps = false;
+                    $assignment->effective_from = self::TARGET_DATE;
+
+                    if (! $assignment->saveQuietly()) {
+                        throw new RuntimeException('Assignment gagal diperbarui dan batch dibatalkan.');
+                    }
+
+                    $updated++;
                 }
 
                 $after = $this->inspectCandidates($manifest, $academicYear, $periodValidator);
@@ -308,13 +318,12 @@ class AdjustInitialJemputanMembership extends Command
         return self::SUCCESS;
     }
 
-    /** @return array<int, array{student_id: int, driver_id: int, expected_effective_until: string|null, scope: string}> */
+    /** @return array<int, array{student_id: int, driver_id: int, scope: string}> */
     private function candidateManifest(bool $includeMultiDriver): array
     {
         $manifest = collect(self::SCOPE_A)
             ->map(fn (array $identity, int $assignmentId): array => [
                 ...$identity,
-                'expected_effective_until' => self::EXPECTED_EFFECTIVE_UNTIL[$assignmentId] ?? null,
                 'scope' => 'A',
             ])
             ->all();
@@ -323,7 +332,6 @@ class AdjustInitialJemputanMembership extends Command
             foreach (self::SCOPE_B as $assignmentId => $identity) {
                 $manifest[$assignmentId] = [
                     ...$identity,
-                    'expected_effective_until' => self::EXPECTED_EFFECTIVE_UNTIL[$assignmentId] ?? null,
                     'scope' => 'B',
                 ];
             }
@@ -335,7 +343,7 @@ class AdjustInitialJemputanMembership extends Command
     }
 
     /**
-     * @param  array<int, array{student_id: int, driver_id: int, expected_effective_until: string|null, scope: string}>  $manifest
+     * @param  array<int, array{student_id: int, driver_id: int, scope: string}>  $manifest
      * @return array{valid: bool, rows: list<array<string, int|string>>}
      */
     private function inspectCandidates(
@@ -365,9 +373,6 @@ class AdjustInitialJemputanMembership extends Command
                 || $assignment->academic_year_id !== $academicYear->id
             ) {
                 $status = 'GAGAL: identitas berbeda dari manifest';
-                $valid = false;
-            } elseif ($assignment->effective_until?->toDateString() !== $expected['expected_effective_until']) {
-                $status = 'GAGAL: tanggal berhenti berubah sejak audit';
                 $valid = false;
             } elseif ($assignment->effective_from->toDateString() === self::TARGET_DATE) {
                 $status = 'SUDAH DISESUAIKAN';
@@ -422,31 +427,56 @@ class AdjustInitialJemputanMembership extends Command
     private function inspectExclusions(AcademicYear $academicYear): array
     {
         $assignments = JemputanDriverAssignment::query()
-            ->whereKey(array_keys(self::PERMANENT_EXCLUSIONS))
+            ->where('academic_year_id', $academicYear->id)
+            ->whereIn('student_id', collect(self::PERMANENT_EXCLUSIONS)->pluck('student_id')->unique())
             ->with(['student:id,nama_lengkap', 'driver:id,name'])
             ->get()
-            ->keyBy('id');
+            ->sortBy('id')
+            ->values();
         $rows = [];
         $valid = true;
 
         foreach (self::PERMANENT_EXCLUSIONS as $assignmentId => $expected) {
-            $assignment = $assignments->get($assignmentId);
+            $identityMatches = $assignments->filter(fn (JemputanDriverAssignment $assignment): bool => $assignment->student_id === $expected['student_id']
+                && $assignment->jemputan_driver_id === $expected['driver_id']
+                && $assignment->effective_from->toDateString() === $expected['effective_from']);
+            $assignment = $expected['match_by_identity']
+                ? ($identityMatches->count() === 1 ? $identityMatches->first() : null)
+                : $assignments->firstWhere('id', $assignmentId);
             $matches = $assignment instanceof JemputanDriverAssignment
                 && $assignment->student_id === $expected['student_id']
                 && $assignment->jemputan_driver_id === $expected['driver_id']
                 && $assignment->academic_year_id === $academicYear->id
                 && $assignment->effective_from->toDateString() === $expected['effective_from']
-                && $assignment->effective_until?->toDateString() === $expected['effective_until'];
+                && ($expected['match_by_identity']
+                    ? $this->hasValidActualPeriod($assignment, $academicYear)
+                    : $assignment->effective_until?->toDateString() === $expected['effective_until']);
             $valid = $valid && $matches;
             $rows[] = [
-                'assignment_id' => $assignmentId,
+                'assignment_id' => $assignment?->id ?? $assignmentId,
                 'student_name' => $assignment?->student?->nama_lengkap ?? '—',
                 'driver_name' => $assignment?->driver?->name ?? '—',
-                'reason' => $matches ? $expected['reason'] : 'GAGAL: exclusion berbeda dari manifest audit',
+                'reason' => match (true) {
+                    $matches => $expected['reason'],
+                    $expected['match_by_identity'] && $identityMatches->count() > 1 => 'GAGAL: exclusion perpindahan ambigu',
+                    default => 'GAGAL: exclusion berbeda dari manifest audit',
+                },
             ];
         }
 
         return ['valid' => $valid, 'rows' => $rows];
+    }
+
+    private function hasValidActualPeriod(
+        JemputanDriverAssignment $assignment,
+        AcademicYear $academicYear,
+    ): bool {
+        $effectiveFrom = $assignment->effective_from->toImmutable()->startOfDay();
+        $effectiveUntil = $assignment->effective_until?->toImmutable()->startOfDay();
+        $academicYearEnd = $academicYear->end_date->toImmutable()->addDay()->startOfDay();
+
+        return ($effectiveUntil === null || $effectiveFrom->lt($effectiveUntil))
+            && ($effectiveUntil === null || ! $effectiveUntil->gt($academicYearEnd));
     }
 
     private function academicYearMatchesAudit(?AcademicYear $academicYear): bool
