@@ -144,10 +144,11 @@ class AdjustInitialJemputanMembership extends Command
         109 => ['student_id' => 1883, 'driver_id' => 13],
     ];
 
-    /** @var array<int, array{student_id: int, driver_id: int}> */
+    /** @var array<int, array{student_id: int, driver_id: int, original_effective_from: string}> */
     private const SCOPE_B = [
-        23 => ['student_id' => 1485, 'driver_id' => 3],
-        110 => ['student_id' => 1485, 'driver_id' => 7],
+        23 => ['student_id' => 1485, 'driver_id' => 3, 'original_effective_from' => '2026-11-10'],
+        110 => ['student_id' => 1485, 'driver_id' => 7, 'original_effective_from' => '2026-11-12'],
+        118 => ['student_id' => 1485, 'driver_id' => 9, 'original_effective_from' => '2026-11-12'],
     ];
 
     /** @var array<int, array{student_id: int, driver_id: int, effective_from: string, effective_until: string|null, match_by_identity: bool, reason: string}> */
@@ -205,14 +206,16 @@ class AdjustInitialJemputanMembership extends Command
         $manifest = $this->candidateManifest($includeMultiDriver);
         $inspection = $this->inspectCandidates($manifest, $academicYear, $periodValidator);
         $exclusions = $this->inspectExclusions($academicYear);
+        $allocationInspection = $this->inspectMultiDriverAllocations($academicYear, $includeMultiDriver);
 
         $this->newLine();
         $this->info('Kandidat: '.count($manifest));
         $this->renderCandidates($inspection['rows']);
         $this->renderExclusions($exclusions['rows'], $includeMultiDriver);
         $this->renderHistoricalImpact($inspection['rows'], $academicYear->id);
+        $this->renderMultiDriverAllocationAudit($allocationInspection, $includeMultiDriver);
 
-        if (! $inspection['valid'] || ! $exclusions['valid']) {
+        if (! $inspection['valid'] || ! $exclusions['valid'] || ! $allocationInspection['valid']) {
             $this->error('Manifest tidak cocok atau validasi gagal. Tidak ada perubahan dilakukan.');
 
             return self::FAILURE;
@@ -229,7 +232,7 @@ class AdjustInitialJemputanMembership extends Command
         }
 
         try {
-            $result = DB::transaction(function () use ($manifest, $academicYear, $periodValidator): array {
+            $result = DB::transaction(function () use ($manifest, $academicYear, $periodValidator, $includeMultiDriver): array {
                 $lockedCandidates = JemputanDriverAssignment::query()
                     ->whereKey(array_keys($manifest))
                     ->orderBy('id')
@@ -252,8 +255,9 @@ class AdjustInitialJemputanMembership extends Command
 
                 $lockedInspection = $this->inspectCandidates($manifest, $academicYear, $periodValidator);
                 $lockedExclusions = $this->inspectExclusions($academicYear);
+                $lockedAllocationInspection = $this->inspectMultiDriverAllocations($academicYear, $includeMultiDriver);
 
-                if (! $lockedInspection['valid'] || ! $lockedExclusions['valid']) {
+                if (! $lockedInspection['valid'] || ! $lockedExclusions['valid'] || ! $lockedAllocationInspection['valid']) {
                     throw new RuntimeException('Data berubah setelah preview atau validasi tidak lagi lulus.');
                 }
 
@@ -269,7 +273,7 @@ class AdjustInitialJemputanMembership extends Command
                     if (
                         ! $assignment instanceof JemputanDriverAssignment
                         || $assignment->academic_year_id !== $academicYear->id
-                        || $assignment->effective_from->toDateString() !== self::ORIGINAL_DATE
+                        || $assignment->effective_from->toDateString() !== $manifest[$pendingId]['original_effective_from']
                     ) {
                         throw new RuntimeException('Assignment berubah setelah validasi dan batch dibatalkan.');
                     }
@@ -318,12 +322,13 @@ class AdjustInitialJemputanMembership extends Command
         return self::SUCCESS;
     }
 
-    /** @return array<int, array{student_id: int, driver_id: int, scope: string}> */
+    /** @return array<int, array{student_id: int, driver_id: int, original_effective_from: string, scope: string}> */
     private function candidateManifest(bool $includeMultiDriver): array
     {
         $manifest = collect(self::SCOPE_A)
             ->map(fn (array $identity, int $assignmentId): array => [
                 ...$identity,
+                'original_effective_from' => self::ORIGINAL_DATE,
                 'scope' => 'A',
             ])
             ->all();
@@ -343,7 +348,7 @@ class AdjustInitialJemputanMembership extends Command
     }
 
     /**
-     * @param  array<int, array{student_id: int, driver_id: int, scope: string}>  $manifest
+     * @param  array<int, array{student_id: int, driver_id: int, original_effective_from: string, scope: string}>  $manifest
      * @return array{valid: bool, rows: list<array<string, int|string>>}
      */
     private function inspectCandidates(
@@ -376,7 +381,7 @@ class AdjustInitialJemputanMembership extends Command
                 $valid = false;
             } elseif ($assignment->effective_from->toDateString() === self::TARGET_DATE) {
                 $status = 'SUDAH DISESUAIKAN';
-            } elseif ($assignment->effective_from->toDateString() !== self::ORIGINAL_DATE) {
+            } elseif ($assignment->effective_from->toDateString() !== $expected['original_effective_from']) {
                 $status = 'GAGAL: tanggal berubah sejak audit';
                 $valid = false;
             }
@@ -421,6 +426,37 @@ class AdjustInitialJemputanMembership extends Command
         }
 
         return ['valid' => $valid, 'rows' => $rows];
+    }
+
+    /** @return array{valid: bool, count: int, invalid_driver_ids: list<int>} */
+    private function inspectMultiDriverAllocations(AcademicYear $academicYear, bool $includeMultiDriver): array
+    {
+        if (! $includeMultiDriver) {
+            return ['valid' => true, 'count' => 0, 'invalid_driver_ids' => []];
+        }
+
+        $studentIds = collect(self::SCOPE_B)->pluck('student_id')->unique()->values();
+        $driverIds = collect(self::SCOPE_B)->pluck('driver_id')->unique()->map(fn ($id): int => (int) $id)->values();
+        $allocations = JemputanDriverSalaryAllocation::query()
+            ->where('academic_year_id', $academicYear->id)
+            ->whereIn('student_id', $studentIds)
+            ->where('period_year', 2026)
+            ->whereBetween('period_month', [7, 10])
+            ->get(['student_id', 'jemputan_driver_id']);
+        $invalidDriverIds = $allocations
+            ->pluck('jemputan_driver_id')
+            ->map(fn ($id): int => (int) $id)
+            ->diff($driverIds)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        return [
+            'valid' => $studentIds->count() === 1 && $driverIds->count() === count(self::SCOPE_B) && $invalidDriverIds === [],
+            'count' => $allocations->count(),
+            'invalid_driver_ids' => $invalidDriverIds,
+        ];
     }
 
     /** @return array{valid: bool, rows: list<array<string, int|string>>} */
@@ -554,6 +590,22 @@ class AdjustInitialJemputanMembership extends Command
         $this->newLine();
         $this->warn('Dampak potensial: Gaji Sopir dan Rekap 6 Bulan Juli–Oktober dapat berubah.');
         $this->line('Stored allocation Juli–Oktober pada kandidat: '.$allocationCount.'. Allocation dan tabel finansial tidak akan diubah.');
+    }
+
+    /** @param array{valid: bool, count: int, invalid_driver_ids: list<int>} $inspection */
+    private function renderMultiDriverAllocationAudit(array $inspection, bool $includeMultiDriver): void
+    {
+        if (! $includeMultiDriver) {
+            return;
+        }
+
+        if (! $inspection['valid']) {
+            $this->error('Stored allocation Fatih terkait dengan sopir di luar paket audit: '.implode(', ', $inspection['invalid_driver_ids']).'.');
+
+            return;
+        }
+
+        $this->line('Stored allocation Fatih Juli–Oktober tervalidasi read-only: '.$inspection['count'].' record.');
     }
 
     private function confirmProductionExecution(string $databaseName): bool

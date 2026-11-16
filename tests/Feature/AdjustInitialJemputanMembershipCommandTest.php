@@ -74,7 +74,7 @@ function seedInitialMembershipAuditDataset(): AcademicYear
             'jemputan_driver_id' => $identity['driver_id'],
             'student_id' => $identity['student_id'],
             'academic_year_id' => $academicYear->id,
-            'effective_from' => '2026-11-10',
+            'effective_from' => $identity['original_effective_from'] ?? '2026-11-10',
             'effective_until' => match ($assignmentId) {
                 1 => '2026-09-01',
                 22 => '2026-11-12',
@@ -186,7 +186,8 @@ it('executes exact scope A only, preserves every other column and is idempotent'
     }
 
     expect($afterRows[23]->effective_from->toDateString())->toBe('2026-11-10')
-        ->and($afterRows[110]->effective_from->toDateString())->toBe('2026-11-10')
+        ->and($afterRows[110]->effective_from->toDateString())->toBe('2026-11-12')
+        ->and($afterRows[118]->effective_from->toDateString())->toBe('2026-11-12')
         ->and($afterRows[18]->effective_from->toDateString())->toBe('2026-07-01')
         ->and($afterRows[18]->effective_until)->toBeNull()
         ->and($afterRows[22]->effective_from->toDateString())->toBe('2026-07-01')
@@ -217,7 +218,7 @@ it('recognizes the current audited state and leaves only assignment 18 pending i
         fn (int $assignmentId): bool => $assignmentId !== 18,
     ));
     DB::table('jemputan_driver_assignments')
-        ->whereIn('id', [...$alreadyAdjustedIds, 23, 110])
+        ->whereIn('id', [...$alreadyAdjustedIds, 23, 110, 118])
         ->update(['effective_from' => '2026-07-01']);
     $beforeDryRun = DB::table('jemputan_driver_assignments')->orderBy('id')->get()->all();
 
@@ -237,11 +238,34 @@ it('recognizes the current audited state and leaves only assignment 18 pending i
         ->and(JemputanDriverAssignment::query()->findOrFail(22)->effective_until?->toDateString())->toBe('2026-11-12')
         ->and(JemputanDriverAssignment::query()->findOrFail(23)->effective_from->toDateString())->toBe('2026-07-01')
         ->and(JemputanDriverAssignment::query()->findOrFail(110)->effective_from->toDateString())->toBe('2026-07-01')
+        ->and(JemputanDriverAssignment::query()->findOrFail(118)->effective_from->toDateString())->toBe('2026-07-01')
         ->and(JemputanDriverAssignment::query()->findOrFail(67)->effective_from->toDateString())->toBe('2026-11-10')
         ->and(JemputanDriverAssignment::query()->findOrFail(111)->effective_from->toDateString())->toBe('2026-11-12');
 });
 
-it('processes the two multi-driver assignments together only when explicitly included', function () {
+it('defines three audited Fatih assignments with their production start dates', function () {
+    $scopeB = initialMembershipManifest('SCOPE_B');
+
+    expect($scopeB)->toHaveCount(3)
+        ->and(array_keys($scopeB))->toBe([23, 110, 118])
+        ->and($scopeB[23])->toBe([
+            'student_id' => 1485,
+            'driver_id' => 3,
+            'original_effective_from' => '2026-11-10',
+        ])
+        ->and($scopeB[110])->toBe([
+            'student_id' => 1485,
+            'driver_id' => 7,
+            'original_effective_from' => '2026-11-12',
+        ])
+        ->and($scopeB[118])->toBe([
+            'student_id' => 1485,
+            'driver_id' => 9,
+            'original_effective_from' => '2026-11-12',
+        ]);
+});
+
+it('processes three different-driver Fatih assignments together and preserves allocations', function () {
     $academicYear = seedInitialMembershipAuditDataset();
     DB::table('jemputan_driver_salary_allocations')->insert([
         [
@@ -251,6 +275,18 @@ it('processes the two multi-driver assignments together only when explicitly inc
             'period_month' => 7,
             'jemputan_driver_id' => 3,
             'allocated_amount' => 400000,
+            'created_by' => null,
+            'updated_by' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+        [
+            'student_id' => 1485,
+            'academic_year_id' => $academicYear->id,
+            'period_year' => 2026,
+            'period_month' => 7,
+            'jemputan_driver_id' => 9,
+            'allocated_amount' => 100000,
             'created_by' => null,
             'updated_by' => null,
             'created_at' => now(),
@@ -274,16 +310,31 @@ it('processes the two multi-driver assignments together only when explicitly inc
     $this->artisan('jemputan:adjust-initial-membership', [
         '--execute' => true,
         '--include-multi-driver' => true,
-    ])->expectsOutputToContain('Kandidat: 109')
-        ->expectsOutputToContain('Updated: 109; sudah sesuai: 0')
+    ])->expectsOutputToContain('Kandidat: 110')
+        ->expectsOutputToContain('Stored allocation Fatih Juli–Oktober tervalidasi read-only: 3 record.')
+        ->expectsOutputToContain('Updated: 110; sudah sesuai: 0')
         ->assertSuccessful();
 
     expect(JemputanDriverAssignment::query()->findOrFail(23)->effective_from->toDateString())->toBe('2026-07-01')
         ->and(JemputanDriverAssignment::query()->findOrFail(110)->effective_from->toDateString())->toBe('2026-07-01')
+        ->and(JemputanDriverAssignment::query()->findOrFail(118)->effective_from->toDateString())->toBe('2026-07-01')
+        ->and(JemputanDriverAssignment::query()->findOrFail(23)->effective_until)->toBeNull()
+        ->and(JemputanDriverAssignment::query()->findOrFail(110)->effective_until)->toBeNull()
+        ->and(JemputanDriverAssignment::query()->findOrFail(118)->effective_until)->toBeNull()
+        ->and(JemputanDriverAssignment::query()->findOrFail(67)->effective_from->toDateString())->toBe('2026-11-10')
+        ->and(JemputanDriverAssignment::query()->findOrFail(111)->effective_from->toDateString())->toBe('2026-11-12')
         ->and(initialMembershipFinancialSnapshot())->toBe($allocationBefore);
+
+    $this->artisan('jemputan:adjust-initial-membership', [
+        '--execute' => true,
+        '--include-multi-driver' => true,
+    ])->expectsOutputToContain('Updated: 0; sudah sesuai: 110')
+        ->assertSuccessful();
+
+    expect(initialMembershipFinancialSnapshot())->toBe($allocationBefore);
 });
 
-it('rejects the multi-driver package when either audited assignment is missing', function () {
+it('rejects the multi-driver package when an audited assignment is missing', function () {
     seedInitialMembershipAuditDataset();
     JemputanDriverAssignment::query()->whereKey(110)->delete();
 
@@ -294,6 +345,56 @@ it('rejects the multi-driver package when either audited assignment is missing',
 
     expect(JemputanDriverAssignment::query()->findOrFail(23)->effective_from->toDateString())->toBe('2026-11-10')
         ->and(JemputanDriverAssignment::query()->whereDate('effective_from', '2026-07-01')->count())->toBe(0);
+});
+
+it('rejects a same-driver overlap in the Fatih package atomically', function () {
+    $academicYear = seedInitialMembershipAuditDataset();
+    JemputanDriverAssignment::query()->forceCreate([
+        'id' => 511,
+        'jemputan_driver_id' => 9,
+        'student_id' => 1485,
+        'academic_year_id' => $academicYear->id,
+        'effective_from' => '2026-08-01',
+        'effective_until' => '2026-09-01',
+    ]);
+
+    $this->artisan('jemputan:adjust-initial-membership', [
+        '--execute' => true,
+        '--include-multi-driver' => true,
+    ])->expectsOutputToContain('tumpang tindih')
+        ->assertExitCode(Command::FAILURE);
+
+    expect(JemputanDriverAssignment::query()->whereKey(array_keys(initialMembershipManifest('SCOPE_A')))
+        ->whereDate('effective_from', '2026-07-01')->count())->toBe(0)
+        ->and(JemputanDriverAssignment::query()->whereKey(array_keys(initialMembershipManifest('SCOPE_B')))
+            ->whereDate('effective_from', '2026-07-01')->count())->toBe(0);
+});
+
+it('rejects stored Fatih allocations linked to a driver outside the package', function () {
+    $academicYear = seedInitialMembershipAuditDataset();
+    DB::table('jemputan_driver_salary_allocations')->insert([
+        'student_id' => 1485,
+        'academic_year_id' => $academicYear->id,
+        'period_year' => 2026,
+        'period_month' => 7,
+        'jemputan_driver_id' => 2,
+        'allocated_amount' => 100000,
+        'created_by' => null,
+        'updated_by' => null,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $financialBefore = initialMembershipFinancialSnapshot();
+
+    $this->artisan('jemputan:adjust-initial-membership', [
+        '--execute' => true,
+        '--include-multi-driver' => true,
+    ])->expectsOutputToContain('sopir di luar paket audit: 2')
+        ->assertExitCode(Command::FAILURE);
+
+    expect(JemputanDriverAssignment::query()->whereKey(array_keys(initialMembershipManifest('SCOPE_B')))
+        ->whereDate('effective_from', '2026-07-01')->count())->toBe(0)
+        ->and(initialMembershipFinancialSnapshot())->toBe($financialBefore);
 });
 
 it('audits the moved assignment by identity and actual period instead of its old id', function () {
