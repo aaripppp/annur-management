@@ -107,23 +107,82 @@
 
     @if ($isGroupModalOpen && $selectedDriver)
         <template x-teleport="body">
-        <div class="fixed inset-0 z-[9999] overflow-hidden bg-inverse-surface/60 p-3 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-labelledby="driver-group-title" wire:click.self="closeGroup">
+        <div
+            data-group-modal-backdrop
+            x-data="{
+                lockKey: '__annurGroupModalScrollLock',
+                init() {
+                    let lock = window[this.lockKey];
+
+                    if (! lock) {
+                        const body = document.body;
+                        const scrollbarWidth = Math.max(0, window.innerWidth - document.documentElement.clientWidth);
+                        const currentPaddingRight = Number.parseFloat(window.getComputedStyle(body).paddingRight) || 0;
+
+                        lock = {
+                            count: 0,
+                            scrollY: window.scrollY,
+                            styles: {
+                                position: body.style.position,
+                                top: body.style.top,
+                                left: body.style.left,
+                                right: body.style.right,
+                                width: body.style.width,
+                                overflow: body.style.overflow,
+                                paddingRight: body.style.paddingRight,
+                            },
+                        };
+
+                        body.style.position = 'fixed';
+                        body.style.top = `-${lock.scrollY}px`;
+                        body.style.left = '0';
+                        body.style.right = '0';
+                        body.style.width = '100%';
+                        body.style.overflow = 'hidden';
+
+                        if (scrollbarWidth > 0) {
+                            body.style.paddingRight = `${currentPaddingRight + scrollbarWidth}px`;
+                        }
+
+                        window[this.lockKey] = lock;
+                    }
+
+                    lock.count++;
+                },
+                destroy() {
+                    const lock = window[this.lockKey];
+
+                    if (! lock) {
+                        return;
+                    }
+
+                    lock.count = Math.max(0, lock.count - 1);
+
+                    if (lock.count === 0) {
+                        const body = document.body;
+                        const scrollY = lock.scrollY;
+
+                        Object.assign(body.style, lock.styles);
+                        delete window[this.lockKey];
+                        requestAnimationFrame(() => window.scrollTo(0, scrollY));
+                    }
+                },
+            }"
+            class="fixed inset-0 z-[9999] overflow-hidden overscroll-none bg-inverse-surface/60 p-2 backdrop-blur-sm sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="driver-group-title"
+            wire:click.self="closeGroup"
+        >
             <div class="flex h-full items-center justify-center">
-                <section class="flex max-h-[calc(100vh-1.5rem)] w-full max-w-7xl flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-2xl sm:max-h-[calc(100vh-2rem)]">
-                    <header class="flex shrink-0 flex-col gap-4 border-b border-outline-variant p-4 lg:flex-row lg:items-end lg:justify-between sm:p-5">
+                <section data-group-modal-panel style="max-height: 90dvh" class="flex min-h-0 max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-2xl">
+                    <header data-group-modal-header class="relative flex shrink-0 flex-col gap-4 border-b border-outline-variant p-4 pr-16 sm:p-5 sm:pr-20 lg:flex-row lg:items-end lg:justify-between">
                         <div class="min-w-0">
-                            <div class="flex items-start justify-between gap-3">
-                                <div>
-                                    <h2 id="driver-group-title" class="text-title-lg font-title-lg text-on-surface">Kelompok {{ $selectedDriver->name }}</h2>
-                                    <p class="mt-1 text-body-sm text-on-surface-variant">Kelola anggota aktif dan seluruh riwayat periode pada tahun ajaran yang dipilih.</p>
-                                </div>
-                                <button type="button" wire:click="closeGroup" title="Tutup" aria-label="Tutup modal kelompok sopir" class="inline-flex size-10 shrink-0 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container lg:hidden">
-                                    <span class="material-symbols-outlined" aria-hidden="true">close</span>
-                                </button>
-                            </div>
+                            <h2 id="driver-group-title" class="break-words text-title-lg font-title-lg text-on-surface">Kelompok {{ $selectedDriver->name }}</h2>
+                            <p class="mt-1 text-body-sm text-on-surface-variant">Kelola anggota aktif dan seluruh riwayat periode pada tahun ajaran yang dipilih.</p>
                         </div>
-                        <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
-                            <div>
+                        <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end lg:justify-end">
+                            <div class="min-w-0 sm:min-w-40">
                                 <label for="assignment-year" class="block text-label-md text-on-surface-variant">Tahun Ajaran</label>
                                 <select id="assignment-year" wire:model.live="selectedAcademicYearId" class="mt-1 h-11 w-full rounded-lg border-outline-variant text-body-md focus:border-primary focus:ring-primary sm:w-auto">
                                     @foreach ($academicYears as $academicYear)
@@ -137,10 +196,10 @@
                             <button type="button" wire:click="openAssignmentModal" @disabled(! $selectedDriver->is_active) class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-label-lg text-on-primary disabled:cursor-not-allowed disabled:opacity-50">
                                 <span class="material-symbols-outlined text-[20px]">person_add</span> Tambah Siswa
                             </button>
-                            <button type="button" wire:click="closeGroup" title="Tutup" aria-label="Tutup modal kelompok sopir" class="hidden size-11 shrink-0 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container lg:inline-flex">
-                                <span class="material-symbols-outlined" aria-hidden="true">close</span>
-                            </button>
                         </div>
+                        <button data-group-modal-close type="button" wire:click="closeGroup" title="Tutup" aria-label="Tutup modal kelompok sopir" class="absolute right-2 top-2 z-20 inline-flex size-11 shrink-0 items-center justify-center rounded-lg bg-surface-container-lowest text-on-surface-variant shadow-sm transition-colors hover:bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary sm:right-3 sm:top-3">
+                            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                        </button>
                     </header>
 
                     @error('assignmentDriverId')<p class="m-4 shrink-0 rounded-lg bg-error-container px-4 py-3 text-body-sm text-on-error-container">{{ $message }}</p>@enderror
@@ -152,7 +211,7 @@
                         </div>
                     </div>
 
-                    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                    <div data-group-modal-scroll class="min-h-0 flex-1 overflow-y-auto overscroll-y-contain touch-pan-y">
                         @if ($groupTab === 'active')
                         <div class="overflow-x-auto" role="tabpanel">
                             <table class="w-full min-w-[1100px] border-collapse text-left">
